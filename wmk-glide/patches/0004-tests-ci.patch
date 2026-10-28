@@ -1,0 +1,72 @@
+diff --git a/.github/workflows/ci.yml b/.github/workflows/ci.yml
+index c1ca12754..14eb066e6 100644
+--- a/.github/workflows/ci.yml
++++ b/.github/workflows/ci.yml
+@@ -45,7 +45,14 @@ jobs:
+       - name: Cache the Rust engine's host build
+         uses: Swatinem/rust-cache@v2
+         with:
+-          workspaces: native/wm-engine-jni
++          workspaces: |
++            native/wm-engine
++            native/wm-engine-jni
++
++      - name: Test the Rust engine
++        # `unitTests` builds the JNI but never runs `cargo test`, so a broken
++        # engine test (glide_freq_weight, glide_join, ...) could ship unseen.
++        run: cargo test --release --manifest-path native/wm-engine/Cargo.toml
+ 
+       - name: Run unit tests
+         # `unitTests` and not a bare testIntlDebugUnitTest: :app carries the
+diff --git a/native/wm-engine/tests/glide_freq_weight.rs b/native/wm-engine/tests/glide_freq_weight.rs
+index 4f649cc31..dd7a558b8 100644
+--- a/native/wm-engine/tests/glide_freq_weight.rs
++++ b/native/wm-engine/tests/glide_freq_weight.rs
+@@ -106,7 +106,10 @@ fn at_weight_zero_the_order_is_the_shape_order() {
+     // With no frequency term the score is the shape term alone, so the
+     // candidates come back best-drawn first whatever the list says.
+     let (trie, _) = english();
+-    let mut none = Decoder::new(Tuning { freq_weight: 0.0, ..Tuning::default() });
++    // The shape channel is a separate score term (`shape_channel`), so it has
++    // to stand down too: with it on, the learned-shape bonus still reorders
++    // candidates and the frequency term is not the only thing left.
++    let mut none = Decoder::new(Tuning { freq_weight: 0.0, shape_channel: 0.0, ..Tuning::default() });
+     for word in ["god", "write", "the"] {
+         let found = decode(&mut none, &trie, &swipe(word));
+         assert!(found.len() > 1, "{word}");
+diff --git a/native/wm-engine/tests/glide_join.rs b/native/wm-engine/tests/glide_join.rs
+index 7c38bcd11..aa608180c 100644
+--- a/native/wm-engine/tests/glide_join.rs
++++ b/native/wm-engine/tests/glide_join.rs
+@@ -107,7 +107,9 @@ fn with_a_finite_charge_a_two_part_word_absent_from_the_list_is_read() {
+         assert_eq!(word_of(top), compound, "{compound}: {:?}", found.iter().map(word_of).collect::<Vec<_>>());
+         // Scored on the rarer part, the join charged once.
+         let expected = (1.0 + frequency(rarer) as f64).ln() - Tuning::default().shape_weight * top.shape_cost - 2.0;
+-        assert!((top.score - expected).abs() < 1e-6, "{compound}: {} vs {expected}", top.score);
++        // `ln1p_count` approximates the trie's integer count on ~3e-5 nats;
++        // the score is otherwise exact.
++        assert!((top.score - expected).abs() < 1e-4, "{compound}: {} vs {expected}", top.score);
+     }
+ }
+ 
+@@ -131,3 +133,20 @@ fn an_infinite_charge_is_the_plain_decode_to_the_bit() {
+         assert_eq!(decode(&mut plain, &trie, &path), decode(&mut explicit, &trie, &path), "{word}");
+     }
+ }
++
++#[test]
++fn a_four_letter_floor_keeps_a_three_letter_tail_from_joining() {
++    // `hast` + `alt` is the classic false compound (`haushalt` exists); with
++    // the German profile's four-letter floor it must not be read, while a
++    // four-plus-four compound still is.
++    let trie = list();
++    let mut guarded = Decoder::new(Tuning { join_cost: 2.0, join_min_part: 4, ..Tuning::default() });
++    let false_compound = decode(&mut guarded, &trie, &swipe("hastalt"));
++    assert!(
++        false_compound.iter().all(|c| word_of(c) != "hastalt"),
++        "hastalt read: {:?}",
++        false_compound.iter().map(word_of).collect::<Vec<_>>()
++    );
++    let compound = decode(&mut guarded, &trie, &swipe("haushalt"));
++    assert_eq!(compound.first().map(word_of).as_deref(), Some("haushalt"));
++}

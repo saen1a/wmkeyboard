@@ -1,0 +1,183 @@
+diff --git a/native/wm-engine/examples/glide_beam_eval.rs b/native/wm-engine/examples/glide_beam_eval.rs
+index f249bd17..ebe0d721 100644
+--- a/native/wm-engine/examples/glide_beam_eval.rs
++++ b/native/wm-engine/examples/glide_beam_eval.rs
+@@ -19,7 +19,7 @@ use std::io::{BufRead, Write};
+ 
+ use wm_engine::fuzzy::Tier;
+ use wm_engine::glide::keymap::KeyMap;
+-use wm_engine::glide::{Decoder, Point, Source, Tuning};
++use wm_engine::glide::{Decoder, LearnedShapes, Point, Source, Tuning};
+ use wm_engine::user_lexicon::UserTrie;
+ 
+ struct Record {
+@@ -35,8 +35,8 @@ fn number(v: &serde_json::Value, key: &str) -> f32 {
+ 
+ /// The dataset's own key centres, in key widths: its keys are a tenth of the
+ /// canvas wide (`GlideRealSwipeEval` reads them the same way).
+-fn keymap(layout: &[(i32, f32, f32)], width: f32, height: f32) -> KeyMap {
+-    let kw = width * 0.1;
++fn keymap(layout: &[(i32, f32, f32)], width: f32, height: f32, cols: f32) -> KeyMap {
++    let kw = width / cols;
+     let mut order: Vec<usize> = (0..layout.len()).collect();
+     order.sort_by_key(|&i| layout[i].0);
+     let xs = layout.iter().map(|k| k.1 * width / kw).collect();
+@@ -69,6 +69,11 @@ fn set(t: &mut Tuning, name: &str, value: f64) {
+         "end_radius" => t.end_radius = value as f32,
+         "near_radius" => t.near_radius = value as f32,
+         "joiner_cost" => t.joiner_cost = value as f32,
++        "length_prior" => t.length_prior = value,
++        "length_slope" => t.length_slope = value as f32,
++        "length_intercept" => t.length_intercept = value as f32,
++        "length_bias" => t.length_bias = value,
++        "freq_weight" => t.freq_weight = value,
+         _ => panic!("no tuning field {name}"),
+     }
+ }
+@@ -86,6 +91,8 @@ struct Tally {
+     short_top1: usize,
+     long_n: usize,
+     long_top1: usize,
++    /// (cases, hits) for words of 5-7, 8-10, 11-14 and 15+ letters.
++    bucket: [(usize, usize); 4],
+ }
+ 
+ fn main() {
+@@ -110,7 +117,11 @@ fn main() {
+     }
+     let skip = std::env::var("SKIP").ok().and_then(|v| v.parse().ok()).unwrap_or(0usize);
+     let limit = std::env::var("LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or(usize::MAX);
+-    let threads = std::env::var("THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or(8usize);
++    let keep_all = std::env::var("ALL").is_ok();
++    let dump = std::env::var("DUMP").ok();
++    let threads = if dump.is_some() { 1 } else { std::env::var("THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or(8usize) };
++    let cols: f32 = std::env::var("COLS").ok().and_then(|v| v.parse().ok()).unwrap_or(10.0);
++    let result_limit: usize = std::env::var("RESULTS").ok().and_then(|v| v.parse().ok()).unwrap_or(4);
+     let file = std::io::BufReader::new(std::fs::File::open(&args[1]).expect("records"));
+     let records: Vec<Record> = file
+         .lines()
+@@ -118,7 +129,10 @@ fn main() {
+         .filter_map(|line| {
+             let v: serde_json::Value = serde_json::from_str(&line).ok()?;
+             let word = v["word"].as_str()?.to_lowercase();
+-            if word.len() < 2 || !word.bytes().all(|b| b.is_ascii_lowercase()) || !known.contains(&word) {
++            if word.chars().count() < 2 || !word.chars().all(|c| c.is_alphabetic()) {
++                return None;
++            }
++            if !keep_all && !known.contains(&word) {
+                 return None;
+             }
+             let (width, height) = (number(&v, "canvas_width"), number(&v, "canvas_height"));
+@@ -134,25 +148,65 @@ fn main() {
+         .collect();
+     eprintln!("{} strokes", records.len());
+ 
++    // SHAPES=1: learn one shape per word from its first occurrence, then decode
++    // every stroke with the learned-shape channel on, as the app does once a word
++    // has been swiped. Seeding needs the Kotlin store and stays out.
++    let shapes: Option<LearnedShapes> = if std::env::var("SHAPES").is_ok() {
++        let mut map: LearnedShapes = std::collections::HashMap::new();
++        let mut sampler = Decoder::new(Tuning::default());
++        let mut learned = 0usize;
++        for r in &records {
++            let key: Vec<u16> = r.word.encode_utf16().collect();
++            if map.contains_key(&key) {
++                continue;
++            }
++            let keys = keymap(&layout, r.width, r.height, cols);
++            if let Some(shape) = sampler.sample_shape(&r.points, r.width / cols) {
++                map.insert(key, vec![shape]);
++                learned += 1;
++            }
++        }
++        eprintln!("learned shapes for {learned} words");
++        Some(map)
++    } else {
++        None
++    };
++
+     let run = |tuning: &Tuning| -> Tally {
+         let chunk = records.len().div_ceil(threads).max(1);
+         let tallies: Vec<Tally> = std::thread::scope(|scope| {
+             let handles: Vec<_> = records
+                 .chunks(chunk)
+-                .map(|part| {
+-                    let (trie, layout) = (&trie, &layout);
++                .enumerate()
++                .map(|(chunk_index, part)| {
++                    let (trie, layout, shapes) = (&trie, &layout, &shapes);
++                    let dump = dump.clone();
++                    let base = chunk_index * chunk;
+                     scope.spawn(move || {
+                         let sources = [Source { walker: trie, log_weight: 0.0, tier: Tier::Dictionary, min_frequency: 0 }];
+                         let mut decoder = Decoder::new(tuning.clone());
+                         let mut t = Tally::default();
+-                        for r in part {
+-                            let keys = keymap(layout, r.width, r.height);
+-                            let out = decoder.decode(&r.points, &keys, r.width * 0.1, &sources, 4, None, 0);
++                        let mut out_file = dump.as_ref().map(|p| {
++                            std::fs::OpenOptions::new().create(true).append(true).open(p).expect("dump")
++                        });
++                        for (offset, r) in part.iter().enumerate() {
++                            let keys = keymap(&layout, r.width, r.height, cols);
++                            let out = decoder.decode(&r.points, &keys, r.width / cols, &sources, result_limit, shapes.as_ref(), 0);
+                             let words: Vec<String> = out.iter().map(|c| String::from_utf16_lossy(&c.word).to_lowercase()).collect();
+                             let hit = words.first() == Some(&r.word);
++                            if let Some(f) = out_file.as_mut() {
++                                use std::io::Write as _;
++                                writeln!(
++                                    f,
++                                    "{{\"i\":{},\"w\":\"{}\",\"top\":\"{}\"}}",
++                                    base + offset,
++                                    r.word,
++                                    words.first().map(|s| s.as_str()).unwrap_or("")
++                                ).ok();
++                            }
+                             t.n += 1;
+                             t.top1 += hit as usize;
+-                            t.top4 += words.iter().any(|w| *w == r.word) as usize;
++                            t.top4 += words.iter().take(4).any(|w| *w == r.word) as usize;
+                             if r.word.len() <= 4 && doubled(&r.word) {
+                                 t.short_n += 1;
+                                 t.short_top1 += hit as usize;
+@@ -161,6 +215,17 @@ fn main() {
+                                 t.long_n += 1;
+                                 t.long_top1 += hit as usize;
+                             }
++                            let b = match r.word.chars().count() {
++                                0..=4 => usize::MAX,
++                                5..=7 => 0,
++                                8..=10 => 1,
++                                11..=14 => 2,
++                                _ => 3,
++                            };
++                            if b != usize::MAX {
++                                t.bucket[b].0 += 1;
++                                t.bucket[b].1 += hit as usize;
++                            }
+                         }
+                         t
+                     })
+@@ -177,6 +242,10 @@ fn main() {
+             t.short_top1 += x.short_top1;
+             t.long_n += x.long_n;
+             t.long_top1 += x.long_top1;
++            for b in 0..4 {
++                t.bucket[b].0 += x.bucket[b].0;
++                t.bucket[b].1 += x.bucket[b].1;
++            }
+         }
+         t
+     };
+@@ -192,6 +261,11 @@ fn main() {
+             f(t.long_top1, t.long_n),
+             t.long_n
+         );
++        let names = ["5-7", "8-10", "11-14", "15+"];
++        for b in 0..4 {
++            let (cn, ch) = t.bucket[b];
++            print!(" | {} {:.4} n {}", names[b], f(ch, cn), cn);
++        }
+         std::io::stdout().flush().ok();
+     };
+ 

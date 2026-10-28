@@ -1,0 +1,81 @@
+diff --git a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt
+index 6cfe7e643..141a6d196 100644
+--- a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt
++++ b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt
+@@ -1602,7 +1602,11 @@ class SuggestionEngine(
+         val words = if (romanization.isEmpty) decoded else romanization.resolve(decoded)
+         val filtered = words.filterNot { suppressed(it.word) }
+         if (filtered.isEmpty()) return filtered
+-        val reranked = rerankGlide(filtered, previousWord, previousWord2, previousWord3, recentWords)
++        // The context model's say, in score space, before the rank-unit
++        // rerank below: a glide has no typed literal to defend, so its cap
++        // is wider than the typing path's (see [GLIDE_LM_BLEND_CAP]).
++        val blended = blendGlideContextModel(filtered)
++        val reranked = rerankGlide(blended, previousWord, previousWord2, previousWord3, recentWords)
+         return shiftGlideScores(reranked)
+             // One word per spelling, whatever source it came from (#172). The
+             // decoder keys its results on each trie's own spelling, and the
+@@ -1754,6 +1758,44 @@ class SuggestionEngine(
+         return moved + decoded.filterNot { it.word in reordered }
+     }
+ 
++    /**
++     * The context model's say on a glide's readings, in score space: every
++     * candidate moves by its log-probability against the decoder's leader,
++     * [GLIDE_LM_BLEND] engine nats per model nat and at most
++     * [GLIDE_LM_BLEND_CAP]. A glide is a guess from the start, so the cap can
++     * be wider than the typing path's [LM_BLEND_CAP]: 3 nats on the FUTO
++     * German pool (n=2,294 with a previous word) took 70.84 -> 80.82, against
++     * 82.13 for an uncapped blend. The corpus bigram stands in for the
++     * downloaded model in that measurement; the shape is the shipped one.
++     *
++     * Silent when there is no model, when it does not know the leader, or
++     * when it knows none of the candidates; a word the model cannot read
++     * keeps its decoder score, as in [blendContextModel].
++     */
++    private fun blendGlideContextModel(decoded: List<GlideBeam.Candidate>): List<GlideBeam.Candidate> {
++        val model = contextModel ?: return decoded
++        if (decoded.size < 2) return decoded
++        val words = decoded.map { it.word }
++        val scores = model.scores(words)
++        val reference = scores.firstOrNull() ?: return decoded
++        if (reference.isNaN()) return decoded
++        var moved = false
++        val shifted = decoded.mapIndexed { i, candidate ->
++            val lp = scores.getOrNull(i) ?: return@mapIndexed candidate
++            if (lp.isNaN()) return@mapIndexed candidate
++            val shift = (GLIDE_LM_BLEND * (lp - reference)).coerceIn(-GLIDE_LM_BLEND_CAP, GLIDE_LM_BLEND_CAP)
++            if (shift == 0.0) {
++                candidate
++            } else {
++                moved = true
++                GlideBeam.Candidate(candidate.word, candidate.score + shift, candidate.shapeCost, candidate.tier, candidate.ahead)
++            }
++        }
++        if (!moved) return decoded
++        // Stable, so equal scores keep the decoder's order.
++        return shifted.sortedByDescending { it.score }
++    }
++
+     /**
+      * The last walk's ranked result and everything it depended on. One
+      * keystroke asks the same question twice — [suggest] builds the strip,
+@@ -2679,6 +2721,18 @@ class SuggestionEngine(
+         const val LM_BLEND = 0.2
+         const val LM_BLEND_CAP = 1.0
+ 
++        /**
++         * The same blend on a glide's readings, and its cap. A stroke's
++         * candidates are all guesses, so the context may move one further
++         * than it may move a typed literal: 0.7 engine nats per model nat,
++         * capped at 3, measured 2026-10-26 on the FUTO German pool
++         * (n=2,294 with a previous word): 70.84 -> 80.82. A 1-nat cap reached
++         * 75.33, 2 nats 78.60, 4 nats 81.65 and no cap 82.91, so 3 is the
++         * last width before the returns flatten.
++         */
++        const val GLIDE_LM_BLEND = 0.7
++        const val GLIDE_LM_BLEND_CAP = 3.0
++
+         /**
+          * How the blend grows with the taps' spread (mean distance to the
+          * nearest key centre, in key widths) over a careful typist's

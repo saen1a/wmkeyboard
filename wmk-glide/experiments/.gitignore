@@ -1,0 +1,7 @@
+__pycache__/
+*.pyc
+pairs.pkl
+test_records.jsonl
+test_extra50.jsonl
+test_extra50_lp.jsonl
+synth_base26_pred.tsv

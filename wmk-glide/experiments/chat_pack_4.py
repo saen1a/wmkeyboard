@@ -1,0 +1,50 @@
+import os
+import bz2, re, random
+from collections import Counter, defaultdict
+known=set()
+for line in open('data/de_full.txt',encoding='utf-8'):
+    p=line.split()
+    if p: known.add(p[0].lower())
+tok=re.compile(r"[^\W\d_]+(?:['’\-][^\W\d_]+)*", re.UNICODE)
+def tokens(text): return [w for m in tok.finditer(text.lower().replace('’',"'")) if (w:=m.group(0)) in known]
+sent=[]
+with bz2.open('data/deu_sentences.tsv.bz2','rt',encoding='utf-8',errors='replace') as f:
+    for line in f:
+        p=line.rstrip('\n').split('\t',2)
+        if len(p)>=3:
+            t=tokens(p[2])
+            if len(t)>=2: sent.append(t)
+random.Random(1).shuffle(sent); cut=int(len(sent)*0.8); train=sent[:cut]; test=sent[cut:]
+bi=Counter(); tri=Counter(); quad=Counter()
+for t in train:
+    for a,b in zip(t,t[1:]): bi[(a,b)]+=1
+    for a,b,c in zip(t,t[1:],t[2:]): tri[(a,b,c)]+=1
+    for a,b,c,d in zip(t,t[1:],t[2:],t[3:]): quad[(a,b,c,d)]+=1
+bi=dict(bi.most_common(150000)); tri=dict(tri.most_common(75000))
+uni=Counter()
+for line in open('data/de_full.txt',encoding='utf-8'):
+    p=line.split()
+    if p: uni[p[0].lower()]=int(p[1])
+uni_top=[w for w,_ in uni.most_common(3)]
+def nx(bi):
+    d=defaultdict(list)
+    for (a,b),c in bi.items(): d[a].append((b,c))
+    for a in d: d[a].sort(key=lambda x:-x[1])
+    return d
+bix=nx(bi); trix=defaultdict(list)
+for (a,b,c),cnt in tri.items(): trix[(a,b)].append((c,cnt))
+for k in trix: trix[k].sort(key=lambda x:-x[1])
+for cap in (50000,150000,300000):
+    qx=defaultdict(list)
+    for (a,b,c,d),cnt in quad.most_common(cap): qx[(a,b,c)].append((d,cnt))
+    for k in qx: qx[k].sort(key=lambda x:-x[1])
+    hit1=hit3=n=0
+    for t in test:
+        for i in range(1,len(t)):
+            prev=t[i-1]; target=t[i]; p2=t[i-2] if i>=2 else None; p3=t[i-3] if i>=3 else None; n+=1
+            cand=[w for w,_ in qx.get((p3,p2,prev),[])[:3]] if p3 else []
+            if not cand: cand=[w for w,_ in trix.get((p2,prev),[])[:3]] if p2 else []
+            if not cand: cand=[w for w,_ in bix.get(prev,[])[:3]]
+            if not cand: cand=uni_top
+            hit1+=cand[0]==target; hit3+=target in cand
+    print(cap,f'top1 {100*hit1/n:.2f} top3 {100*hit3/n:.2f}')

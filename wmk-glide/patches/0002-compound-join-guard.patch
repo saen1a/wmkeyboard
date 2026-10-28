@@ -1,0 +1,369 @@
+diff --git a/app/src/test/java/com/wasimaster/wmkeyboard/core/gesture/GlideLanguageProfilesTest.kt b/app/src/test/java/com/wasimaster/wmkeyboard/core/gesture/GlideLanguageProfilesTest.kt
+index fdc5f9c54..253ace9ad 100644
+--- a/app/src/test/java/com/wasimaster/wmkeyboard/core/gesture/GlideLanguageProfilesTest.kt
++++ b/app/src/test/java/com/wasimaster/wmkeyboard/core/gesture/GlideLanguageProfilesTest.kt
+@@ -13,11 +13,19 @@ class GlideLanguageProfilesTest {
+         val tuned = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "de")
+         assertEquals(0.5, tuned.freqWeight, 0.0)
+         assertEquals(2.0f, tuned.gapWeight, 0f)
+-        assertEquals(3.0, tuned.joinCost, 0.0)
++        assertEquals(8.0, tuned.joinCost, 0.0)
++        assertEquals(4, tuned.joinMinPart)
++        assertEquals(0.1, tuned.joinPartPenalty, 0.0)
+         // Nothing else moves.
+         assertEquals(
+             GlideBeam.Tuning.DEFAULT,
+-            tuned.copy(freqWeight = 1.0, gapWeight = GlideBeam.Tuning.DEFAULT.gapWeight, joinCost = Double.POSITIVE_INFINITY),
++            tuned.copy(
++                freqWeight = 1.0,
++                gapWeight = GlideBeam.Tuning.DEFAULT.gapWeight,
++                joinCost = Double.POSITIVE_INFINITY,
++                joinMinPart = GlideBeam.Tuning.DEFAULT.joinMinPart,
++                joinPartPenalty = GlideBeam.Tuning.DEFAULT.joinPartPenalty,
++            ),
+         )
+     }
+ 
+@@ -54,13 +62,21 @@ class GlideLanguageProfilesTest {
+         assertEquals(1.4f, tuned.nearRadius, 0f)
+         assertEquals(30000, tuned.vocabularyRank)
+         assertEquals(0.5, tuned.freqWeight, 0.0)
+-        assertEquals(3.0, tuned.joinCost, 0.0)
++        assertEquals(8.0, tuned.joinCost, 0.0)
++        assertEquals(4, tuned.joinMinPart)
++        assertEquals(0.1, tuned.joinPartPenalty, 0.0)
+         // Applying it again changes nothing, so a language re-set is free.
+         assertSame(tuned, GlideLanguageProfiles.tune(tuned, "de"))
+         // And a switch back to English gives the user's own weights back.
+         assertEquals(
+             mine,
+-            GlideLanguageProfiles.tune(tuned, "en").copy(gapWeight = mine.gapWeight, freqWeight = mine.freqWeight, joinCost = mine.joinCost),
++            GlideLanguageProfiles.tune(tuned, "en").copy(
++                gapWeight = mine.gapWeight,
++                freqWeight = mine.freqWeight,
++                joinCost = mine.joinCost,
++                joinMinPart = mine.joinMinPart,
++                joinPartPenalty = mine.joinPartPenalty,
++            ),
+         )
+     }
+ }
+diff --git a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideBeam.kt b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideBeam.kt
+index 4bf962500..2d3a0bfa3 100644
+--- a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideBeam.kt
++++ b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideBeam.kt
+@@ -539,10 +539,10 @@ class GlideBeam(private val tuning: Tuning = Tuning()) {
+          * the list was a net loss (under 2 % of them were words anyone
+          * writes); an oracle that held just the missing ones read 4.9 more
+          * swipes in a hundred. So the decoder reads them where the stroke
+-         * is decoded instead: at a listed word of three letters or more
+-         * with stroke still ahead of it, the walk may go on from the top of
+-         * the trie as a second part, on the same alignment, as if the list
+-         * held the joined spelling. The joined word scores on the rarest of
++         * is decoded instead: at a listed word of [joinMinPart] letters or
++         * more with stroke still ahead of it, the walk may go on from the
++         * top of the trie as a second part, on the same alignment, as if the
++         * list held the joined spelling. The joined word scores on the rarest of
+          * its parts, this much the poorer per join, so a listed compound
+          * beats its own joining and a common short word plus a stray one
+          * does not beat a word the list holds whole. The bound carries
+@@ -553,6 +553,21 @@ class GlideBeam(private val tuning: Tuning = Tuning()) {
+          * strokes; `glide_beam_eval` takes `join_cost=` for the sweep.
+          */
+         val joinCost: Double = Double.POSITIVE_INFINITY,
++        /**
++         * Least letters a compound part may have (issue #966). A join of two
++         * three-letter words is usually a coincidence (`hast` + `alt` over
++         * `haushalt`), so the German profile asks for four. 3 is the original
++         * and the default, where joining is off anyway.
++         */
++        val joinMinPart: Int = 3,
++        /**
++         * Nats per completed part, times `ln(1 + part frequency)`: common
++         * parts pay for a join and rare ones do not. With [joinCost] at 8 and
++         * [joinMinPart] at 4 this turned the German profile's join from
++         * -3.5 to +0.46 points on 2,588 real swipes (see
++         * [GlideLanguageProfiles]); 0 is the original.
++         */
++        val joinPartPenalty: Double = 0.0,
+     ) {
+         val invTwoSigmaSq: Float get() = 1f / (2f * sigma * sigma)
+         val startRadiusSq: Float get() = startRadius * startRadius
+diff --git a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideLanguageProfiles.kt b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideLanguageProfiles.kt
+index f77791305..71930e3f9 100644
+--- a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideLanguageProfiles.kt
++++ b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideLanguageProfiles.kt
+@@ -25,11 +25,18 @@ package com.wasimaster.wmkeyboard.core.gesture
+  * in Advanced tuning: it touches only the weights no setting reaches,
+  * so the radii and the marks stay theirs.
+  *
+- * The third weight is [GlideBeam.Tuning.joinCost], the compound reading
+- * (issue #966 §5.2): a German list misses 36 % of the 15-letter-plus words
+- * people swipe, and the decoder reads those as two or three listed words
+- * in a row, each join charged this much. Off (infinite) everywhere but
+- * German; the German value is unmeasured on real strokes.
++ * The compound reading (issue #966 §5.2) is the third group: a German list
++ * misses 36 % of the 15-letter-plus words people swipe, and the decoder can
++ * read those as two or three listed words in a row. A bare charge of 3 nats
++ * was a net loss (74.15 -> 70.63 on FUTO's 2,588 German swipes): common parts
++ * such as `hast` + `alt` outbid the listed `haushalt`. The guard is part
++ * length plus a per-part commonness charge, [GlideBeam.Tuning.joinMinPart]
++ * and [GlideBeam.Tuning.joinPartPenalty]; at 4 letters, 0.1 nats per
++ * `ln(1 + frequency)` and an 8-nat charge the same run is 74.61 (+0.46),
++ * top-4 82.81 -> 83.31. An oracle that knew every missing compound by sight
++ * is worth 4.9 points, so this is a small part of it; the rest needs a
++ * compound language model, not another constant. Off (infinite) everywhere
++ * but German.
+  *
+  * Start with German; the compounding languages (Finnish, Dutch, Swedish,
+  * Norwegian) are the next candidates, one harness run each
+@@ -40,13 +47,29 @@ package com.wasimaster.wmkeyboard.core.gesture
+ object GlideLanguageProfiles {
+ 
+     /** The weights a profile moves; everything else stays as the caller tuned it. */
+-    class Profile(val freqWeight: Double, val gapWeight: Float, val joinCost: Double) {
++    class Profile(
++        val freqWeight: Double,
++        val gapWeight: Float,
++        val joinCost: Double,
++        val joinMinPart: Int,
++        val joinPartPenalty: Double,
++    ) {
+         /** [tuning] with this profile's weights on it, or [tuning] itself when it already carries them. */
+         fun applyTo(tuning: GlideBeam.Tuning): GlideBeam.Tuning =
+-            if (tuning.freqWeight == freqWeight && tuning.gapWeight == gapWeight && tuning.joinCost == joinCost) {
++            if (
++                tuning.freqWeight == freqWeight && tuning.gapWeight == gapWeight &&
++                tuning.joinCost == joinCost && tuning.joinMinPart == joinMinPart &&
++                tuning.joinPartPenalty == joinPartPenalty
++            ) {
+                 tuning
+             } else {
+-                tuning.copy(freqWeight = freqWeight, gapWeight = gapWeight, joinCost = joinCost)
++                tuning.copy(
++                    freqWeight = freqWeight,
++                    gapWeight = gapWeight,
++                    joinCost = joinCost,
++                    joinMinPart = joinMinPart,
++                    joinPartPenalty = joinPartPenalty,
++                )
+             }
+     }
+ 
+@@ -55,16 +78,25 @@ object GlideLanguageProfiles {
+         GlideBeam.Tuning.DEFAULT.freqWeight,
+         GlideBeam.Tuning.DEFAULT.gapWeight,
+         GlideBeam.Tuning.DEFAULT.joinCost,
++        GlideBeam.Tuning.DEFAULT.joinMinPart,
++        GlideBeam.Tuning.DEFAULT.joinPartPenalty,
+     )
+ 
+     /**
+      * German: shape over frequency, since its targets are rare in every
+      * list (see the class note), and compounds read from their parts. The
+-     * join charge is a starting point, not a measurement: three nats is
+-     * about a factor of twenty in frequency, enough that a word the list
+-     * holds whole outranks the same letters joined from two common parts.
++     * join guard was fitted on FUTO's 2,588 German swipes: four-letter parts
++     * and a 0.1-nat charge per `ln(1 + part frequency)` turn the bare
++     * three-nat join from -3.5 to +0.46 points, and an eight-nat join with
++     * them is the best of the sweep.
+      */
+-    val GERMAN = Profile(freqWeight = 0.5, gapWeight = 2.0f, joinCost = 3.0)
++    val GERMAN = Profile(
++        freqWeight = 0.5,
++        gapWeight = 2.0f,
++        joinCost = 8.0,
++        joinMinPart = 4,
++        joinPartPenalty = 0.1,
++    )
+ 
+     private val BY_LANGUAGE: Map<String, Profile> = mapOf(
+         "de" to GERMAN,
+diff --git a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/NativeGlide.kt b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/NativeGlide.kt
+index b1c3bb099..e80518d7d 100644
+--- a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/NativeGlide.kt
++++ b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/NativeGlide.kt
+@@ -30,6 +30,7 @@ internal object NativeGlide {
+             learnedShapeGain, if (shapeSeeding) 1.0 else 0.0, shapeChannel, startRadius.toDouble(),
+             endRadius.toDouble(), nearRadius.toDouble(), vocabularyRank.toDouble(), lookAheadCost,
+             lookAheadBudget.toDouble(), joinerCost.toDouble(), freqWeight, joinCost,
++            joinMinPart.toDouble(), joinPartPenalty,
+         )
+     }
+ 
+diff --git a/native/wm-engine-jni/src/glide.rs b/native/wm-engine-jni/src/glide.rs
+index 796385570..abdc4d446 100644
+--- a/native/wm-engine-jni/src/glide.rs
++++ b/native/wm-engine-jni/src/glide.rs
+@@ -70,7 +70,7 @@ fn longs(env: &mut JNIEnv, a: &JLongArray) -> Option<Vec<i64>> {
+ /// `Tuning` from the Kotlin order: every field, booleans as 0/1, the
+ /// floats exactly representable as doubles.
+ fn tuning(v: &[f64]) -> Option<Tuning> {
+-    if v.len() < 28 {
++    if v.len() < 30 {
+         return None;
+     }
+     Some(Tuning {
+@@ -102,6 +102,8 @@ fn tuning(v: &[f64]) -> Option<Tuning> {
+         joiner_cost: v[25] as f32,
+         freq_weight: v[26],
+         join_cost: v[27],
++        join_min_part: v[28] as i32,
++        join_part_penalty: v[29],
+     })
+ }
+ 
+diff --git a/native/wm-engine/src/glide/mod.rs b/native/wm-engine/src/glide/mod.rs
+index 85d83b3e1..4a2289710 100644
+--- a/native/wm-engine/src/glide/mod.rs
++++ b/native/wm-engine/src/glide/mod.rs
+@@ -74,6 +74,11 @@ pub struct Tuning {
+     pub look_ahead_budget: i32,
+     pub joiner_cost: f32,
+     pub join_cost: f64,
++    /// Least letters a compound part may have (#966). 3 is the original.
++    pub join_min_part: i32,
++    /// Extra nats per completed part, times `ln(1 + part frequency)` (#966):
++    /// makes common parts pay for a join. 0 is the original.
++    pub join_part_penalty: f64,
+ }
+ 
+ impl Default for Tuning {
+@@ -107,6 +112,8 @@ impl Default for Tuning {
+             look_ahead_budget: 48,
+             joiner_cost: 0.2,
+             join_cost: f64::INFINITY,
++            join_min_part: MIN_JOIN_PART,
++            join_part_penalty: 0.0,
+         }
+     }
+ }
+@@ -664,7 +671,9 @@ impl Decoder {
+             let part_freq = self.ws.part_freq[s];
+             let part_from = self.ws.part_from[s];
+             let joins = self.ws.joins[s];
+-            let charge = tuning.join_charge(joins);
++            // The join charge and the common-part penalties this state has
++            // already earned; a plain word carries 0.0 for both.
++            let charge = tuning.join_charge(joins) + self.ws.join_penalty[s];
+ 
+             let total = self.terminal_cost(self.ws.column_of(s));
+             let at_end = last_key >= 0 && self.ws.end_key[last_key as usize] && total < UNREACHABLE;
+@@ -673,7 +682,7 @@ impl Decoder {
+                 // A compound's last part is held to the same length as its
+                 // first; `part_from` is 0 and `charge` 0.0 for a plain word.
+                 if length >= MIN_WORD_LENGTH
+-                    && length - part_from >= if joins > 0 { MIN_JOIN_PART } else { 0 }
++                    && length - part_from >= if joins > 0 { tuning.join_min_part } else { 0 }
+                     && walker.is_word(node)
+                     && walker.frequency(node) >= min_frequency
+                 {
+@@ -700,30 +709,35 @@ impl Decoder {
+                 continue;
+             }
+ 
+-            // A compound (#966 §5.2): a finished part of three letters or
+-            // more may hand the rest of the stroke to a second word, read
+-            // from the trie root on the same alignment column, as if the
+-            // list held the joined spelling. The joined word scores on the
+-            // rarest of its parts, `join_cost` the poorer per join, and
+-            // the bound carries both, so a join never ranks above what the
+-            // single-word bound allows and the walk's pruning stays exact.
++            // A compound (#966 §5.2): a finished part of `join_min_part`
++            // letters or more may hand the rest of the stroke to a second
++            // word, read from the trie root on the same alignment column, as
++            // if the list held the joined spelling. The joined word scores on
++            // the rarest of its parts, `join_cost` the poorer per join, and
++            // each part also pays `join_part_penalty` times its own frequency,
++            // so common parts cannot outbid a listed whole word. The bound
++            // carries all three, so the walk's pruning stays exact.
+             if join_on
+                 && joins < MAX_JOINS
+-                && length - part_from >= MIN_JOIN_PART
+-                && (length + MIN_JOIN_PART) as usize <= n
++                && length - part_from >= tuning.join_min_part
++                && (length + tuning.join_min_part) as usize <= n
+                 && walker.is_word(node)
+                 && walker.frequency(node) >= min_frequency
+             {
+                 let cap = lm_cap(part_freq, walker.frequency(node));
+                 let floor_cost = self.ws.floor_cost[s];
++                let part_penalty = tuning.join_part_penalty * ln1p(walker.frequency(node));
+                 let bound = src.log_weight + tuning.freq_weight * ln1p(lm_cap(cap, walker.max_subtree(root)))
+                     - tuning.shape_weight * (floor_cost + extra) as f64
+-                    - tuning.join_charge(joins + 1);
++                    - tuning.join_charge(joins + 1)
++                    - self.ws.join_penalty[s]
++                    - part_penalty;
+                 if bound >= floor - EPS {
+                     if let Some(id) = self.ws.push(root, s as i32, NO_LABEL, last_key, length, extra, floor_cost, bound, self.ws.letter_cp[s]) {
+                         self.ws.part_freq[id] = cap;
+                         self.ws.part_from[id] = length;
+                         self.ws.joins[id] = joins + 1;
++                        self.ws.join_penalty[id] = self.ws.join_penalty[s] + part_penalty;
+                         self.ws.copy_column(s, id);
+                     }
+                 }
+@@ -807,7 +821,8 @@ impl Decoder {
+     fn descend_silent(&mut self, src: &Source, subtree: i32, s: usize, child: u32, label: u16, extra: f32, floor: f64) -> bool {
+         let bound = src.log_weight + self.tuning.freq_weight * ln1p(lm_cap(self.ws.part_freq[s], subtree))
+             - self.tuning.shape_weight * (self.ws.floor_cost[s] + extra) as f64
+-            - self.tuning.join_charge(self.ws.joins[s]);
++            - self.tuning.join_charge(self.ws.joins[s])
++            - self.ws.join_penalty[s];
+         if bound < floor - EPS {
+             return true;
+         }
+@@ -867,7 +882,8 @@ impl Decoder {
+         let score = src.log_weight + self.tuning.freq_weight * ln1p(lm_cap(self.ws.part_freq[s], best))
+             - self.tuning.shape_weight * shape as f64
+             - self.tuning.look_ahead_cost * extra as f64
+-            - self.tuning.join_charge(self.ws.joins[s]);
++            - self.tuning.join_charge(self.ws.joins[s])
++            - self.ws.join_penalty[s];
+         let replace = match ahead.get(&word) {
+             None => true,
+             Some(existing) => score > existing.score,
+diff --git a/native/wm-engine/src/glide/workspace.rs b/native/wm-engine/src/glide/workspace.rs
+index bb8552964..e350e8d17 100644
+--- a/native/wm-engine/src/glide/workspace.rs
++++ b/native/wm-engine/src/glide/workspace.rs
+@@ -62,6 +62,8 @@ pub struct Workspace {
+     pub part_freq: Vec<i32>,
+     pub part_from: Vec<i32>,
+     pub joins: Vec<i32>,
++    /// Nats charged for common parts over the joins made so far (#966).
++    pub join_penalty: Vec<f64>,
+     pub samples: usize,
+     pub cols: Vec<f32>,
+     heap: Vec<u32>,
+@@ -145,6 +147,7 @@ impl Workspace {
+             part_freq: Vec::new(),
+             part_from: Vec::new(),
+             joins: Vec::new(),
++            join_penalty: Vec::new(),
+             samples: SHORT_SAMPLES,
+             cols: Vec::new(),
+             heap: Vec::new(),
+@@ -213,6 +216,7 @@ impl Workspace {
+         self.part_freq.clear();
+         self.part_from.clear();
+         self.joins.clear();
++        self.join_penalty.clear();
+         self.heap.clear();
+         self.saturated = false;
+     }
+@@ -279,10 +283,12 @@ impl Workspace {
+             self.part_freq.push(self.part_freq[p]);
+             self.part_from.push(self.part_from[p]);
+             self.joins.push(self.joins[p]);
++            self.join_penalty.push(self.join_penalty[p]);
+         } else {
+             self.part_freq.push(NO_PART);
+             self.part_from.push(0);
+             self.joins.push(0);
++            self.join_penalty.push(0.0);
+         }
+         let needed = (id + 1) * self.samples.max(1);
+         if self.cols.len() < needed {

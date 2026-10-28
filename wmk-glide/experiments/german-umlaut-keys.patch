@@ -1,0 +1,88 @@
+diff --git a/core/language/src/main/java/com/wasimaster/wmkeyboard/core/layout/BuiltInLayouts.kt b/core/language/src/main/java/com/wasimaster/wmkeyboard/core/layout/BuiltInLayouts.kt
+index b4d824790..b2c8ba530 100644
+--- a/core/language/src/main/java/com/wasimaster/wmkeyboard/core/layout/BuiltInLayouts.kt
++++ b/core/language/src/main/java/com/wasimaster/wmkeyboard/core/layout/BuiltInLayouts.kt
+@@ -258,11 +258,21 @@ object BuiltInLayouts {
+     )
+ 
+     /**
+-     * QWERTZ: the German Latin layout — QWERTY with Y and Z swapped. The umlauts
+-     * and ß don't get dedicated keys on the 10-column phone grid (desktop QWERTZ
+-     * puts them on ö/ä/ü/ß keys that don't exist here); they lead the long-press
+-     * alternates on their base letters instead, Samsung-style behind the symbol
+-     * hint.
++     * QWERTZ: the German Latin layout — QWERTY with Y and Z swapped, plus
++     * ü ö ä ß on keys of their own. The umlaut twins (`wär`/`war`,
++     * `schön`/`schon`) are 7.1 % of German tokens and share a key centre
++     * with their base letter when they ride a long press, which no shape can
++     * tell apart. Dedicated keys separate them: on 1,324 synthetic strokes
++     * the German profile reads 96.37 % on the long-press grid and 97.73 %
++     * here (top-4 is 100 % either way, the strokes being synthetic). The
++     * grid is 11 keys wide, as desktop QWERTZ is: ü after p, ö and ä after
++     * l, ß at the end of the bottom row. Rows are ~9 % narrower than the old
++     * ten-key grid.
++     *
++     * The umlauts must not stay in the long-press lists: `GlideKeyMap.of`
++     * maps a character to the first key that types it, so a leftover `ü` on
++     * `u` would keep the decoder reading the base key and leave the new key
++     * invisible.
+      */
+     val GERMAN = LayoutSpec(
+         id = GERMAN_ID,
+@@ -790,25 +800,25 @@ private val qwertzRows = listOf(
+         Key("q", longPress = listOf("1")), Key("w", longPress = listOf("2")),
+         Key("e", longPress = listOf("3", "é", "è", "ê", "ë")), Key("r", longPress = listOf("4")),
+         Key("t", longPress = listOf("5")), Key("z", longPress = listOf("6", "ż", "ź")),
+-        Key("u", longPress = listOf("7", "ü", "ù", "ú", "û")),
++        Key("u", longPress = listOf("7", "ù", "ú", "û")),
+         Key("i", longPress = listOf("8", "ì", "í", "î", "ï")),
+-        Key("o", longPress = listOf("9", "ö", "ò", "ó", "ô")),
+-        Key("p", longPress = listOf("0")),
++        Key("o", longPress = listOf("9", "ò", "ó", "ô")),
++        Key("p", longPress = listOf("0")), Key("ü"),
+     ),
+     listOf(
+-        Key("a", longPress = listOf("@", "ä", "à", "á", "â")),
+-        Key("s", longPress = listOf("#", "ß", "ś")),
++        Key("a", longPress = listOf("@", "à", "á", "â")),
++        Key("s", longPress = listOf("#", "ś")),
+         Key("d", longPress = listOf("$")), Key("f", longPress = listOf("_")),
+         Key("g", longPress = listOf("&")), Key("h", longPress = listOf("-")),
+         Key("j", longPress = listOf("+")), Key("k", longPress = listOf("(")),
+-        Key("l", longPress = listOf(")")),
++        Key("l", longPress = listOf(")")), Key("ö"), Key("ä"),
+     ),
+     listOf(
+         Key("⇧", action = KeyAction.Shift, width = 1.5f),
+         Key("y", longPress = listOf("*", "ÿ")), Key("x", longPress = listOf("\"")),
+         Key("c", longPress = listOf("'", "ç", "ć")), Key("v", longPress = listOf(":")),
+         Key("b", longPress = listOf(";")), Key("n", longPress = listOf("!", "ñ", "ń")),
+-        Key("m", longPress = listOf("?")),
++        Key("m", longPress = listOf("?")), Key("ß"),
+         Key("⌫", action = KeyAction.Delete, width = 1.5f),
+     ),
+     bottomRow(),
+diff --git a/feature/ime/src/test/java/com/wasimaster/wmkeyboard/ime/ui/NativeLettersFirstTest.kt b/feature/ime/src/test/java/com/wasimaster/wmkeyboard/ime/ui/NativeLettersFirstTest.kt
+index ec19956fb..9dfa66d17 100644
+--- a/feature/ime/src/test/java/com/wasimaster/wmkeyboard/ime/ui/NativeLettersFirstTest.kt
++++ b/feature/ime/src/test/java/com/wasimaster/wmkeyboard/ime/ui/NativeLettersFirstTest.kt
+@@ -21,11 +21,14 @@ class NativeLettersFirstTest {
+         BuiltInLayouts.GERMAN.compile(LayoutLayer.LETTERS).rows.flatten().first { it.label == label }
+ 
+     @Test
+-    fun `german puts the umlaut ahead of the digit and keeps the rest in order`() {
+-        assertEquals(listOf("ü", "7", "ù", "ú", "û"), nativeLettersFirst(qwertz("u"), german).longPress)
+-        assertEquals(listOf("ö", "9", "ò", "ó", "ô"), nativeLettersFirst(qwertz("o"), german).longPress)
+-        assertEquals(listOf("ä", "@", "à", "á", "â"), nativeLettersFirst(qwertz("a"), german).longPress)
+-        assertEquals(listOf("ß", "#", "ś"), nativeLettersFirst(qwertz("s"), german).longPress)
++    fun `the umlauts have keys of their own, so the popups keep their digits first`() {
++        for (label in listOf("ü", "ö", "ä", "ß")) {
++            assertEquals(label, qwertz(label).label)
++        }
++        assertEquals(listOf("7", "ù", "ú", "û"), nativeLettersFirst(qwertz("u"), german).longPress)
++        assertEquals(listOf("9", "ò", "ó", "ô"), nativeLettersFirst(qwertz("o"), german).longPress)
++        assertEquals(listOf("@", "à", "á", "â"), nativeLettersFirst(qwertz("a"), german).longPress)
++        assertEquals(listOf("#", "ś"), nativeLettersFirst(qwertz("s"), german).longPress)
+     }
+ 
+     @Test

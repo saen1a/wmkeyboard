@@ -1,0 +1,106 @@
+diff --git a/native/wm-engine/examples/glide_beam_eval.rs b/native/wm-engine/examples/glide_beam_eval.rs
+index d1ed4e448..e3c938f34 100644
+--- a/native/wm-engine/examples/glide_beam_eval.rs
++++ b/native/wm-engine/examples/glide_beam_eval.rs
+@@ -96,6 +96,7 @@ fn set(t: &mut Tuning, name: &str, value: f64) {
+         "join_cost" => t.join_cost = value,
+         "join_min_part" => t.join_min_part = value as i32,
+         "join_part_penalty" => t.join_part_penalty = value,
++        "freq_exponent" => t.freq_exponent = value,
+         _ => panic!("no tuning field {name}"),
+     }
+ }
+diff --git a/native/wm-engine/src/glide/mod.rs b/native/wm-engine/src/glide/mod.rs
+index 4a2289710..d67e55be6 100644
+--- a/native/wm-engine/src/glide/mod.rs
++++ b/native/wm-engine/src/glide/mod.rs
+@@ -79,6 +79,9 @@ pub struct Tuning {
+     /// Extra nats per completed part, times `ln(1 + part frequency)` (#966):
+     /// makes common parts pay for a join. 0 is the original.
+     pub join_part_penalty: f64,
++    /// Exponent on `ln(1 + frequency)`; 1.0 is the shipped linear term.
++    /// Below 1 compresses the frequency differences (rare words gain).
++    pub freq_exponent: f64,
+ }
+ 
+ impl Default for Tuning {
+@@ -114,6 +117,7 @@ impl Default for Tuning {
+             join_cost: f64::INFINITY,
+             join_min_part: MIN_JOIN_PART,
+             join_part_penalty: 0.0,
++            freq_exponent: 1.0,
+         }
+     }
+ }
+@@ -162,6 +166,17 @@ impl Tuning {
+             0.0
+         }
+     }
++    /// `ln(1 + frequency)` under the configured exponent; exactly the old
++    /// linear term at 1.0, monotonic for every positive exponent so the
++    /// bounds stay upper bounds.
++    fn freq_term(&self, frequency: i32) -> f64 {
++        let x = ln1p(frequency);
++        if self.freq_exponent == 1.0 {
++            x
++        } else {
++            x.powf(self.freq_exponent)
++        }
++    }
+ }
+ 
+ /// `GlideBeam.Candidate`, the word in UTF-16.
+@@ -652,7 +667,7 @@ impl Decoder {
+ 
+         self.ws.reset();
+         let root = walker.root();
+-        self.ws.push(root, -1, NO_LABEL, -1, 0, 0.0, 0.0, src.log_weight + tuning.freq_weight * ln1p(walker.max_subtree(root)), 0);
++        self.ws.push(root, -1, NO_LABEL, -1, 0, 0.0, 0.0, src.log_weight + tuning.freq_weight * tuning.freq_term(walker.max_subtree(root)), 0);
+ 
+         let mut pops = 0;
+         let mut children = std::mem::take(&mut self.ws.children);
+@@ -686,7 +701,7 @@ impl Decoder {
+                     && walker.is_word(node)
+                     && walker.frequency(node) >= min_frequency
+                 {
+-                    let score = src.log_weight + tuning.freq_weight * ln1p(lm_cap(part_freq, walker.frequency(node)))
++                    let score = src.log_weight + tuning.freq_weight * tuning.freq_term(lm_cap(part_freq, walker.frequency(node)))
+                         - tuning.shape_weight * shape as f64
+                         - charge;
+                     if score > floor - EPS || results.len() < k {
+@@ -727,7 +742,7 @@ impl Decoder {
+                 let cap = lm_cap(part_freq, walker.frequency(node));
+                 let floor_cost = self.ws.floor_cost[s];
+                 let part_penalty = tuning.join_part_penalty * ln1p(walker.frequency(node));
+-                let bound = src.log_weight + tuning.freq_weight * ln1p(lm_cap(cap, walker.max_subtree(root)))
++                let bound = src.log_weight + tuning.freq_weight * tuning.freq_term(lm_cap(cap, walker.max_subtree(root)))
+                     - tuning.shape_weight * (floor_cost + extra) as f64
+                     - tuning.join_charge(joins + 1)
+                     - self.ws.join_penalty[s]
+@@ -795,7 +810,7 @@ impl Decoder {
+                     }
+                 }
+ 
+-                let bound = src.log_weight + tuning.freq_weight * ln1p(lm_cap(part_freq, subtree))
++                let bound = src.log_weight + tuning.freq_weight * tuning.freq_term(lm_cap(part_freq, subtree))
+                     - tuning.shape_weight * (min_col + child_extra) as f64
+                     - charge;
+                 if bound < floor - EPS {
+@@ -819,7 +834,7 @@ impl Decoder {
+ 
+     #[allow(clippy::too_many_arguments)]
+     fn descend_silent(&mut self, src: &Source, subtree: i32, s: usize, child: u32, label: u16, extra: f32, floor: f64) -> bool {
+-        let bound = src.log_weight + self.tuning.freq_weight * ln1p(lm_cap(self.ws.part_freq[s], subtree))
++        let bound = src.log_weight + self.tuning.freq_weight * self.tuning.freq_term(lm_cap(self.ws.part_freq[s], subtree))
+             - self.tuning.shape_weight * (self.ws.floor_cost[s] + extra) as f64
+             - self.tuning.join_charge(self.ws.joins[s])
+             - self.ws.join_penalty[s];
+@@ -879,7 +894,7 @@ impl Decoder {
+             return;
+         }
+         let extra = (word.len() - prefix.len()) as i32;
+-        let score = src.log_weight + self.tuning.freq_weight * ln1p(lm_cap(self.ws.part_freq[s], best))
++        let score = src.log_weight + self.tuning.freq_weight * self.tuning.freq_term(lm_cap(self.ws.part_freq[s], best))
+             - self.tuning.shape_weight * shape as f64
+             - self.tuning.look_ahead_cost * extra as f64
+             - self.tuning.join_charge(self.ws.joins[s])

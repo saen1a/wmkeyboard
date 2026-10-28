@@ -1,0 +1,33 @@
+diff --git a/native/wm-engine/examples/glide_beam_eval.rs b/native/wm-engine/examples/glide_beam_eval.rs
+index d89390080..d1ed4e448 100644
+--- a/native/wm-engine/examples/glide_beam_eval.rs
++++ b/native/wm-engine/examples/glide_beam_eval.rs
+@@ -94,6 +94,8 @@ fn set(t: &mut Tuning, name: &str, value: f64) {
+         "near_radius" => t.near_radius = value as f32,
+         "joiner_cost" => t.joiner_cost = value as f32,
+         "join_cost" => t.join_cost = value,
++        "join_min_part" => t.join_min_part = value as i32,
++        "join_part_penalty" => t.join_part_penalty = value,
+         _ => panic!("no tuning field {name}"),
+     }
+ }
+@@ -186,7 +188,18 @@ fn main() {
+                             let hit = words.first() == Some(&r.word);
+                             if dump_on {
+                                 let top = words.first().map(String::as_str).unwrap_or("-");
+-                                lines.push(format!("{}\t{top}\t{}\t{}", r.word, hit as u8, known.contains(&r.word) as u8));
++                                let pool = out
++                                    .iter()
++                                    .map(|c| {
++                                        format!(
++                                            "{}:{:.6}",
++                                            String::from_utf16_lossy(&c.word).to_lowercase(),
++                                            c.score
++                                        )
++                                    })
++                                    .collect::<Vec<_>>()
++                                    .join("|");
++                                lines.push(format!("{}\t{top}\t{}\t{}\t{}", r.word, hit as u8, known.contains(&r.word) as u8, pool));
+                             }
+                             t.n += 1;
+                             t.top1 += hit as usize;
