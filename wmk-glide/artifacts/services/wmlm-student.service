@@ -1,0 +1,17 @@
+[Unit]
+Description=WMLM German student training
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/wmlm-de
+ExecStart=/bin/bash /root/wmlm-de/run_student.sh
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=60
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

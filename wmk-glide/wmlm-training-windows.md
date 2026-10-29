@@ -4,7 +4,9 @@ Stand: 27.10.2026. Ergänzt [`wmlm-gain.md`](wmlm-gain.md) (was ein deutsches
 Modell bringt) und [`issue-german-wmlm.md`](issue-german-wmlm.md) (das
 Upstream-Rezept). Hier geht es um zwei Fragen: **Wie trainiert man das Modell
 auf einem Windows-Rechner mit RX 9060 XT?** Und: **Was kostet das, lokal,
-in der Cloud oder über eine API?**
+in der Cloud oder über eine API?** Der auf dieser Maschine getestete
+Durchlauf (ROCm, Lehrerwahl, gemessener Durchsatz, Gates) steht in
+[`wmlm-training-plan.md`](wmlm-training-plan.md).
 
 Alle Zahlen sind entweder aus dem Repo-Code, aus den verlinkten
 Anbieterseiten (Abruf 27.10.2026) oder mit
@@ -102,10 +104,19 @@ Bei 32 GB Host-RAM und knapper WSL-Zuteilung:
 
 ```ini
 # C:\Users\<du>\.wslconfig
+[general]
+instanceIdleTimeout=-1
+
 [wsl2]
 memory=24GB
 swap=8GB
+vmIdleTimeout=-1
 ```
+
+`vmIdleTimeout`/`instanceIdleTimeout` sind Pflicht für einen Overnight-Lauf:
+Ohne sie schaltet WSL die Instanz nach ~60 s ohne angehängte Shell ab, auch
+wenn ein systemd-Dienst läuft. Genau das hat den ersten 75k-Lauf nach wenigen
+Minuten beendet.
 
 ## 3. Lehrerwahl: 16 GB VRAM
 
@@ -419,32 +430,48 @@ teurer als jede der Zeilen.
 ## 8. Empfehlung
 
 1. **Schüler lokal** auf der 9060 XT trainieren. Dafür ist die Karte da.
-2. **Lehrer:** erst den DeepInfra-`echo`-Test (10 Sätze, `logprobs`,
-   `top_logprobs`, Prompt-Logprobs prüfen). Wenn er Prompt-Logprobs liefert:
-   Gemma 3 27B, ~2 $ für 500k Sätze. Wenn nicht: lokaler Gemma-3-4B-Lehrer.
-3. **Multi-Token-Mapping** vor dem großen Lehrer implementieren. Ohne das
-   bleiben ~80 % der deutschen Worttypen ohne Lehrer-Signal.
+2. **Lehrer:** DeepInfra ist getestet — Prompt-Logprobs teils vorhanden,
+   aber nur **1–2 `top_logprobs`** pro Position, also kein top-k-Lehrer.
+   **Lokal `Qwen/Qwen3.5-4B-Base`** ist der getestete Base-Lehrer: 45,1 %
+   Top-8 / 16,1 % Top-1, **~3,5 Sätze/s** mit `batch=16` + fp16-Softmax,
+   150k Sätze ≈ **12 h**. API-Alternativen: Together AI (wieder verfügbar; Probe und
+   Token-Test bereit) und Nebius Token Factory (`echo` + `logprobs`). Nicht den
+   Unsloth-Gemma-3-4B-Spiegel nehmen: fp16-NaN, bf16 degeneriert.
+   **Phase 1 ist positiv (28.10.):** deutsches `de_context.wmlm`, 10,86 MB,
+   Glide 150k 74,15 → 77,40 (0,5/5,0), mit 441k Komposita **78,48/84,85**;
+   Tippen +2,4–2,7 top-1. Ein großer Lehrer ist erst nach einem
+   100-Satz-A/B sinnvoll; nächste lokale Hebel sind d320/8/1024 und
+   500k Soft-Targets.
+3. **Multi-Token-Mapping** ist implementiert (`patches/0005`); auf dem vollen
+   Vokabular 12,8 % (Qwen2.5) bzw. 23,6 % (Qwen3.5) ganze Wörter, 100 % per
+   Produktregel. Vor dem großen Lauf auf 100 Sätzen A/B messen.
 4. **DeepSeek** nur für synthetische Chat-Sätze, falls der Register nach
    Tatoeba/OpenSubtitles noch fehlt.
 5. **OpenCode Go** nicht für dieses Training verwenden.
 
 ## 9. Offene Punkte
 
-- **`echo`-Verhalten von DeepInfra** mit einem echten Request prüfen:
-  kommen `token_logprobs` für die Prompt-Tokens, oder nur für die
-  Generierung?
-- **Echte Abdeckung des finalen Vokabulars** messen, nicht nur der Top-24k-
-  Näherung: `prep.py` baut das Vokabular aus `de_aosp` plus Korpus; die
-  Verteilung kann anders sein.
-- **Multi-Token-Mapping messen:** Hebt es die Held-out-Perplexität und den
-  Glide-top-1 tatsächlich? Erwartung ja, Beweis nein.
+- **DeepInfra-`echo`** ist gemessen: GPT-OSS-120B verweigert `echo`,
+  Qwen3.8-Flash/Gemma/Mistral liefern Chat-Bodies, Qwen3.5-9B/Llama 3.1
+  liefern Prompt-Logprobs, aber nur 1–2 `top_logprobs` pro Position. Damit
+  kein Korpus-Lehrer; Details und API-Alternativen in
+  [`wmlm-training-plan.md`](wmlm-training-plan.md) §1.6/§1.7.
+- **Echte Abdeckung des finalen Vokabulars** ist auf Tatoeba+Leipzig gemessen:
+  22.512 Wörter, Qwen2.5 12,8 % / Qwen3.5 23,6 % ganze Wörter (100 %
+  Multi-Token). Für den finalen Lauf mit Wikipedia/OpenSubtitles neu ziehen.
+- **Multi-Token-Mapping** ist implementiert (`patches/0005`) und auf 100
+  Sätzen gemessen: +41 von 1.439 Zielen in die Top-8 (Qwen 0.5B), gezielt
+  `hause` statt `haus`. Offen ist der Effekt auf Glide-top-1 und Perplexität
+  des Schülers.
 - **Lehrergröße:** Bringt 27B gegenüber 4B bei einem 12–19M-Schüler noch
   etwas? Der Capacity-Gap spricht für Sättigung; ein A/B mit derselben
   Datenmenge wäre der Test.
 - **Latenz des 19M-Modells** auf einem Mittelklasse-Telefon; erst danach
   entscheiden, ob es ausgeliefert wird.
 - **Gemma-Lizenz** und HF-Zugang; der Unsloth-Tokenizer ist nur ein
-  Messbehelf, das Modell kommt aus dem offiziellen Repo.
+  Messbehelf, das Modell kommt aus dem offiziellen Repo. Der
+  Unsloth-Modellspiegel ist in diesem Stack **nicht** brauchbar (fp16-NaN,
+  bf16 degeneriert); getesteter lokaler Lehrer ist `Qwen/Qwen3.5-4B-Base`.
 
 ## 10. Quellen
 

@@ -1,6 +1,6 @@
 # WMK Glide-Typing – Arbeitsstand und Wissen
 
-Stand: 27.10.2026, Nachtrag Reranker-Blend / Join-Guard / Komposita-Liste (Layout optional). Dieses
+Stand: 28.10.2026, Phase-1-Modell / Reranker-Blend / Join-Guard / Komposita-Liste (Layout optional). Dieses
 Dokument ist der Fortsetzungspunkt: was gemessen ist, was offen ist, wo die
 Artefakte liegen, und wie man jede Zahl neu zieht. Alles hier ist entweder in
 diesem Ordner oder mit einem der Kommandos unten reproduzierbar. Die Änderungen
@@ -16,10 +16,13 @@ neue Upstream-Issues/Kommentare gehen mit dem vorhandenen Token nicht.
 | [`issue-966-comment.md`](issue-966-comment.md) | Review-Kommentar zum umgesetzten Stand (kurze Fassung) |
 | [`issue-966-followup.md`](issue-966-followup.md) | Nachtrag-Kommentar zu #966: Blend, Join-Guard, Komposita-Liste, Tests — offline formuliert, **noch nicht gepostet** (das Issue #966 selbst ist gepostet) |
 | [`issue-german-wmlm.md`](issue-german-wmlm.md) | Feature-Request-Entwurf: deutsches `.wmlm` trainieren/veröffentlichen, mit der Größe des englischen Datensatzes |
+| [`issue-context-blend-oov.md`](issue-context-blend-oov.md) | Feature-Request-Entwurf für Upstream: OOV-Piece-Scoring im Kontext-Blend, Typing-Führer, adaptiver 16-Pool, per-Sprach-Konstanten |
+| [`kb-context-blend-optimizations.md`](kb-context-blend-optimizations.md) | KB zu den Blend-Optimierungen: Code-Pfade, Messungen, Priorität, Risiken, Reproduktion |
 | [`experiments-followup.md`](experiments-followup.md) | Nächste Stufe getestet: Halte-Test, breiterer Pool, Trigramm, Cache, Logit, Komposita-Prior, Kontextquelle, Frequenz-Exponent, Diakritika — mit Negativ-Ergebnissen |
 | [`ngram-analysis.md`](ngram-analysis.md) | N-Gramm-Analyse: Chat-/Register-Pack +2,71, Trigramm/4-Gramm, Deckel, Normalisierung; Messungen und Prioritäten |
 | [`wmlm-gain.md`](wmlm-gain.md) | Wie viel ein deutsches `.wmlm` bringt: englischer Proxy mit dem echten Modell, +4,9 top-1 im Glide, Schätzung +3–5 für Deutsch |
 | [`wmlm-training-windows.md`](wmlm-training-windows.md) | Trainingsweg für die RX 9060 XT (WSL2 statt Windows-native), Lehrer-/VRAM-Wahl, Token-Abdeckung, Rezept und Kosten (lokal, Cloud, API) |
+| [`wmlm-training-plan.md`](wmlm-training-plan.md) | Getesteter Plan für diesen Rechner: WSL/ROCm-Setup, Lehrerwahl (Qwen3.5-4B-Base), Multi-Token-Patch, Korpus, Gates, Zeit/Kosten |
 | [`experiments/`](experiments/README.md) | Die Skripte dazu (Forschungscode, nicht ausgeliefert) |
 | [`analyse-de.md`](analyse-de.md) | Erster Durchgang: Einstellungen, Fehlerklassen, Speicher (mit Nachtrag) |
 | [`data/wmk-glide-de-data.zip`](data/wmk-glide-de-data.zip) | 5,0 MB Messdaten: 2.594 deutsche Züge, beide Layouts, 150k-Liste, Patches, Lizenz-README |
@@ -35,7 +38,7 @@ neue Upstream-Issues/Kommentare gehen mit dem vorhandenen Token nicht.
 | [`tools/build_compound_list.py`](tools/build_compound_list.py) | Baut die 150k-Liste plus 441k echte Komposita aus `de_full.txt` (der größte deutsche Hebel, §2.6.4) |
 | [`tools/harness.patch`](tools/harness.patch) | `COLS`, `ALL`, `DUMP`, `RESULTS`, `SHAPES` für `glide_beam_eval` (Stand vor `22d5020b`; der aktuelle Harness steckt in `patches/0000`) |
 | [`tools/freq_weight.patch`](tools/freq_weight.patch) | `freq_weight` + Längenprior als Diff gegen `wm-engine` (nur für den Prototyp) |
-| [`patches/`](patches/README.md) | Vier Patches gegen `22d5020b`: Harness, Glide-Blend, Join-Guard, Tests/CI. Der Layout-Patch ist optional und liegt in `experiments/`; Anwendungsreihenfolge und Zahlen im README |
+| [`patches/`](patches/README.md) | Vier App-Patches gegen `22d5020b` (Harness, Glide-Blend, Join-Guard, Tests/CI) plus `0005-distill-multitoken` für `tools/wmlm/distill.py`. Der Layout-Patch ist optional und liegt in `experiments/`; Anwendungsreihenfolge und Zahlen im README |
 
 ## 2. Belastete Zahlen
 
@@ -178,17 +181,30 @@ Bigramm kennt die Testsätze. Auf einem 20-%-Satz-Split (LM auf den anderen
 80 %) sind es **68,97 → 69,17 (+0,20)**; das Train-LM hat nur 1.293 Wörter.
 Das echte `.wmlm` muss den Gerätegewinn zeigen, siehe
 [`experiments-followup.md`](experiments-followup.md) §0. **Wichtiger:** Es gibt
-**kein deutsches `.wmlm`**; `ContextModelCatalog` listet nur `en` und
-`bn_rom`. Auf Deutsch ist `contextModel` null und der Blend ein No-op. Der
+**kein veröffentlichtes deutsches `.wmlm`**; `ContextModelCatalog` listet nur `en`
+und `bn_rom`. Das erste deutsche Modell ist trainiert (§2.7), aber noch nicht im
+Katalog; auf Deutsch ist `contextModel` im ausgelieferten Build weiter null. Der
 deutsche n-gram-Pack als Rang-Rerank (der `NgramReranker`-Weg) bringt +0,45;
-als Score-Blend −1,0; als Kontextquelle 0,4–1,2 %. Ein deutsches `.wmlm` muss
-erst trainiert/veröffentlicht werden (`tools/wmlm`). Ein echtes Modell bringt
-nach dem englischen Proxy **+4,9 top-1** im Glide (0,7/3,0), bis +5,8 ohne
-Deckel; Schätzung für Deutsch +3–5, siehe [`wmlm-gain.md`](wmlm-gain.md). Der
-lokale Trainingsweg (WSL2, 4B-Grenze, API-Kosten) und der größte
-Lehrer-Engpass — `distill.py` mappt nur Ein-Token-Wörter, Qwen 20,1 %,
-Gemma 3 4B 32,6 % der deutschen Worttypen — stehen in
-[`wmlm-training-windows.md`](wmlm-training-windows.md). Die
+als Score-Blend −1,0; als Kontextquelle 0,4–1,2 %. Das deutsche `.wmlm` ist trainiert und gemessen (§2.7); Veröffentlichung und
+Katalogeintrag stehen aus. Der englische Proxy brachte **+4,9 top-1**
+(0,7/3,0); deutsch gemessen: **+2,78** mit Komposita (0,5/5,0), **+3,25**
+auf 150k, siehe [`wmlm-gain.md`](wmlm-gain.md). Der
+lokale Trainingsweg (WSL2, 4B-Grenze, API-Kosten) steht in
+[`wmlm-training-windows.md`](wmlm-training-windows.md). Der frühere
+Lehrer-Engpass — `distill.py` mappte nur Ein-Token-Wörter — ist mit
+[`patches/0005-distill-multitoken`](patches/README.md) adressiert und
+gemessen: Auf dem vollen Vokabular mappt Qwen2.5 12,8 %, Qwen3.5 23,6 %
+ganze Wörter, beide 100 % per Produktregel; Setup, Lehrerwahl und Gates
+stehen in [`wmlm-training-plan.md`](wmlm-training-plan.md). Lehrer-Kandidaten
+(27.10.): Kolibri 1 tokenisiert **62,9 %** ganze Wörter, ist aber
+post-trained und braucht 156 GB; Soofi S Base ist deutsch-first, aber
+gated; Qwen3.8-Flash ist 180B/post-trained. **DeepInfra ist als Lehrer
+gemessen untauglich** (`top_logprobs` nur 1–2 Einträge); **Together
+funktioniert wieder** (Probe + Token-Test bereit). **Nebius Token Factory**
+hat `echo` + `logprobs` und 1 $ Startguthaben; Probe liegt bereit, Live-Test
+offen. **Entscheidung 27.10.:
+Phase 1 lokal** (150k-Lehrer-Lauf in 30×5k-Chunks, ~3,2 Sätze/s, ~13 h, `wmlm-teacher.service`, `vmIdleTimeout=-1`); **Scaleway erst
+nach grünem Phase-1-Gate** (Tooling + Glide-Top-1 ≥ 76,2). Die
 Obergrenze aus §2.4 (Pool 4,
 α = 2, ohne Deckel) bleibt 82,13. Das Sprachmodell in dieser Messung ist ein
 Korpus-Bigramm (derselbe Ersatz wie `rerank_eval.py`), nicht das
@@ -286,6 +302,67 @@ Nicht-Komposita nicht mitbringt. Werkzeug:
 [`tools/build_compound_list.py`](tools/build_compound_list.py) (`de_150k.txt`
 + `de_full.txt` -> `de_150k_comp3.txt`). Das ist eine Wörterbuch-Erweiterung,
 kein Engine-Patch.
+
+### 2.7 Deutsches `.wmlm` Phase 1 (28.10.2026): Gate erfüllt
+
+Das erste deutsche Modell ist trainiert und gemessen. Lehrer
+`Qwen/Qwen3.5-4B-Base`, 150.000 Sätze (Tatoeba+Leipzig), Soft-Targets
+1.723.966 Zeilen, 91,3 % mit Lehrer-Masse. Schüler d256/6/768, 30.000 Steps,
+heldout loss 4,3400 (ppl 76,7). Modell `de_context.wmlm`, 10.856.432 Bytes,
+77 Tensoren, `d256 layers 6 heads 4 ff 768 ctx 40 vocab 24576 langs ["de"]`,
+SHA256 `e9212c5d986010c260d2db4d5c4f98820eb7885b6efff80fc49f181f59c8435c`.
+
+Glide (2.588 FUTO-Wischer), deutsches Profil `COLS=11 FREQ=0.5 GAP=2.0`,
+`clamp(w·ΔlnP, ±cap)`:
+
+| Wortliste | Messung | ohne Modell | 0,7/3,0 | 0,5/5,0 |
+|---|---|---:|---:|---:|
+| 150k | top-1 | 74,15 | 76,35 (+2,20) | **77,40 (+3,25)** |
+| 150k | top-4 | 82,92 | 83,35 | 83,42 |
+| 150k + 441k Komposita | top-1 | 75,70 | 77,28 (+1,58) | **78,48 (+2,78)** |
+| 150k + 441k Komposita | top-4 | 84,27 | 84,81 | **84,85** |
+
+`typing_eval` auf `heldout.tsv` (fast): 500 Fälle mit `0.5/5.0`
+58,40/75,60 → **60,80/76,60** (+2,40 top-1); 300 Fälle mit `0.2/1.0`
+56,33/74,00 → **59,00/74,33** (+2,67). Next-Word top-1 **13,5–14,9 %**
+(Base 0 %). Autocorrect unverändert; das +3–5-Ziel beim Tippen ist knapp
+verfehlt, der Glide-Gate ist erfüllt.
+
+**Gate:** top-1 ≥76,2 erfüllt; mit Komposita ≥77,7 erfüllt bei 0,5/5,0
+(78,48); top-4 ≥83,8 mit Komposita erfüllt; Modell ≤13 MB. **Positiv.**
+Der frühere 71,17/72,18-Wert war Default-Tuning (COLS 10, freq 1,0, gap
+1,33), nicht das deutsche Profil. Der Harness `glide_lm_blend_eval.rs` hat
+jetzt `FREQ`/`GAP` (Default 0,5/2,0) und dokumentiert `COLS=11`.
+
+**App/Harness-Gap (29.10.2026, geschlossen).** Der Harness bewertete
+Glide-Kandidaten schon mit `Session::logprob` (OOV als Piece-Produkt), die App
+mit `lmScores`/`logprob_listed` (OOV = NaN) und brach ab, wenn der erste
+Kandidat keinen Score hatte. Neu: `lmScoresSpelled` in
+`native/wm-engine-jni/src/lm.rs` und `ContextModel.scoresSpelled`; der
+Glide-Blend bewertet nur die ersten 8–16 Kandidaten damit
+(`GLIDE_DEEP_POOL`), setzt die Referenz auf den ersten finiten Score und lässt
+unlesbare Kandidaten auf ihrem Decoder-Score. `GLIDE_LM_BLEND`/`_CAP` stehen
+jetzt auf **0,5/5,0**. Der Harness nutzt dieselbe Referenz und denselben Pool.
+Simulation der alten App (`logprob_listed`, Führer-Referenz) gegen den neuen
+Pfad, gleiche 2.588 Züge und 0,5/5,0:
+
+| Wortliste | alte App top-1/top-4 | neue App top-1/top-4 | geblendet von 2.294 |
+|---|---:|---:|---:|
+| 150k | 76,04 / 83,23 | **77,40 / 83,42** | 1.782 → 2.294 |
+| 150k + 441k Komposita | 77,51 / 84,66 | **78,48 / 84,85** | 1.693 → 2.294 |
+
+Der Gap war **+1,36** top-1 (150k) bzw. **+0,97** (Komposita); 512/601 Züge
+blieben vorher unverblendet. Der Harness-Wert selbst ist unverändert
+(77,40/78,48), weil er den Piece-Pfad schon hatte. Kotlin ist hier ohne
+Android-SDK nicht kompiliert; das JNI-Symbol ist in der WSL-
+`libwm_engine_jni.so` exportiert. **Offen:** Android-`.so` neu bauen, auf dem
+Gerät messen. Details: `HANDOFF.md`.
+
+**Empfehlung:** Glide-Blend auf `0,5/5,0` stellen; Tipp-Pfad `0,2/1,0`
+behalten; Modell veröffentlichen. Ein großer Lehrer ist erst nach einem
+100-Satz-A/B sinnvoll (Qwen3.5-9B-Base auf L4, ~1 €; nur bei ≥+3 Top-8
+skalieren). Nächste lokale Hebel: 500k Soft-Targets, dann 32k-Vokabular mit
+Top-Komposita. Ein größerer Schüler (d288/6/896) brachte keinen Gewinn.
 
 ## 3. Upstream-Stand
 
@@ -406,9 +483,9 @@ Deutsch (MIT, `content/2018/de/de_full.txt`). Details und `curl`-Zeilen im Issue
   `cargo test --release --manifest-path native/wm-engine/Cargo.toml`. Die
   Kotlin-Änderungen (Blend, Tuning-Felder; der optionale Layout-Patch) sind deshalb nur
   per Diff geprüft, nicht kompiliert.
-- **Offen nach dem Patch:** (1) `.so` neu bauen (JNI 28 → 30, §4.2); (2) ein deutsches
-  `.wmlm` trainieren/veröffentlichen (`issue-german-wmlm.md`) und den Blend damit auf
-  einem gehaltenen Split messen (0,7/3,0 ist am Korpus-Bigramm gefittet); (3) HeliBoard
+- **Offen nach dem Patch:** (1) `.so` neu bauen (JNI 28 → 30, §4.2); (2) das deutsche `.wmlm` veröffentlichen (`issue-german-wmlm.md`) und den
+  Katalogeintrag setzen; der Blend ist mit 0,5/5,0 auf FUTO gemessen
+  (78,48/84,85 mit Komposita, §2.7); (3) HeliBoard
   mit dem Guard erneut ziehen — die 10.908 Züge wurden hier nicht neu geladen;
   (4) Seed-Index-Fallback §4.3.
 - Das Issue **#966 ist gepostet**; der Nachtrag-Kommentar

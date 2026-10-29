@@ -72,7 +72,7 @@ Der Dump ist `ziel \t top \t hit \t in_liste \t wort:score|...` (siehe
 | `gen_lm_source.py`, `gen_lm_source_lp.py` | Per-Stroke-Top-50 für die Kontextquelle |
 | `diacritic.py` | Wortlisten-Restaurierung auf dem a–z-Gitter |
 | `glide_lm_source_eval.rs` | Per-Stroke-LM-Quelle als zusätzliche `Source` |
-| `glide_lm_blend_eval.rs` | Echter `.wmlm`-Blend auf dem Glide-Pool (der Prototyp für `blendGlideContextModel`) |
+| `glide_lm_blend_eval.rs` | Echter `.wmlm`-Blend auf dem Glide-Pool (der Prototyp für `blendGlideContextModel`); deutsches Profil `COLS=11 FREQ=0.5 GAP=2.0`, Piece-Spelling + erste finite Referenz, Phase 1: 78,48/84,85 mit Komposita bei 0,5/5,0 (alte Lookup-App 77,51/84,66) |
 | `freq-exponent.patch` | `freq_exponent` im Rust-`Tuning` (verworfen; auf 0000–0002 + 0004 anwenden) |
 | `pack_quality.py` | Pack-Abdeckung auf FUTO, roh vs. normalisiert/Backoff |
 | `pack_features.py` | Class-/Skip-Gramme auf dem Pack (neutral/negativ) |

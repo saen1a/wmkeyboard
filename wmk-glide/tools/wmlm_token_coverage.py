@@ -12,9 +12,14 @@ This script applies exactly that rule to a word list and reports two numbers:
   types    share of distinct words that map whole
   weighted share of running text, using an optional count column
 
+With `--multi`, a second line reports the share reachable by the
+multi-token mapping (the product of the conditional token probabilities),
+i.e. every word the teacher tokenizer can spell at all, plus a histogram of
+piece counts for the words that need more than one.
+
 Usage:
     python3 tools/wmlm_token_coverage.py \
-        --words de_150k.txt --limit 24000 --counts \
+        --words de_150k.txt --limit 24000 --counts --multi \
         --tokenizer /path/Qwen2.5-3B/tokenizer.json \
                     /path/gemma-3-4b/tokenizer.json
 
@@ -60,15 +65,31 @@ def measure(tokenizer_path, words):
     tok = Tokenizer.from_file(tokenizer_path)
     whole_types = 0
     whole_mass = 0
+    multi_types = 0
+    multi_mass = 0
     total_mass = 0
+    pieces = {}
     for word, count in words:
         total_mass += count
+        best = None
         for form in {word, word.capitalize()}:
-            if len(tok.encode(" " + form, add_special_tokens=False).ids) == 1:
-                whole_types += 1
-                whole_mass += count
-                break
-    return whole_types, whole_mass, total_mass
+            n = len(tok.encode(" " + form, add_special_tokens=False).ids)
+            if n:
+                best = n if best is None else min(best, n)
+                if n == 1:
+                    break
+        if best is None:
+            continue
+        if best == 1:
+            whole_types += 1
+            whole_mass += count
+        # A multi-token mapping (product of the conditional pieces) reaches
+        # every word the tokenizer can spell at all.
+        multi_types += 1
+        multi_mass += count
+        if best > 1:
+            pieces[best] = pieces.get(best, 0) + 1
+    return whole_types, whole_mass, total_mass, multi_types, multi_mass, pieces
 
 
 def main():
@@ -77,6 +98,11 @@ def main():
     ap.add_argument("--tokenizer", nargs="+", required=True, help="tokenizer.json files")
     ap.add_argument("--limit", type=int, default=0, help="only the first N words")
     ap.add_argument("--counts", action="store_true", help="second column is a frequency")
+    ap.add_argument(
+        "--multi",
+        action="store_true",
+        help="also report the multi-token mapping's reach (product of pieces)",
+    )
     args = ap.parse_args()
 
     words = parse_words(args.words, args.limit, args.counts)
@@ -85,12 +111,19 @@ def main():
     print(f"{len(words)} words from {args.words}", file=sys.stderr)
 
     for path in args.tokenizer:
-        whole, mass, total = measure(path, words)
+        whole, mass, total, multi, multi_mass, pieces = measure(path, words)
         base = os.path.basename(path)
         name = os.path.basename(os.path.dirname(path)) if base == "tokenizer.json" else base.removesuffix(".json")
         type_pct = 100.0 * whole / len(words)
         mass_pct = 100.0 * mass / total
         print(f"{name:32s} types {type_pct:5.1f}%  weighted {mass_pct:5.1f}%")
+        if args.multi:
+            m_type = 100.0 * multi / len(words)
+            m_mass = 100.0 * multi_mass / total
+            print(f"{name:32s} multi types {m_type:5.1f}%  weighted {m_mass:5.1f}%")
+            if pieces:
+                top = ", ".join(f"{n}:{c}" for n, c in sorted(pieces.items())[:6])
+                print(f"{name:32s} pieces per word (words >1): {top}")
 
 
 if __name__ == "__main__":
