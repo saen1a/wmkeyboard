@@ -1,5 +1,49 @@
+diff --git a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/ContextModel.kt b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/ContextModel.kt
+index 75185eb3f..88ca97d5e 100644
+--- a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/ContextModel.kt
++++ b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/ContextModel.kt
+@@ -62,6 +62,17 @@ class ContextModel private constructor(
+         return PredictionNative.lmScores(session, words.toTypedArray())
+     }
+ 
++    /**
++     * ln P(word next) for each of [words], spelling a word the vocabulary does
++     * not hold as one token in pieces; NaN only where the model can read
++     * neither. One forward step per piece, so this is for a glide's handful of
++     * candidates, never the whole strip.
++     */
++    fun scoresSpelled(words: List<String>): FloatArray {
++        if (closed || words.isEmpty()) return FloatArray(words.size) { Float.NaN }
++        return PredictionNative.lmScoresSpelled(session, words.toTypedArray())
++    }
++
+     /** The model's view of a word as typed, for the learned gate; see [gateView]. */
+     class GateView(val logprob: Float, val rank: Int, val entropy: Float, val piecesLogprob: Float)
+ 
+diff --git a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/PredictionNative.kt b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/PredictionNative.kt
+index c99fb5f59..96a78555b 100644
+--- a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/PredictionNative.kt
++++ b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/PredictionNative.kt
+@@ -188,9 +188,16 @@ internal object PredictionNative {
+     /** The words before the caret, oldest first; register 0 neutral, 1 casual, 2 formal; field 0 other, 1 chat, 2 email, 3 search. */
+     external fun lmSetContext(session: Long, register: Int, field: Int, lang: Int, words: Array<String>)
+ 
+-    /** ln P(word next) per word, NaN where the model has no opinion. */
++    /** ln P(word next) per listed word, NaN where the model has no opinion. */
+     external fun lmScores(session: Long, words: Array<String>): FloatArray
+ 
++    /**
++     * ln P(word next) per word, spelling a word the vocabulary does not list in
++     * pieces; NaN only where the model can read neither. Costs up to one forward
++     * step per piece, so only a glide's handful of candidates ask for it.
++     */
++    external fun lmScoresSpelled(session: Long, words: Array<String>): FloatArray
++
+     /**
+      * The learned gate's view of the typed spelling: `[ln P(typed) if listed,
+      * rank of typed among next words, entropy of the distribution in nats,
 diff --git a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt
-index 6cfe7e643..141a6d196 100644
+index 6cfe7e643..361db3f88 100644
 --- a/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt
 +++ b/core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt
 @@ -1602,7 +1602,11 @@ class SuggestionEngine(
@@ -15,35 +59,36 @@ index 6cfe7e643..141a6d196 100644
          return shiftGlideScores(reranked)
              // One word per spelling, whatever source it came from (#172). The
              // decoder keys its results on each trie's own spelling, and the
-@@ -1754,6 +1758,44 @@ class SuggestionEngine(
+@@ -1754,6 +1758,45 @@ class SuggestionEngine(
          return moved + decoded.filterNot { it.word in reordered }
      }
  
 +    /**
 +     * The context model's say on a glide's readings, in score space: every
-+     * candidate moves by its log-probability against the decoder's leader,
++     * candidate moves by its log-probability against the reference,
 +     * [GLIDE_LM_BLEND] engine nats per model nat and at most
-+     * [GLIDE_LM_BLEND_CAP]. A glide is a guess from the start, so the cap can
-+     * be wider than the typing path's [LM_BLEND_CAP]: 3 nats on the FUTO
-+     * German pool (n=2,294 with a previous word) took 70.84 -> 80.82, against
-+     * 82.13 for an uncapped blend. The corpus bigram stands in for the
-+     * downloaded model in that measurement; the shape is the shipped one.
++     * [GLIDE_LM_BLEND_CAP]. The reference is the first candidate the model can
++     * read — usually the leader, but a German compound the vocabulary does not
++     * list is scored through its pieces and the leader may still be
++     * unreadable. A word the model cannot read keeps its decoder score, as in
++     * [blendContextModel].
 +     *
-+     * Silent when there is no model, when it does not know the leader, or
-+     * when it knows none of the candidates; a word the model cannot read
-+     * keeps its decoder score, as in [blendContextModel].
++     * Pieces cost a forward step each, so only the pool the strip can show is
++     * spelled (8 ordinarily, 16 after a deep search), never the whole walk.
++     * Measured on 2,588 FUTO German swipes with the downloaded German model:
++     * 0.5 / 5.0 took top-1 from 74.15 to 77.40 on the 150k list and 75.70 to
++     * 78.48 with the 441k observed compounds.
 +     */
 +    private fun blendGlideContextModel(decoded: List<GlideBeam.Candidate>): List<GlideBeam.Candidate> {
 +        val model = contextModel ?: return decoded
 +        if (decoded.size < 2) return decoded
-+        val words = decoded.map { it.word }
-+        val scores = model.scores(words)
-+        val reference = scores.firstOrNull() ?: return decoded
-+        if (reference.isNaN()) return decoded
++        val scored = decoded.take(GLIDE_DEEP_POOL)
++        val scores = model.scoresSpelled(scored.map { it.word.lowercase() })
++        val reference = scores.firstOrNull { it.isFinite() } ?: return decoded
 +        var moved = false
 +        val shifted = decoded.mapIndexed { i, candidate ->
-+            val lp = scores.getOrNull(i) ?: return@mapIndexed candidate
-+            if (lp.isNaN()) return@mapIndexed candidate
++            val lp = scores.getOrNull(i)
++            if (lp == null || !lp.isFinite()) return@mapIndexed candidate
 +            val shift = (GLIDE_LM_BLEND * (lp - reference)).coerceIn(-GLIDE_LM_BLEND_CAP, GLIDE_LM_BLEND_CAP)
 +            if (shift == 0.0) {
 +                candidate
@@ -60,22 +105,51 @@ index 6cfe7e643..141a6d196 100644
      /**
       * The last walk's ranked result and everything it depended on. One
       * keystroke asks the same question twice — [suggest] builds the strip,
-@@ -2679,6 +2721,18 @@ class SuggestionEngine(
+@@ -2679,6 +2722,16 @@ class SuggestionEngine(
          const val LM_BLEND = 0.2
          const val LM_BLEND_CAP = 1.0
  
 +        /**
-+         * The same blend on a glide's readings, and its cap. A stroke's
-+         * candidates are all guesses, so the context may move one further
-+         * than it may move a typed literal: 0.7 engine nats per model nat,
-+         * capped at 3, measured 2026-10-26 on the FUTO German pool
-+         * (n=2,294 with a previous word): 70.84 -> 80.82. A 1-nat cap reached
-+         * 75.33, 2 nats 78.60, 4 nats 81.65 and no cap 82.91, so 3 is the
-+         * last width before the returns flatten.
++         * The same blend on a glide's readings, and its cap: measured on
++         * 2,588 FUTO German swipes with the downloaded German model. On the
++         * 150k list 0.5 / 5.0 took top-1 from 74.15 to 77.40 and top-4 to
++         * 83.42; with the 441k observed compounds 75.70 to 78.48 and 84.85.
++         * The earlier 0.7 / 3.0 reached 76.35 and 77.28 on those lists.
 +         */
-+        const val GLIDE_LM_BLEND = 0.7
-+        const val GLIDE_LM_BLEND_CAP = 3.0
++        const val GLIDE_LM_BLEND = 0.5
++        const val GLIDE_LM_BLEND_CAP = 5.0
 +
          /**
           * How the blend grows with the taps' spread (mean distance to the
           * nearest key centre, in key widths) over a careful typist's
+diff --git a/native/wm-engine-jni/src/lm.rs b/native/wm-engine-jni/src/lm.rs
+index 3b57257dd..f2eb5edbd 100644
+--- a/native/wm-engine-jni/src/lm.rs
++++ b/native/wm-engine-jni/src/lm.rs
+@@ -164,6 +164,26 @@ pub extern "system" fn Java_com_wasimaster_wmkeyboard_core_prediction_Prediction
+     })
+ }
+ 
++/// `lmScoresSpelled(session, words)`: ln P(word next) per word, spelling a
++/// word the vocabulary does not hold in pieces; NaN only when the model can
++/// read neither. More expensive than `lmScores` (up to one forward step per
++/// piece), so this is for a glide's handful of candidates, never the strip.
++#[no_mangle]
++pub extern "system" fn Java_com_wasimaster_wmkeyboard_core_prediction_PredictionNative_lmScoresSpelled(
++    mut env: JNIEnv,
++    _class: JClass,
++    session: jlong,
++    words: JObjectArray,
++) -> jfloatArray {
++    guarded(&mut env, null_mut(), |env| {
++        let session = object!(env, SESSIONS, session);
++        let words = strings(env, &words)?;
++        let mut s = session.lock().unwrap_or_else(|e| e.into_inner());
++        let scores: Vec<f32> = words.iter().map(|w| s.logprob(w).unwrap_or(f32::NAN)).collect();
++        give_floats(env, &scores)
++    })
++}
++
+ /// `lmGateView(session, typed)`: `[ln P(typed) if listed, rank of typed,
+ /// entropy, ln P(typed) spelled in pieces]` for the learned gate; the
+ /// first two NaN when the vocabulary does not list the word, the last NaN

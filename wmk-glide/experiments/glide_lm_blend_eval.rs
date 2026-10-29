@@ -3,7 +3,8 @@
 //!
 //! cargo run --release --example glide_lm_blend_eval -- records.jsonl layout.json list.txt model.wmlm
 //!
-//! `RESULTS=8`, `COLS=10`, `THREADS=8`, `WEIGHT=0.7`, `CAP=3`. Prints no-blend and
+//! `RESULTS=8`, `COLS=11`, `THREADS=8`, `WEIGHT=0.5`, `CAP=5`,
+//! `FREQ=0.5`, `GAP=2.0` (German profile). Prints no-blend and
 //! blended top-1/top-4, and the number of strokes with a previous word.
 
 use std::io::{BufRead, Write};
@@ -39,8 +40,11 @@ fn main() {
     let cols: f32 = std::env::var("COLS").ok().and_then(|v| v.parse().ok()).unwrap_or(10.0);
     let results: usize = std::env::var("RESULTS").ok().and_then(|v| v.parse().ok()).unwrap_or(8);
     let threads: usize = std::env::var("THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or(8);
-    let weight: f64 = std::env::var("WEIGHT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.7);
-    let cap: f64 = std::env::var("CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(3.0);
+    let weight: f64 = std::env::var("WEIGHT").ok().and_then(|v| v.parse().ok()).unwrap_or(0.5);
+    let cap: f64 = std::env::var("CAP").ok().and_then(|v| v.parse().ok()).unwrap_or(5.0);
+    // German profile: freq 0.5 / gap 2.0 (state.md §2.6.2); overridable for A/B.
+    let freq: f64 = std::env::var("FREQ").ok().and_then(|v| v.parse().ok()).unwrap_or(0.5);
+    let gap: f32 = std::env::var("GAP").ok().and_then(|v| v.parse().ok()).unwrap_or(2.0);
     let records: Vec<Record> = std::io::BufReader::new(std::fs::File::open(&args[1]).unwrap()).lines().map_while(Result::ok)
         .filter_map(|line| {
             let v: serde_json::Value = serde_json::from_str(&line).ok()?;
@@ -56,7 +60,10 @@ fn main() {
         let handles: Vec<_> = records.chunks(chunk).map(|part| {
             let (trie, layout, lm) = (&trie, &layout, &lm);
             scope.spawn(move || {
-                let mut decoder = Decoder::new(Tuning::default());
+                let mut tuning = Tuning::default();
+                tuning.freq_weight = freq;
+                tuning.gap_weight = gap;
+                let mut decoder = Decoder::new(tuning);
                 let mut session = Session::new(lm.clone());
                 let (mut n, mut top1, mut top4, mut b1, mut b4, mut with_prev, mut moved) = (0,0,0,0,0,0,0);
                 for r in part {
@@ -73,10 +80,15 @@ fn main() {
                     if !ctx.is_empty() && blended.len() > 1 {
                         with_prev += 1;
                         session.set_context(Prefix::default(), &ctx);
-                        let lps: Vec<Option<f32>> = words.iter().map(|w| session.logprob(w)).collect();
-                        if let Some(Some(reference)) = lps.first().copied() {
+                        // Same pool and reference as the app: the 8-16
+                        // candidates the strip can show, scored through their
+                        // pieces, against the first finite score (the leader
+                        // is often an unlisted German compound).
+                        let scored = blended.len().min(16);
+                        let lps: Vec<Option<f32>> = words.iter().take(scored).map(|w| session.logprob(w)).collect();
+                        if let Some(reference) = lps.iter().flatten().copied().find(|v| v.is_finite()) {
                             let mut any = false;
-                            for (i, (_, score)) in blended.iter_mut().enumerate() {
+                            for (i, (_, score)) in blended.iter_mut().take(scored).enumerate() {
                                 if let Some(lp) = lps[i] {
                                     let shift = (weight * (lp - reference) as f64).clamp(-cap, cap);
                                     if shift != 0.0 { *score += shift; any = true; }

@@ -1796,26 +1796,31 @@ class SuggestionEngine(
     /**
      * The context model's say on a stroke's candidates, in the decoder's
      * own nats (#966): each moves by [GLIDE_LM_BLEND] per nat the model
-     * prefers it over the leader, at most [GLIDE_LM_BLEND_CAP] either way,
-     * as [blendContextModel] does for typing. The leader is the reference
-     * and never moves; a word the model cannot read keeps its decoder
-     * score. Before [rerankGlide], which still reorders on its own evidence.
+     * prefers it over the reference, at most [GLIDE_LM_BLEND_CAP] either way,
+     * as [blendContextModel] does for typing. The reference is the first
+     * candidate the model can read — usually the leader, but a German
+     * compound the vocabulary does not list is scored through its pieces and
+     * the leader may still be unreadable. A candidate the model cannot read
+     * keeps its decoder score. Before [rerankGlide], which still reorders on
+     * its own evidence.
      *
-     * Heavier than typing's because a stroke says less than taps do: on
-     * 2,294 German swipes with a word before them it took the decoder's
-     * top-1 from 70.84 % to 80.82 %, with a corpus bigram standing in for
-     * the downloaded model, whose nats may sit on another scale.
+     * Pieces cost a forward step each, so only the pool the strip can show is
+     * spelled (8 ordinarily, 16 after a deep search), never the whole walk.
+     * Heavier than typing's because a stroke says less than taps do: on 2,294
+     * German swipes with a word before them it took the decoder's top-1 from
+     * 70.84 % to 80.82 %, with a corpus bigram standing in for the downloaded
+     * model, whose nats may sit on another scale.
      */
     private fun blendGlideContextModel(decoded: List<GlideBeam.Candidate>): List<GlideBeam.Candidate> {
         val model = contextModel ?: return decoded
         if (decoded.size < 2) return decoded
-        val scores = model.scores(decoded.map { it.word.lowercase() })
-        val reference = scores.firstOrNull() ?: return decoded
-        if (reference.isNaN()) return decoded
+        val scored = decoded.take(GLIDE_DEEP_POOL)
+        val scores = model.scoresSpelled(scored.map { it.word.lowercase() })
+        val reference = scores.firstOrNull { it.isFinite() } ?: return decoded
         var moved = false
         val shifted = decoded.mapIndexed { i, c ->
             val lp = scores.getOrNull(i)
-            if (lp == null || lp.isNaN()) return@mapIndexed c
+            if (lp == null || !lp.isFinite()) return@mapIndexed c
             val shift = (GLIDE_LM_BLEND * (lp - reference)).coerceIn(-GLIDE_LM_BLEND_CAP, GLIDE_LM_BLEND_CAP)
             if (shift == 0.0) {
                 c
@@ -2802,12 +2807,14 @@ class SuggestionEngine(
 
         /**
          * [LM_BLEND] and [LM_BLEND_CAP] for a glide's candidates
-         * ([blendGlideContextModel]): fitted on 2,294 German swipes against
-         * a corpus bigram (#966), the cap where 2 to 3 nats was asked for.
-         * Re-sweep the weight once against the downloaded model.
+         * ([blendGlideContextModel]): measured on 2,588 FUTO German swipes
+         * with the downloaded German model. On the 150k list 0.5 / 5.0 took
+         * top-1 from 74.15 to 77.40 and top-4 to 83.42; with the 441k
+         * observed compounds 75.70 to 78.48 and 84.85. The earlier 0.7 / 3.0
+         * reached 76.35 and 77.28 on those lists. Re-sweep on the phone.
          */
-        const val GLIDE_LM_BLEND = 0.7
-        const val GLIDE_LM_BLEND_CAP = 3.0
+        const val GLIDE_LM_BLEND = 0.5
+        const val GLIDE_LM_BLEND_CAP = 5.0
 
         /**
          * How the blend grows with the taps' spread (mean distance to the

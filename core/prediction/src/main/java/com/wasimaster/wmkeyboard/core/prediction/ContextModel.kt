@@ -62,6 +62,17 @@ class ContextModel private constructor(
         return PredictionNative.lmScores(session, words.toTypedArray())
     }
 
+    /**
+     * ln P(word next) for each of [words], spelling a word the vocabulary does
+     * not hold as one token in pieces; NaN only where the model can read
+     * neither. One forward step per piece, so this is for a glide's handful of
+     * candidates, never the whole strip.
+     */
+    fun scoresSpelled(words: List<String>): FloatArray {
+        if (closed || words.isEmpty()) return FloatArray(words.size) { Float.NaN }
+        return PredictionNative.lmScoresSpelled(session, words.toTypedArray())
+    }
+
     /** The model's view of a word as typed, for the learned gate; see [gateView]. */
     class GateView(val logprob: Float, val rank: Int, val entropy: Float, val piecesLogprob: Float)
 

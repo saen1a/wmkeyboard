@@ -188,8 +188,15 @@ internal object PredictionNative {
     /** The words before the caret, oldest first; register 0 neutral, 1 casual, 2 formal; field 0 other, 1 chat, 2 email, 3 search. */
     external fun lmSetContext(session: Long, register: Int, field: Int, lang: Int, words: Array<String>)
 
-    /** ln P(word next) per word, NaN where the model has no opinion. */
+    /** ln P(word next) per listed word, NaN where the model has no opinion. */
     external fun lmScores(session: Long, words: Array<String>): FloatArray
+
+    /**
+     * ln P(word next) per word, spelling a word the vocabulary does not list in
+     * pieces; NaN only where the model can read neither. Costs up to one forward
+     * step per piece, so only a glide's handful of candidates ask for it.
+     */
+    external fun lmScoresSpelled(session: Long, words: Array<String>): FloatArray
 
     /**
      * The learned gate's view of the typed spelling: `[ln P(typed) if listed,
