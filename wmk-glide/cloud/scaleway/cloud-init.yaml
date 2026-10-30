@@ -1,0 +1,40 @@
+#cloud-config
+# Minimal, secret-free cloud-init for Scaleway Ubuntu Noble GPU OS 13
+# (H100-1-80G, fr-par-2). The image already has the NVIDIA driver, Docker
+# and the NVIDIA Container Toolkit; nothing here touches CUDA or vLLM.
+#
+# User-data is visible to the instance metadata service and often in the
+# provider console: no HF token, no SSH key, no model data, no credentials.
+# Every runcmd entry is a quoted string so shell metacharacters (|, ||, >)
+# cannot be parsed as YAML block scalars.
+package_update: true
+packages:
+  - tmux
+  - htop
+  - git
+  - curl
+  - rsync
+  - python3-venv
+  - python3-pip
+
+write_files:
+  - path: /etc/profile.d/wmlm.sh
+    permissions: "0644"
+    content: |
+      export HF_HOME=/data/hf-cache
+      export HF_HUB_ENABLE_HF_TRANSFER=1
+      export WMLM_DATA=/data
+      export WMLM_SCRATCH=/scratch
+      export TOKENIZERS_PARALLELISM=false
+      export PYTHONUNBUFFERED=1
+
+runcmd:
+  # HF cache and everything final lives on the block volume (/data): 125 GB
+  # hold FP8 (~28 GB) + BF16 (~55 GB) + soft targets (~1.6 GB).
+  # Scratch is local NVMe and is wiped on stop/delete: never for finals, and
+  # never format a device here. Mount the block volume before setup_h100.sh.
+  - "mkdir -p /data/hf-cache /data/models /data/out /data/corpus /scratch"
+  - "df -h /data /scratch || true"
+  - "lsblk -o NAME,SIZE,TYPE,MOUNTPOINT | head -20 >> /var/log/wmlm-boot.log"
+  - "bash -c 'if mountpoint -q /data; then echo data-volume-mounted; else echo \"WARN: /data is not a mountpoint; attach and mount the block volume\"; fi >> /var/log/wmlm-boot.log'"
+  - "echo 'cloud-init done: run wmk-glide/cloud/scaleway/setup_h100.sh --check' >> /var/log/wmlm-boot.log"

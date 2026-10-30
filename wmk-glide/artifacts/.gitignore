@@ -3,3 +3,17 @@ logs/
 out/*.npz
 out/*.pt
 data/de_swipes.jsonl
+out/de_lm_2m/
+out/de_lm_1m2/
+# generated locally; re-creatable or too large for git
+models/
+out/de_run_*/
+out/de_soft_*_shards/
+out/eval_*/
+out/*.log
+out/*.wmlm
+out/*.wmlm.sha256
+data/*.txt
+data/*.txt.gz
+data/*.tsv
+data/vocab.txt

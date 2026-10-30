@@ -1,0 +1,11 @@
+*.env
+!credentials.example.env
+*.key
+*.pem
+id_*
+*_ed25519
+data/
+out/
+*.log
+__pycache__/
+*.pyc

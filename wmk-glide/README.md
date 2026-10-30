@@ -43,7 +43,10 @@ auszutauschen?**
 | [`issue-966-followup.md`](issue-966-followup.md) | Nachtrag-Kommentar zu #966: Blend, Join-Guard, Komposita-Liste, Tests (offline formuliert) |
 | [`issue-german-wmlm.md`](issue-german-wmlm.md) | Feature-Request-Entwurf für ein deutsches `.wmlm` (Trainingsrezept, Datenmengen, Abnahme) |
 | [`issue-context-blend-oov.md`](issue-context-blend-oov.md) | Feature-Request-Entwurf für Upstream: OOV-Piece-Scoring im Kontext-Blend, Typing-Führer, adaptiver 16-Pool, per-Sprach-Konstanten |
+| [`chutes-mtp-report.md`](chutes-mtp-report.md) | Support-Report: Chutes Qwen3.8-27B liefert HTTP 200 mit falschen Prompt-Logprobs (vLLM MTP #53488) |
 | [`kb-context-blend-optimizations.md`](kb-context-blend-optimizations.md) | KB zu den Blend-Optimierungen: Code-Pfade, Messungen, Priorität, Risiken, Reproduktion |
+| [`kb-inference-providers.md`](kb-inference-providers.md) | KB zu gehosteten Lehrern: Live-Tests, Chutes/Nebius/ACS-Matrix, 1M-Kosten, Probe |
+| [`kb-teacher-models.md`](kb-teacher-models.md) | KB zu lokalen Lehrern mit Qwen-Tokenizer: 9B/8B/27B, Quantisierung, A/B, Gaming-Pause |
 | [`experiments-followup.md`](experiments-followup.md) | Nächste Stufe: Halte-Test, Pool, Trigramm, Logit, Komposita-Prior, Kontextquelle — was trägt und was nicht |
 | [
 gram-analysis.md`](ngram-analysis.md) | N-Gramm-Analyse: Chat-Pack, 4-Gramm, Deckel, Normalisierung — was die Daten tragen |

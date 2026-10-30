@@ -1,0 +1,95 @@
+{
+  "models": [
+    "/data/models/Qwen3.8-27B-FP8",
+    "Qwen/Qwen3.8-27B",
+    "Qwen/Qwen3.8-27B"
+  ],
+  "summary": {
+    "/data/models/Qwen3.8-27B-FP8": {
+      "chat": {
+        "sentences": 100,
+        "mean_nll": 5.2742,
+        "missing_actual": 0,
+        "nonfinite": 0,
+        "top1_mass": 0.3517,
+        "top8_mass": 0.8195,
+        "soft_rows": 657
+      },
+      "news": {
+        "sentences": 100,
+        "mean_nll": 4.6155,
+        "missing_actual": 0,
+        "nonfinite": 0,
+        "top1_mass": 0.384,
+        "top8_mass": 0.8596,
+        "soft_rows": 1313
+      }
+    },
+    "Qwen/Qwen3.8-27B": {
+      "chat": {
+        "sentences": 100,
+        "mean_nll": 5.2776,
+        "missing_actual": 0,
+        "nonfinite": 0,
+        "top1_mass": 0.3508,
+        "top8_mass": 0.8168,
+        "soft_rows": 657
+      },
+      "news": {
+        "sentences": 100,
+        "mean_nll": 4.6154,
+        "missing_actual": 0,
+        "nonfinite": 0,
+        "top1_mass": 0.3824,
+        "top8_mass": 0.858,
+        "soft_rows": 1313
+      }
+    }
+  },
+  "throughput": {
+    "/data/models/Qwen3.8-27B-FP8": {
+      "prompts_per_s": 72.79,
+      "prompt_tokens_per_s": 1163.6
+    },
+    "Qwen/Qwen3.8-27B": {
+      "prompts_per_s": 77.08,
+      "prompt_tokens_per_s": 1232.1
+    }
+  },
+  "pairs": [
+    {
+      "a": "/data/models/Qwen3.8-27B-FP8",
+      "b": "Qwen/Qwen3.8-27B",
+      "top1_agreement": 0.9217,
+      "top1_agreement_by_class": {
+        "chat": 0.939,
+        "news": 0.9131
+      },
+      "mean_abs_delta_top1_mass": 0.0196,
+      "positions": 1968
+    },
+    {
+      "a": "/data/models/Qwen3.8-27B-FP8",
+      "b": "Qwen/Qwen3.8-27B",
+      "top1_agreement": 0.8876,
+      "top1_agreement_by_class": {
+        "chat": 0.9116,
+        "news": 0.8757
+      },
+      "mean_abs_delta_top1_mass": 0.0299,
+      "positions": 1967
+    },
+    {
+      "a": "Qwen/Qwen3.8-27B",
+      "b": "Qwen/Qwen3.8-27B",
+      "top1_agreement": 0.911,
+      "top1_agreement_by_class": {
+        "chat": 0.9329,
+        "news": 0.9001
+      },
+      "mean_abs_delta_top1_mass": 0.0228,
+      "positions": 1967
+    }
+  ],
+  "sentences": "wmk-glide/artifacts/out/ab_sentences.tsv"
+}

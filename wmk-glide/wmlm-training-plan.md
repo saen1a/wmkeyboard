@@ -135,6 +135,24 @@ Qwen3.5-9B-Base ist noch **nicht auf Lehrerqualität gemessen**; sein
 Tokenizer ist byte-identisch mit Qwen3.5-4B (23,6 % ganze Wörter), die
 Qualität dürfte über 4B liegen, der Sprung ist aber nicht belegt.
 
+**Nachtrag 30.10.2026 (gemessen, dreifach-A/B auf 100+100 festen Sätzen,
+`cloud/scaleway/benchmark_prompt_logprobs.py`, vLLM, identische Projektion):**
+
+| Lehrer | Register | top-1 | top-8 | NLL |
+|---|---|---:|---:|---:|
+| **Qwen3.8-27B-FP8** | Chat | **35,03 %** | **81,96 %** | 5,278 |
+| **Qwen3.8-27B-FP8** | News | **38,30 %** | **85,98 %** | **4,616** |
+| Qwen3.5-9B-Base | Chat | 31,29 % | 78,61 % | 5,244 |
+| Qwen3.5-9B-Base | News | 34,28 % | 83,08 % | 4,816 |
+| Qwen3.5-4B-Base | Chat | 29,87 % | 78,47 % | 5,426 |
+| Qwen3.5-4B-Base | News | 33,07 % | 82,68 % | 5,051 |
+
+Delta 27B−9B: **+3,74 / +4,02 pp** top-1, **+3,35 / +2,90 pp** top-8,
+NLL +0,03 / −0,20. Delta 9B−4B auf derselben Stichprobe: +1,42 / +1,21 pp
+(vgl. +1,22 / +2,31 pp in §1.3, andere 50+50-Stichprobe). Top-1-Agreement
+27B↔9B nur **50,2 %**, 9B↔4B 59,7 % — der 27B ist keine skalierte 9B.
+Rohdaten: `artifacts/out/ab_3way.json` (+ je Modell).
+
 **Tokenizer-Messung** (`--multi`, dieselbe Methode wie §1.2): Kolibri trifft
 auf `de_150k` **60,8 %** der Typen und **95,4 %** gewichtet ganz; Qwen3.5
 30,7 / 87,2; Llama3-German 20,0 / 75,7. Auf dem vollen Modellvokabular:
@@ -214,20 +232,71 @@ die volle Verteilung liefert; DeepInfra selbst fällt für dieses Rezept aus.
 **Damit bleiben lokal (Qwen3.5-4B-Base), Scaleway (Qwen3.5-9B-Base / Soofi)
 oder Together (unten) als Wege.**
 
-### 1.7 API-Alternativen zu DeepInfra (geprüft 27.10.2026)
+### 1.7 API-Alternativen zu DeepInfra (geprüft 27.10., live nachgetragen 29.10.2026)
 
 DeepInfra fällt aus (nur 1–2 `top_logprobs`). Andere Anbieter:
 
 | Anbieter | Prompt-Logprobs | Top-N | Modelle | Preis / 150k (echo) | Urteil |
 |---|---|---|---:|---|---:|
-| **Nebius Token Factory** | ja (`echo` + `logprobs`), OpenAPI | **20?** | Qwen3-30B-A3B, Qwen3-235B, Qwen3.5-397B, Qwen3.8-27B | **0,72 / 1,44 / 7,56 $** | **zweite API-Wahl; Signup + 1 $ frei** |
-| **Scaleway GPU** (`distill.py` oder vLLM) | ja (`distill.py`: volle Softmax; vLLM: `prompt_logprobs`) | **voll / 100** | Qwen3.5-9B-Base, Soofi, Kolibri | ~1–3 € (L4/H100) | **zuverlässigster Weg** |
-| ACS Infra | ja (`prompt_logprobs: -1`) | **voll** | Llama-8B, Llama-405B, Trinity | unbekannt, Approval | Base-API, aber kein deutsches Modell |
-| Together AI | ja, dokumentiert | 20 | Qwen3.5-9B, Qwen3.8-Flash, GPT-OSS | 0,76–1,35 $ | **erste API-Wahl; Probe/Token-Test bereit** |
+| **Chutes** | **ja, `prompt_logprobs` im OpenAPI** | **20** | **Qwen3.8-27B-TEE** (vLLM); 397B/3.6 nur SGLang, ohne Prompt-Logprobs | **0,30 $** | **erste Wahl; 4–8 Worker, 429-Limit** |
+| **Nebius Token Factory** | `echo`+`logprobs`; `prompt_logprobs` evtl. über `extra_body` | **20?** | Qwen3-30B-A3B, Qwen3-235B, Qwen3.5-397B, Qwen3.8-27B | **0,72 / 1,44 / 7,56 $** | **zweite Wahl; 60 RPM Basis, ×1,2/15 min bis 20×; Live-Test mit Key** |
+| **Neuralwatt** | **nein** (nur Output-`logprobs`, Chat/Responses, kein `/v1/completions`) | 5? | Qwen3.8-27B, Qwen3.6-35B | 0,45/3,20 $; flex 0,29/2,08 $ | **für Soft-Targets ungeeignet; 2–15 Concurrent** |
+| **Scaleway GPU** (`distill.py` oder vLLM) | ja (`distill.py`: volle Softmax; vLLM: `prompt_logprobs`) | **voll / 100** | Qwen3.5-9B-Base, Soofi, Kolibri | ~1–3 € (L4/H100) | **zuverlässigster Weg, aber IaaS** |
+| ACS Infra | ja (`prompt_logprobs: -1`) | **voll** | Llama-8B, Llama-405B, Trinity | unbekannt, Approval | Base-API, aber Llama-Tokenizer |
+| Together AI | **nein (live 29.10.: 1 Top-Eintrag / 422 / 403)** | 20 dokumentiert | Qwen3.5-9B, Qwen3.8-Flash, GPT-OSS | 0,76–1,35 $ | **FAIL** |
 | Fireworks | ja (`echo`) | **5** | Qwen, Llama, GPT-OSS | wenige $ | zu sparse |
 | OpenAI | ja (`echo`) | **5** | GPT-4.1/5 | teuer | zu sparse |
 | Novita | ja (`echo`) | **5** | Qwen/DeepSeek | wenige $ | zu sparse |
 | Hyperbolic/Featherless | unklar | ? | Qwen/Llama, Base-Modelle | wenige $ | ungeprüft |
+
+**Nachtrag 29.10.2026 (live):** Together fällt endgültig aus: Qwen3.5-9B
+liefert nur **einen** Top-Eintrag, GPT-OSS-120B antwortet **422**, Qwen3.8
+**403**; DeepInfra bleibt bei **zwei** Einträgen und Qwen3.8 liefert gar
+keine Logprobs. Beides ist mit den vorhandenen Keys erneut gemessen.
+
+**Chutes** (`https://llm.chutes.ai/v1`) ist der neue Fund: Die
+OpenAPI-Doku für **Qwen3.8-27B-TEE** und **Qwen3.5-397B-A17B-TEE** listet
+`prompt_logprobs` (0–20) direkt als Request-Feld; der vLLM-Template-Code
+führt es in `CompletionRequest` und `ChatCompletionRequest`. Beide Modelle
+nutzen die Qwen-Tokenizer-Familie, Qwen3.8-27B kostet **0,039 $/1M input**
+und **1,25 $/1M output**, Qwen3.5-397B **0,45/3,00 $**. Damit kostet 1M
+Sätze (≈20M Input, 1M Output) **≈2–3 $** (27B) bzw. **≈12–16 $** (397B),
+nicht 80–90 h lokal. Chutes hat **keinen Free-Tier**, aber keine
+Mindestbindung; der `cpk_`-Key liegt unter
+`C:\Users\saenta\chutesai.key`, die **Balance ist 0 $** → HTTP 402, auch
+für die 0-$-Modelle. Ohne Aufladung kein Test. Probe:
+[`tools/chutes_echo_probe.py`](tools/chutes_echo_probe.py). 100-Satz-A/B
+steht noch aus; die Doku ist explizit, Together/DeepInfra sind dagegen
+live durchgefallen. Details:
+[`kb-inference-providers.md`](kb-inference-providers.md).
+
+**Modellwahl bei Chutes (29.10.):** Nur **Qwen3.8-27B-TEE** ist
+`owned_by: vllm` **und** `allow_logprobs: true`; nur dort liefert
+`prompt_logprobs` die Verteilung. **Qwen3.5-397B** und **Qwen3.6-27B** laufen
+auf **SGLang**; SGLangs OpenAI-Endpunkt rechnet keine Prompt-Logprobs
+(`echo`+`logprobs` inkompatibel, nur natives `/generate` mit
+`logprob_start_len`). Die generische `prompt_logprobs`-Zeile in `llms.txt`
+ist irreführend, `permission` ist `null`. Qwen3.8-2.4T/ Max sind externe
+`chutes`-Modelle ohne vLLM/Preis/Logprobs. **Qwen3.8-27B ist der einzige
+nutzbare Qwen**, nicht die 397B; die 397B bleibt nur eine Qualitätsreferenz.
+Qwen3.8-27B ist post-trained, kein Base; der 100-Satz-A/B entscheidet gegen
+den lokalen 4B-Base.
+
+**Stabilität/Tokenizer (korrigiert 29.10.):** Im korrekten 100-Satz-Lauf
+war Qwen-Completions **99/100** (98 first try, 1× NaN nach 3 Versuchen),
+Qwen-Chat **99/100** (1× HTTP 502). Die früheren 1/10-Serien waren
+lastabhängig. Ursache ist der **vLLM-MTP-Bug #53488** (Fix #53520). Der
+entscheidende Test: **9/10 Wiederholungen** desselben Prompts kamen mit
+HTTP 200, aber fremden Top-Tokens; das echte ` will` lag auf Rang 70.733,
+der 100-Satz-Lauf ergab top-1 3,6 % / NLL 1e36. **Chutes-27B ist damit kein
+Lehrer**, bis MTP deaktiviert oder vLLM gepatcht ist. Kimi-K2.6 ist 20/20
+ohne NaN, aber sein Tokenizer ist für Deutsch schlechter: 7,3 % Typen /
+59,8 % gewichtet vs. Qwen 11,0 % / 84,6 %; Schüler-Vokabular 10,8 % vs.
+23,1 %, 3,28 vs. ~2,6 Stücke/Wort. Der frühere „100/100“-Wert war ein
+Testfehler und ist zurückgezogen. **Deshalb lokal Qwen3.5-9B-Base 8-bit**
+(sauber, +1,2/+2,3 top-1, gleiche Speed); Chutes-27B erst nach MTP-Fix,
+Kimi nur als Fallback nach gewonnenem A/B.
+
 
 **Nebius-Details:** `/v1/completions` hat `echo` und `logprobs` (OpenAPI
 `CompletionRequest`); ein `prompt_logprobs`-Feld gibt es nicht, es ist die
@@ -251,9 +320,10 @@ auf 20 oder 16. Qwen3-30B/235B haben den schlechten Qwen3-Tokenizer
 (12,8 %); Qwen3.5-397B hat den guten Qwen3.5-Tokenizer (23,6 %) und ist
 trotz 397B für < 8 $ zu haben.
 
-**Together (wieder verfügbar):** `echo: true` + `logprobs: N` (0–20)
-liefert die Prompt-Logprobs inklusive `top_logprobs`; das ist die gesuchte
-Verteilung. Der Signup funktioniert wieder (27.10.).
+**Together (überholt, live 29.10. FAIL):** Die folgenden Details sind
+historisch; der Live-Test lieferte nur einen Top-Eintrag (Qwen3.5), 422
+(GPT-OSS) bzw. 403 (Qwen3.8). `echo: true` + `logprobs: N` (0–20) ist
+dokumentiert, aber nicht so ausgeliefert.
 Preise: Qwen3.5-9B 0,17/0,25 $, Qwen3.8-Flash 0,15/0,47 $, GPT-OSS-120B
 0,15/0,60 $ pro 1M. 150k Sätze (1,8M Tokens) kosten im Echo-Worst-Case
 **0,76 / 1,12 / 1,35 $**, normal **0,36 / 0,36 / 0,39 $**. Together hat
@@ -424,6 +494,61 @@ Der getestete Korpus ist Tatoeba + News: **1.784.711 Sätze, 21.356.951
 Tokens, 657.478 Typen**. `prep.py` lief in 58 s; `train.npz` ist 160 MB,
 `heldout` 20k Sätze / 431k Tokens.
 
+**Chat-Erweiterung (ja, aber dosiert):** Tatoeba ist mit **784.711 Sätzen
+(44 %)** bereits der Chat-/Umgangssprache-Anteil; News sind 56 %.
+
+**Entscheidung 29.10.2026: 1M Basis + 200k Chat = 1,2M Sätze.**
+Die Basis wird stratifiziert aus dem vorhandenen Korpus gezogen:
+**440k Tatoeba + 560k News = 1M**; dazu **200k Chat aus dem Tatoeba-Rest**
+(oder ersatzweise OpenSubtitles, falls das Chat-Heldout es verlangt).
+Ergebnis: **640k Tatoeba/Chat (53,3 %) + 560k News (46,7 %) = 1,2M**.
+Dedupliziert, bestehendes 20k-Heldout ausgeschlossen, zusätzlich ein
+Chat-Heldout getrennt halten. Kein Chat-Template-Mix: Lehrer-Soft-Targets
+aus `/v1/chat/completions` tragen System-/Assistant-Prefixe und gehören
+nicht in den Raw-LM-Korpus; Completion-Rohprompts verwenden.
+
+**2M-Option (29.10.):** Zusätzlich einen **2M-Datensatz** vorbereiten:
+**1,066M Chat / 0,934M News (53,3/46,7)**, alle Quellen, dedupliziert,
+Heldout-sicher. `de_all.tsv` hat nur 1,784M Zeilen; für 2M braucht es
+~282k lizenzierte Chat-Daten (z. B. OpenSubtitles DE). **Nicht duplizieren.**
+Wenn der H100-Quick-Gate ≥100 Sätze/s zeigt, den 2M-Lauf einmal machen
+(Soft-Targets ~1,56 GB, bei 100–400 Sätzen/s ~1,4–5,6 h / 4–16 €);
+später nur den Schüler anpassen, nicht den Lehrer erneut laufen lassen.
+Ohne zusätzliche Quelle bleibt es bei maximal 1,78M eindeutigen Sätzen.
+
+**Gebaut (29.10.2026, ohne GPU):** `corpora/de_2m_mix.tsv`, **2.000.000
+eindeutige Zeilen**, **1.066.000 Chat (53,3 %) / 934.000 News (46,7 %)**,
+SHA256 `a3b7cd04b8b98ecca82d01c3f4bb87ee10969103b249e8c7e2f6770f296fa61c`,
+Manifest/SHA neben der Datei. Chat = 764.297 Tatoeba (nach Dedup + 3–40
+Wörter) + **301.703 OpenSubtitles DE v2018** (`corpora/opensubtitles_de_v2018.txt.gz`,
+476 MB, OPUS); News = 934k aus den 999k Leipzig-Zeilen. 18.063 Heldout-Zeilen
+aus `de_all` und 558.441 aus OpenSubtitles ausgeschlossen, **0 Heldout-Leaks**,
+0 Duplikate. `prep.py` auf 2M: 1.980.000 Sätze / 40,56M Tokens, 20k
+Heldout, Vokabular 24.576, Coverage 84,70 %, 81 s / 2,4 GB RSS
+(`out/de_lm_2m`). Werkzeug: `cloud/scaleway/prepare_2m.py` (mit `--verify`
+und `--no-extra` für den 1,78M-Fall). **Heldout-Schlüssel:** `heldout.tsv`
+ist tokenisiert (`prep.py`), der Korpus ist es nicht; der erste Build
+verglich beide Räume ungefiltert und schmuggelte **17.406** Heldout-Zeilen
+ein, während `--verify` 0 meldete. Build und Verify nutzen jetzt beide
+`common.tokenize`. **Der 1,2M-Satz hat denselben Altfehler: 12.368 Leaks**
+(gemessen 29.10.2026) — bei Nutzung des 1,2M-Pfads neu bauen. **Lizenz:**
+OpenSubtitles v2018 verlangt Attribution (opensubtitles.org, Lison &
+Tiedemann 2016) und steht unter CC-BY-NC-Bedingungen — vor dem
+Veröffentlichen eines mit dem 2M-Satz trainierten Modells klären.
+
+Kosten/Zeit für 1,2M bei Qwen3.8-27B über Chutes: **~2,4–2,9 $**;
+gemessen sind bei 8 Workern mit Retries **2,40 Sätze/s ≈ 5,8 Tage**, bei
+4 Workern **1,75 Sätze/s ≈ 7,9 Tage**. 16/32 Worker sind nur Burst; 16 mit
+Retries lieferte 0/100 wegen 429. Soft-Targets ~0,94 GB. Der Schüler bleibt
+bei 30k Steps ~6,3 h (1,2M ≈ 6,4 Epochen bei batch 256).
+
+Mehr als 1M ist technisch kein Problem: 1,78M Soft-Targets kosten bei
+Qwen3.8-27B über Chutes ~**3,6 $** und dauern bei 8 Workern/Retries
+~**8,6 Tage** (4 Worker ~11,7 Tage). Der Schüler bleibt bei 30k Steps
+~6,3 h; erst wenn der Val-Loss bei 1,2M/1,78M nicht sättigt, auf 50k
+Steps (~10,5 h) gehen. Gestaffelt bleiben: 500k → 1M → **1,2M**;
+1,78M nur, wenn 1,2M noch deutlich gewinnt.
+
 Lizenzen: Tatoeba CC BY 2.0 FR / CC0; Leipzig und OpenSubtitles eigene
 Bedingungen; `de_aosp` Apache-2.0; FUTO MIT. Attribution ins Datenrepo.
 
@@ -444,9 +569,73 @@ verlieren das Ende, was für den Kontext okay ist, aber für das Zielwort am
 Satzende schlecht. Ein Filter auf ≤ 40 Wörter ist sauberer.
 
 ```bash
-python3 tools/wmlm/prep.py corpora/de_all.tsv out/de_lm_full \
+# 1M + 200k Chat = 1,2M (29.10. gebaut, SHA256 882cdd31…)
+python3 tools/wmlm/mix_chat_corpus.py \
+  --in corpora/de_all.tsv --heldout data/heldout.tsv \
+  --out corpora/de_1m_200k_chat.tsv --seed 0
+
+python3 tools/wmlm/prep.py corpora/de_1m_200k_chat.tsv out/de_lm_1m2 \
   vocab=24576 pieces=2048 ctx=40 seed_words=data/de_aosp.txt heldout=20000
 ```
+
+Die Mischung ist **640k Tatoeba/Chat (53,3 %) + 560k News (46,7 %)**,
+1.200.000 eindeutige Zeilen, **0 Heldout-Leaks** gegen die bestehenden 20k.
+`prep.py` zieht daraus einen neuen 20k-Heldout; für den alten Heldout braucht
+es einen festen Heldout-Modus, sonst Baselines auf dem neuen Split messen.
+
+### 4.3 Lokaler 1,2M-Lauf: Unterbrechen ist sicher
+
+**Lehrer:** `run_teacher_1m2.sh` (240 × 5k Chunks, `PREFIX=soft_1m2`,
+`TOTAL=1200000`, `TOPIC=de_lm_1m2`, `FINAL=out/de_soft_1m2.npz`). Der
+Chunk-Runner ist idempotent: valide Chunks werden übersprungen, ein
+abgebrochener/ungültiger Chunk wird gelöscht und neu gerechnet.
+- Ein harter Stop kostet höchstens den **aktuellen 5k-Chunk** (~27 min bei
+  3,14 Sätzen/s).
+- 240 Chunks × 5k = 1,2M; bei 3,14 Sätzen/s **~4,4 Tage**.
+- `merge_soft.py` schreibt die Enddatei atomar (`.tmp.npz` + `replace`);
+  ein Abbruch beim Merge hinterlässt keine plausible kaputte Datei.
+- `systemctl stop wmlm-teacher-1m2` ist der saubere Stop;
+  `Restart=on-failure` startet nach einem Crash neu und skippt valide Chunks.
+- Der Service heißt `wmlm-teacher-1m2.service`; Log:
+  `out/teacher_1m2.log`.
+
+**Schüler:** `train.py` speichert `last.pt`/`best.pt` alle
+`eval_every=1000` Steps (~13 min bei 30k Steps / 6,3 h). Unterbrechen und mit
+`resume=out/de_run/last.pt` fortsetzen; der Optimierer startet ohne Momente
+neu (kleiner Übergang), Step und LR-Schedule werden übernommen. Ein Stop
+während `torch.save` kann `last.pt` beschädigen; im Zweifel von `best.pt`
+fortsetzen oder zwischen zwei Eval-Zeilen stoppen.
+
+**WSL:** `vmIdleTimeout=-1` und `instanceIdleTimeout=-1` setzen, sonst killt
+die VM den Lauf nach Leerlauf. Ein Windows-Reboot beendet den Prozess, aber
+Chunks/Checkpoints bleiben; der Dienst startet nach dem Boot weiter.
+
+**Lehrerwahl (lokal, A/B 29.10.):** `Qwen3.5-9B-Base` in 8-bit gewinnt
+gegen `Qwen3.5-4B-Base` auf je 50 Chat-/News-Sätzen: **+1,22/+2,31**
+top-1, **+2,46/+2,06** top-8, NLL **−0,18/−0,19**. Batch-Speed: 9B Q8
+**2,58 Sätze/s** vs. 4B **2,69/s** — praktisch gleich; 1,2M ~5,4 vs.
+5,2 Tage. 8-bit läuft auf ROCm (bitsandbytes 0.50.2 + accelerate 1.15).
+Nächster Gate: **10k-Soft-Target-A/B** mit 3k–5k Schüler-Steps; dafür
+`distill_multi.py` um `load8bit` erweitern. Danach `empero-ai/Qwen3.8-9B-Distill`
+und `lightonai/Qwen3-8B-DE` im selben A/B. 27B/35B passen nur 3–4-bit und
+sind für Lehrer-Logprobs riskant. Details:
+[`kb-teacher-models.md`](kb-teacher-models.md).
+
+**Cloud-H100 (Scaleway H100-1-80G, `fr-par-2`, Ubuntu Noble GPU OS 13,
+80 GB, 24 vCPU, 240 GB RAM, 125 GB Block + 3 TB Scratch,
+≈2,88775 €/h):** Auf **einer** H100 ist
+**Qwen3.8-27B** (BF16 ~55 GB / FP8 ~28 GB) wahrscheinlich der beste
+Deutsch-Lehrer: 27B dense, Aug 2026, in unabhängigen Berichten deutlich
+besseres Deutsch als Qwen3.5-35B-A3B; Sprach-Benchmarks 27B > 35B-A3B
+(MMLU-Pro 86,1 vs. 85,3; IFEval 95,0 vs. 91,9; WMT24++ 77,6 vs. 76,3).
+`prompt_logprobs` über vLLM, MTP aus. 27B BF16 50–200 Sätze/s → 1,2M
+**1,7–6,7 h / 5–19 €**; FP8 100–400/s → **0,8–3,3 h / 3–10 €**.
+**Qwen3.5-35B-A3B-Base BF16** (~72 GB) ist die schnellere Base-Alternative
+(100–500/s, 0,7–3,3 h), aber sprachlich etwas schwächer. Mit HF-Transformers
+(Batch 16) wären es nur 10–30/s → 11–33 h; **100 Tokens/s sind kein
+sinnvolles Ziel** (5 Sätze/s, 67 h). 30–60-min-Benchmark (1–3 €) misst
+Sätze/s und prompt_logprobs; Ziel >35 Sätze/s. 2×H100 + Kolibri
+wäre die maximale deutsche Qualität (~95–190 €) mit Aleph-Alpha-Plugin.
 
 `seed_words` ist die Tastatur-eigene Liste (`de_aosp`, 205.888 Wörter), nicht
 `de_150k`. Das ist der Vertrag mit dem Strip: das Modell soll eine Meinung zu
@@ -684,25 +873,31 @@ Mapping-Problem, keine Mechanik-Frage.
 
 | Szenario | Lehrer | Schüler | Gesamt | Kosten |
 |---|---|---|---|---:|
-| Lokal, 150k Sätze, Qwen3.5-4B-Base (Phase 1, 30×5k) | ~13 h | 4–5 h | **~18 h** | 3–4 € Strom |
-| Lokal, 500k Sätze | ~42 h | 4–5 h | **~2 Tage** | 8–12 € Strom |
+| Lokal, 150k Sätze, Qwen3.5-4B-Base (Phase 1, 30×5k) | ~13 h | 6 h | **~19 h** | 3–4 € Strom |
+| Lokal, 500k Sätze | ~42 h | 6 h | **~2 Tage** | 8–12 € Strom |
 | DeepInfra (GPT-OSS/Qwen3.8) | **entfällt** | **entfällt** | – | **keine Top-k-Verteilung** |
-| Nebius Qwen3-30B-A3B, 150k | 1–2 h | 4–5 h | **< 1 Tag** | 0,24–0,72 $ |
-| Nebius Qwen3.5-397B, 150k | 1–2 h | 4–5 h | **< 1 Tag** | 1,44–7,56 $ |
-| Together Qwen3.5-9B, 150k | 1–2 h | 4–5 h | **< 1 Tag** | 0,36–0,76 $ |
-| Together Qwen3.8-Flash, 150k | 1–2 h | 4–5 h | **< 1 Tag** | 0,36–1,12 $ |
-| Together GPT-OSS-120B, 150k | 1–2 h | 4–5 h | **< 1 Tag** | 0,39–1,35 $ |
+| **Chutes Qwen3.8-27B, 150k** | **~17–24 h** | 6 h | **~1 Tag** | **~0,30 $** |
+| Chutes Qwen3.5-397B, 150k | – | – | – | **nicht nutzbar (SGLang, keine Prompt-Logprobs)** |
+| **Chutes Qwen3.8-27B, 1,2M** | **~5,8–7,9 Tage** | 6 h | **~6–8 Tage** | **~2,4–2,9 $** |
+| Nebius Qwen3-30B-A3B, 150k | 1–2 h | 6 h | **< 1 Tag** | 0,24–0,72 $ |
+| Nebius Qwen3.5-397B, 150k | 1–2 h | 6 h | **< 1 Tag** | 1,44–7,56 $ |
+| Together (alle Modelle) | **entfällt** | – | – | **live 29.10. FAIL** |
 | Cloud-GPU 4090, 150k | 6–8 h | 2 h | **~1 Tag** | 4–8 $ |
-| Scaleway L4, Qwen3.5-9B, 150k | 1–2 h | 4–5 h | **~1 Tag** | 2–4 € |
-| Scaleway H100, Soofi S (wenn Zugang), 150k | 1–2 h | 4–5 h | **~1 Tag** | 8–12 € |
-| Scaleway L40S, Kolibri Q4, 150k | 2–4 h (ungeprüft) | 4–5 h | **~1 Tag** | 6–10 € |
-| Scaleway B300-8, Kolibri BF16, 150k | 1–2 h | 4–5 h | **~1 Tag** | ~120–130 € (nicht empfohlen) |
+| Scaleway L4, Qwen3.5-9B, 150k | 1–2 h | 6 h | **~1 Tag** | 2–4 € |
+| Scaleway H100, Soofi S (wenn Zugang), 150k | 1–2 h | 6 h | **~1 Tag** | 8–12 € |
+| Scaleway L40S, Kolibri Q4, 150k | 2–4 h (ungeprüft) | 6 h | **~1 Tag** | 6–10 € |
+| Scaleway B300-8, Kolibri BF16, 150k | 1–2 h | 6 h | **~1 Tag** | ~120–130 € (nicht empfohlen) |
 | Nur CPU (Fallback) | 0.5B: ~4 h/120k; 4B: Tage | 4,3 h/30k (batch 64) | Tage | Strom |
 
-Lokale Lehrerzeiten sind aus 100 Sätzen hochgerechnet, nicht über 150k
-gemessen; DeepInfra- und Cloud-Zeiten sind Schätzungen. Der Engpass sind
-nicht die Rechenkosten, sondern die Arbeitszeit für API-Mapping, Sharding
-und Messung.
+Lokale Lehrerzeit ist mit 150k in 13 h 17 min gemessen; der Schüler brauchte
+6 h 19 min für 30k Steps. Chutes-Zeiten sind **gemessen** (4/8/16/32
+Worker, §5 der KB): 8 Worker/Retries ~2,40 Sätze/s, 4 Worker ~1,75/s;
+16/32 sind nur Burst und laufen in 429. **Damit ist Chutes bei den aktuellen
+Limits nicht schneller als lokal** (1,2M lokal ~4,4 Tage, Chutes 5,8–7,9
+Tage), nur billiger und mit 27B-Lehrer. Für <4 Tage braucht es eine
+Rate-Limit-Erhöhung bei Chutes, Nebius/ACS oder eine dedizierte GPU.
+DeepInfra und Together sind live durchgefallen; Cloud-Zeiten ohne Chutes
+sind Schätzungen.
 
 ## 8. Risiken
 
@@ -764,13 +959,21 @@ d320/8/1024 und 500k Soft-Targets.
    float32-Softmax thrash't die 16-GB-Karte (nur 1 GB frei,
    Unified-Memory-Spill); die fp16-Softmax in `patches/0005` behebt das.
    Das ist der getestete Base-Lehrer und der Fallback.
-3. **Together AI (jetzt verfügbar):** `TOGETHER_API_KEY` setzen;
-   `together_echo_probe.py` auf `Qwen/Qwen3.5-9B` und
-   `Qwen/Qwen3.8-Flash` laufen lassen. Bei `PASS` (≥10 Alternativen)
-   `together_token_test.py --data-dir out/de_lm --sentences 100`; bei
-   brauchbarem top-8 `distill_api.py` bauen und 100 Sätze gegen den lokalen
-   Lauf A/B messen. 150k über Together kosten 0,76–1,35 $. Nebius bleibt
-   der zweite API-Anbieter.
+3. **Chutes (neue erste API-Wahl):** `cpk_`-Key bei
+   `https://chutes.ai` anlegen und außerhalb des Repos als
+   `C:\Users\saenta\chutesai.key` ablegen. Dann
+   `tools/chutes_echo_probe.py --model Qwen/Qwen3.8-27B-TEE --attempts 5
+   --failures-out failures.jsonl` (20 Sätze, `prompt_logprobs=20`) auf
+   **≥10 Alternativen pro Position** prüfen. Der Probe wiederholt
+   400-NaN/429/5xx automatisch mit Backoff, validiert Breite, endliche
+   Werte, tatsächliches Token und mittlere NLL (Default ≤12) und schreibt
+   Restfehler nach JSONL. Live 20/20 first try; 100 Sätze 99/100. Bei `PASS`
+   100 Sätze aus `out/de_lm` gegen den lokalen Lauf A/B messen
+   (`topk=20`, Qwen-Tokenizer). 150k über Chutes kosten ~0,30 $, 1M ~2–3 $.
+   Für 1M: 16 Worker, Pass 1 `attempts=3` mit Checkpoint, Pass 2 nur
+   `failures.jsonl` mit `attempts=10`, Pass 3 Kimi/ACS. Together fällt live
+   aus (1 Top-Eintrag/422/403); Nebius bleibt die zweite Wahl, ACS Infra die
+   kostenlose Forschungsoption mit Llama.
 4. **vLLM auf Scaleway (nur bei Bedarf):** `prompt_logprobs` top-100/voll;
    L4 mit Qwen3.5-9B-Base (~1 €) oder H100 mit Soofi (wenn Zugang). Erst
    100 Sätze testen; mieten nur, wenn der lokale/Together-Lauf die Lücke
@@ -795,8 +998,9 @@ d320/8/1024 und 500k Soft-Targets.
   aber ohne `prompt_logprobs`-Feld; die Top-N-Dichte ist live ungetestet
   (kein `NEBIUS_API_KEY`). Signup + 1 $ frei. Probe liegt bereit; bei
   `PASS` Schüler-`topk` auf 20/16. Qwen3.5-397B ist der Qualitätskandidat.
-- **Together AI:** Docs sagen `echo` + `logprobs` (0–20); der Signup
-  funktioniert wieder. `today` Probe + Token-Test bereit, Key fehlt.
+- **Together AI:** live **FAIL** (Qwen3.5 nur 1 Top-Eintrag, GPT-OSS 422,
+  Qwen3.8 403); DeepInfra 1–2 Einträge. Chutes: Key liegt, Balance 0 →
+  HTTP 402; nach Top-up zuerst 20-Satz-Probe.
 - **Scaleway GPU:** `distill.py` mit voller Softmax ist der sauberste Weg,
   aber Instanz-Setup und Qwen3.5-9B-Base/Soofi-Zugang sind ungetestet;
   erst 100 Sätze, dann 150k.
@@ -818,5 +1022,7 @@ d320/8/1024 und 500k Soft-Targets.
   `pieces` erhöht wird.
 - **Telefon-Latenz:** erst nach dem Export messbar; das 19M-Modell ist
   ohne Engine-Änderung exportierbar, aber nicht automatisch schnell genug.
-- **Register:** Tatoeba+News deckt Chat und Formal; OpenSubtitles/Wikipedia
-  erst hinzufügen, wenn `typing_eval` im Chat-Register schwach ist.
+- **Register:** Entscheidung **1M + 200k Chat = 1,2M** (640k Chat /
+  560k News, 53/47). Kein Chat-Template-Mix; Chat-Heldout getrennt messen.
+  1,78M nur, wenn 1,2M noch deutlich gewinnt.
+

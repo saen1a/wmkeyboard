@@ -146,9 +146,63 @@ der Harness nutzt dieselbe Referenz. Neu gemessen: 77,40/83,42 (150k) und
 78,48/84,85 (mit Komposita). Offen ist nur die neue Android-`.so` und die
 Gerätemessung.
 
-Erste Aufgabe: 500k Soft-Targets aus demselben Korpus (4B lokal ≈41 h, oder
-9B erst nach einem 100-Satz-A/B), dann neuer Schüler/Export und dieselbe
+Entscheidung: **1M Basis + 200k Chat = 1,2M Soft-Targets**. Basis
+stratifiziert 440k Tatoeba + 560k News; +200k aus dem Tatoeba-Rest (oder
+OpenSubtitles, falls das Chat-Heldout es verlangt) → 640k Chat / 560k News
+(53/47). Dedupliziert, bestehendes 20k-Heldout ausschließen, Chat-Heldout
+getrennt halten. Kosten bei Qwen3.8-27B/Chutes ~2,4–2,9 $; gemessen
+8 Worker/Retries ~5,8 Tage, 4 Worker ~7,9 Tage (16/32 nur Burst).
+Schüler 30k Steps ~6,3 h. 1,78M nur, wenn 1,2M noch
+deutlich gewinnt. Danach neuer Schüler/Export und dieselbe
 Glide-/Tipp-Messung.
+
+**1,2M-Korpus gebaut:** `corpora/de_1m_200k_chat.tsv`, 1.200.000 Zeilen,
+640k Tatoeba/Chat + 560k News (53,3/46,7), 0 Heldout-Leaks,
+SHA256 `882cdd3137d071e1684dda79b746377caead6fb9a2d5c20690a2a0c20d8f9976`.
+Der Chutes-Concurrency-Test ist ebenfalls gelaufen: 4 Worker sauber
+(1,75 Sätze/s), 8 mit Retries ~2,40/s, 16 mit Retries **0/100** (429).
+Damit ist der 1,2M-Lauf ~5,8–7,9 Tage, **nicht 1–2 Tage** und nicht
+schneller als lokal (~4,4 Tage).
+
+**Lokal unterbrechbar:** `run_teacher_1m2.sh` rechnet 240×5k Chunks
+idempotent; ein Stop kostet höchstens ~27 min (aktueller Chunk), der Merge
+ist atomar. Schüler: `train.py` checkpointet alle 1000 Steps und resume mit
+`resume=out/de_run/last.pt`. Details in `wmlm-training-plan.md` §4.3.
+**Gaming-Pause:** `systemctl stop wmlm-teacher-1m2` gibt die GPU frei;
+`start` macht mit gültigen Chunks weiter. Vorher `rocm-smi` prüfen.
+
+**Lokale Lehrer (A/B 29.10.):** `Qwen3.5-9B-Base` 8-bit gewinnt gegen
+4B-Base auf 50 Chat-/50 News-Sätzen: **+1,22/+2,31** top-1,
+**+2,46/+2,06** top-8, NLL **−0,18/−0,19**. Speed praktisch gleich
+(2,58 vs. 2,69 Sätze/s; 1,2M ~5,4 vs. 5,2 Tage). 8-bit läuft auf ROCm.
+Nächster Gate: 10k-Soft-Target-A/B mit 3k–5k Schüler-Steps; dafür
+`distill_multi.py` `load8bit` beibringen. Danach Empero Qwen3.8-9B-Distill
+und LightOn Qwen3-8B-DE. 27B/35B nur 3–4-bit, riskant. Details:
+[`kb-teacher-models.md`](kb-teacher-models.md).
+
+**API-Lehrer (29.10.2026):** Chutes ist die neue erste Wahl, aber **nur
+`Qwen/Qwen3.8-27B-TEE`**: vLLM, `allow_logprobs: true`,
+`prompt_logprobs: 20`, Qwen-Tokenizer; 1M ≈2–3 $, aber 8 Worker/Retries
+~4,8 Tage (4 Worker ~6,6; 16/32 nur Burst). Die stärkere
+`Qwen3.5-397B-A17B-TEE` läuft auf **SGLang** und liefert über den
+OpenAI-Gateway **keine** Prompt-Logprobs; Qwen3.6-27B genauso, 2.4T/Max
+sind extern (404). Together (1 Top-Eintrag/422/403) und DeepInfra (2 Einträge)
+sind live durchgefallen. Qwen3.8-27B lief im korrekten 100-Satz-Lauf
+**99/100** (98 first try, 1× NaN nach 3 Versuchen), Chat **99/100** (1×
+HTTP 502); frühere 1/10-Serien waren lastabhängig. Der NaN-Fehler ist der
+bekannte **vLLM-MTP-Bug #53488** (Fix #53520): der Drafter überschreibt
+Hidden States vor der Prompt-Logprob-Berechnung, kann auch **HTTP 200 mit
+falschen** Werten liefern. **Live bestätigt:** 9/10 Wiederholungen eines
+einfachen Prompts lieferten fremde Top-Tokens; das echte ` will` lag auf
+Rang 70.733, der 100-Satz-Lauf ergab top-1 3,6 % / NLL 1e36. **Chutes-27B
+ist damit kein Lehrer**, bis MTP deaktiviert oder vLLM auf #53520 ist.
+Bis dahin: **lokal Qwen3.5-9B-Base 8-bit** (sauber, +1,2/+2,3 top-1,
+gleiche Speed). **Kimi-K2.6-TEE** war **20/20 ohne NaN** (~1,2 s), hat aber
+den schlechteren Deutsch-Tokenizer (7,3 % Typen / 59,8 % gewichtet vs.
+Qwen 11,0 % / 84,6 %; Schüler-Vokabular 10,8 % vs. 23,1 %) und kostet ~10×.
+Der frühere „100/100“-Wert war ein Testfehler und ist zurückgezogen.
+Probe: [`tools/chutes_echo_probe.py`](tools/chutes_echo_probe.py).
+Details: [`kb-inference-providers.md`](kb-inference-providers.md).
 
 Danach in dieser Reihenfolge: 32k-Vokabular mit Top-Komposita (neue
 Soft-Targets) → Confidence-Gate/Join-aware Scoring → volle
