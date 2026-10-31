@@ -6,6 +6,13 @@
 //! `RESULTS=8`, `COLS=11`, `THREADS=8`, `WEIGHT=0.5`, `CAP=5`,
 //! `FREQ=0.5`, `GAP=2.0` (German profile). Prints no-blend and
 //! blended top-1/top-4, and the number of strokes with a previous word.
+//!
+//! `ITEMS=<path>` (optional) writes one TSV row per evaluated record, sorted
+//! by `item_id` (the record's index in the filtered `records` vector). Header
+//! `item_id\tblend_top1\tblend_top4\traw_top1\traw_top4`; the four booleans
+//! are exactly what the existing loop counts, recorded per item. Workers
+//! return their rows to the main thread, which sorts and writes after the
+//! join, so the dump is independent of `THREADS` and of decode order.
 
 use std::io::{BufRead, Write};
 use std::sync::Arc;
@@ -56,9 +63,17 @@ fn main() {
         }).collect();
     eprintln!("{} strokes", records.len());
     let chunk = records.len().div_ceil(threads).max(1);
-    let tallies: Vec<(usize, usize, usize, usize, usize, usize, usize)> = std::thread::scope(|scope| {
-        let handles: Vec<_> = records.chunks(chunk).map(|part| {
+    // Optional per-item dump. `item_id` is the record's index in `records`
+    // (the filter is deterministic, so ids align across model dumps). Workers
+    // tag their rows with a global index; the main thread sorts and writes
+    // after the join, so the file does not depend on THREADS.
+    let items_path = std::env::var("ITEMS").ok();
+    type Row = (usize, bool, bool, bool, bool); // (item_id, blend_top1, blend_top4, raw_top1, raw_top4)
+    let collect_rows = items_path.is_some();
+    let worker_results: Vec<(usize, usize, usize, usize, usize, usize, usize, Vec<Row>)> = std::thread::scope(|scope| {
+        let handles: Vec<_> = records.chunks(chunk).enumerate().map(|(chunk_idx, part)| {
             let (trie, layout, lm) = (&trie, &layout, &lm);
+            let base = chunk_idx * chunk;
             scope.spawn(move || {
                 let mut tuning = Tuning::default();
                 tuning.freq_weight = freq;
@@ -66,17 +81,24 @@ fn main() {
                 let mut decoder = Decoder::new(tuning);
                 let mut session = Session::new(lm.clone());
                 let (mut n, mut top1, mut top4, mut b1, mut b4, mut with_prev, mut moved) = (0,0,0,0,0,0,0);
-                for r in part {
+                let mut rows: Vec<Row> = Vec::new();
+                for (i, r) in part.iter().enumerate() {
                     let keys = keymap(layout, r.width, r.height, cols);
                     let sources = [Source { walker: trie, log_weight: 0.0, tier: Tier::Dictionary, min_frequency: 0 }];
                     let out = decoder.decode(&r.points, &keys, r.width / cols, &sources, results, None, 0);
                     let words: Vec<String> = out.iter().map(|c| String::from_utf16_lossy(&c.word).to_lowercase()).collect();
                     n += 1;
-                    top1 += (words.first() == Some(&r.word)) as usize;
-                    top4 += (words.iter().take(4).any(|w| *w == r.word)) as usize;
+                    let raw_top1 = words.first() == Some(&r.word);
+                    let raw_top4 = words.iter().take(4).any(|w| *w == r.word);
+                    top1 += raw_top1 as usize;
+                    top4 += raw_top4 as usize;
                     // Context: the sentence's words before the target.
                     let ctx: Vec<&str> = r.sentence.split_whitespace().take(r.word_idx).collect();
                     let mut blended: Vec<(String, f64)> = out.iter().zip(words.iter()).map(|(c, w)| (w.clone(), c.score)).collect();
+                    #[allow(unused_assignments)]
+                    let mut blend_top1 = false;
+                    #[allow(unused_assignments)]
+                    let mut blend_top4 = false;
                     if !ctx.is_empty() && blended.len() > 1 {
                         with_prev += 1;
                         session.set_context(Prefix::default(), &ctx);
@@ -88,8 +110,8 @@ fn main() {
                         let lps: Vec<Option<f32>> = words.iter().take(scored).map(|w| session.logprob(w)).collect();
                         if let Some(reference) = lps.iter().flatten().copied().find(|v| v.is_finite()) {
                             let mut any = false;
-                            for (i, (_, score)) in blended.iter_mut().take(scored).enumerate() {
-                                if let Some(lp) = lps[i] {
+                            for (j, (_, score)) in blended.iter_mut().take(scored).enumerate() {
+                                if let Some(lp) = lps[j] {
                                     let shift = (weight * (lp - reference) as f64).clamp(-cap, cap);
                                     if shift != 0.0 { *score += shift; any = true; }
                                 }
@@ -97,23 +119,70 @@ fn main() {
                             if any {
                                 moved += 1;
                                 let best = blended.iter().max_by(|a, b| a.1.total_cmp(&b.1)).map(|x| &x.0).cloned().unwrap_or_default();
-                                b1 += (best == r.word) as usize;
+                                blend_top1 = best == r.word;
+                                b1 += blend_top1 as usize;
                                 blended.sort_by(|a, b| b.1.total_cmp(&a.1));
-                                b4 += (blended.iter().take(4).any(|(w, _)| *w == r.word)) as usize;
+                                blend_top4 = blended.iter().take(4).any(|(w, _)| *w == r.word);
+                                b4 += blend_top4 as usize;
+                                if collect_rows {
+                                    rows.push((base + i, blend_top1, blend_top4, raw_top1, raw_top4));
+                                }
                                 continue;
                             }
                         }
                     }
-                    b1 += (words.first() == Some(&r.word)) as usize;
-                    b4 += (words.iter().take(4).any(|w| *w == r.word)) as usize;
+                    blend_top1 = raw_top1;
+                    blend_top4 = raw_top4;
+                    b1 += raw_top1 as usize;
+                    b4 += raw_top4 as usize;
+                    if collect_rows {
+                        rows.push((base + i, blend_top1, blend_top4, raw_top1, raw_top4));
+                    }
                 }
-                (n, top1, top4, b1, b4, with_prev, moved)
+                (n, top1, top4, b1, b4, with_prev, moved, rows)
             })
         }).collect();
         handles.into_iter().map(|h| h.join().unwrap()).collect()
     });
+    let mut all_rows: Vec<Row> = Vec::new();
+    if collect_rows {
+        for (_, _, _, _, _, _, _, ref rows) in &worker_results {
+            all_rows.extend(rows.iter().cloned());
+        }
+    }
+    if let Some(path) = items_path.as_deref() {
+        all_rows.sort_by_key(|r| r.0);
+        let mut f = match std::fs::File::create(path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("ITEMS={path}: cannot create dump file: {e}");
+                std::process::exit(1);
+            }
+        };
+        if let Err(e) = writeln!(f, "item_id\tblend_top1\tblend_top4\traw_top1\traw_top4") {
+            eprintln!("ITEMS={path}: write header failed: {e}");
+            std::process::exit(1);
+        }
+        for (id, b1r, b4r, r1r, r4r) in &all_rows {
+            // 1 / 0 (not true / false) so `paired_eval.py` accepts the dump
+            // -- its column contract is 0/1, and 0/1 also matches the
+            // McNemar aesthetic everywhere else in the plan.
+            let b1_out = if *b1r { 1u8 } else { 0u8 };
+            let b4_out = if *b4r { 1u8 } else { 0u8 };
+            let r1_out = if *r1r { 1u8 } else { 0u8 };
+            let r4_out = if *r4r { 1u8 } else { 0u8 };
+            if let Err(e) = writeln!(f, "{id}\t{b1_out}\t{b4_out}\t{r1_out}\t{r4_out}") {
+                eprintln!("ITEMS={path}: write row failed: {e}");
+                std::process::exit(1);
+            }
+        }
+        if let Err(e) = f.flush() {
+            eprintln!("ITEMS={path}: flush failed: {e}");
+            std::process::exit(1);
+        }
+    }
     let (mut n, mut top1, mut top4, mut b1, mut b4, mut wp, mut moved) = (0,0,0,0,0,0,0);
-    for (a,b,c,d,e,f,g) in tallies { n+=a; top1+=b; top4+=c; b1+=d; b4+=e; wp+=f; moved+=g; }
+    for (a,b,c,d,e,f,g,_) in worker_results { n+=a; top1+=b; top4+=c; b1+=d; b4+=e; wp+=f; moved+=g; }
     println!("n {n} | no blend top1 {:.4} top4 {:.4} | blend top1 {:.4} top4 {:.4} | with prev {wp} moved {moved} | w {weight} cap {cap}",
         top1 as f64/n as f64, top4 as f64/n as f64, b1 as f64/n as f64, b4 as f64/n as f64);
     std::io::stdout().flush().ok();

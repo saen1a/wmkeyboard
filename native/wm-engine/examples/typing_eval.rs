@@ -202,6 +202,14 @@ fn main() {
         let names: Vec<String> = (0..FEATURES).map(|i| format!("f{i}")).collect();
         writeln!(f, "mode,scatter,kind,label,{}", names.join(",")).unwrap();
     }
+    // Optional per-case dump. `item_id` is assigned in input order at the
+    // moment `t.n` increments, so it is stable across modes (the same
+    // sentence-yielding-the-case aligns across models). Metrics the existing
+    // loop does not compute for a case are written as -1.
+    let items_path = std::env::var("ITEMS").ok();
+    let collect_items = items_path.is_some();
+    // (mode, profile_idx, item_id, nextword_top1, nextword_top3, strip_top1)
+    let mut items: Vec<(String, usize, usize, i32, i32, i32)> = Vec::new();
     let keys = qwerty_keys();
     let centre = |ch: char| keys.iter().find(|k| k.0 == ch as u16).map(|k| (k.1, k.2));
     let nearest = |p: (f32, f32)| {
@@ -250,7 +258,7 @@ fn main() {
         };
         let mut full = build(&entries);
         let mut holed = build(&kept);
-        for (name, sx, sy) in &profiles {
+        for (profile_idx, (name, sx, sy)) in profiles.iter().enumerate() {
             let mut rng = Rng(0x9e37_79b9_7f4a_7c15 ^ ((*sx * 1000.0) as u64));
             let mut t = Tally::default();
             let mut sentence_index = skip;
@@ -276,17 +284,23 @@ fn main() {
                     full.set_lm_context(&context);
                     holed.set_lm_context(&context);
                     t.context_us += started.elapsed().as_micros();
+                    // Per-case metrics captured *in input order* before any
+                    // mode-specific logic, so `item_id` is stable across
+                    // models. -1 means "this metric was not computed for the
+                    // current iteration of this word in this mode". The
+                    // `mut` (not the initial value) is what carries the type
+                    // and the lifetime into the loops that overwrite them.
+                    #[allow(unused_assignments)]
+                    let (mut next1, mut next3, mut strip1) = (-1i32, -1i32, -1i32);
                     // Next word on an empty buffer (while cases are still wanted;
                     // the tail of the scan only looks for new-word rows).
                     if t.n < cases {
                         let next = full.suggest("", &previous, 3);
                         t.next_n += 1;
-                        if next.first().is_some_and(|w| w == word) {
-                            t.next_top1 += 1;
-                        }
-                        if next.iter().any(|w| w == word) {
-                            t.next_top3 += 1;
-                        }
+                        next1 = next.first().is_some_and(|w| w == word) as i32;
+                        next3 = next.iter().any(|w| w == word) as i32;
+                        if next1 == 1 { t.next_top1 += 1; }
+                        if next3 == 1 { t.next_top3 += 1; }
                     }
                     if word.len() < 3 {
                         continue;
@@ -333,9 +347,8 @@ fn main() {
                     let started = Instant::now();
                     let strip = full.suggest_touch(&typed, &previous, 5, &taps);
                     t.suggest_us += started.elapsed().as_micros();
-                    if strip.first().is_some_and(|w| w == word) {
-                        t.top1 += 1;
-                    }
+                    strip1 = strip.first().is_some_and(|w| w == word) as i32;
+                    if strip1 == 1 { t.top1 += 1; }
                     if strip.iter().take(3).any(|w| w == word) {
                         t.top3 += 1;
                     }
@@ -357,12 +370,71 @@ fn main() {
                         let feats: Vec<String> = case.features().iter().map(|v| format!("{v}")).collect();
                         writeln!(f, "{mode},{name},typo,{label},{}", feats.join(",")).unwrap();
                     }
+                    if collect_items {
+                        // `profile_idx * cases + (t.n - 1)` is the canonical
+                        // item id within this mode: the input case at the
+                        // moment of `t.n += 1`, the same across models.
+                        items.push((mode.clone(), profile_idx, profile_idx * cases + (t.n - 1), next1, next3, strip1));
+                    }
                     if t.n >= cases && t.new_words >= want_new {
                         break 'outer;
                     }
                 }
             }
             println!("{mode:>8} {}", t.line(name));
+        }
+    }
+    if let Some(path) = items_path.as_deref() {
+        // Pivot (mode, item_id, ...) -> wide TSV with one row per item_id.
+        // Strip column order is the user's MODES order in env_modes; if a
+        // mode did not record a metric for an item_id, write -1.
+        items.sort_by_key(|r| (r.0.clone(), r.1, r.2));
+        let modes_used: Vec<String> = {
+            let mut seen = std::collections::HashSet::new();
+            let mut out = Vec::new();
+            for (m, _, _, _, _, _) in &items {
+                if seen.insert(m.clone()) {
+                    out.push(m.clone());
+                }
+            }
+            out
+        };
+        let mut per_item: std::collections::BTreeMap<usize, Vec<(String, i32, i32, i32)>> = std::collections::BTreeMap::new();
+        let mut by_mode: std::collections::HashMap<(String, usize), (i32, i32, i32)> = std::collections::HashMap::new();
+        for (m, _pi, id, n1, n3, s1) in &items {
+            by_mode.insert((m.clone(), *id), (*n1, *n3, *s1));
+            per_item.entry(*id).or_insert_with(Vec::new).push((m.clone(), *n1, *n3, *s1));
+        }
+        let mut header = String::from("item_id");
+        for m in &modes_used {
+            header.push('\t');
+            header.push_str(&format!("{m}_nextword_top1\t{m}_nextword_top3\t{m}_strip_top1"));
+        }
+        let mut f = match std::fs::File::create(path) {
+            Ok(f) => f,
+            Err(e) => {
+                eprintln!("ITEMS={path}: cannot create dump file: {e}");
+                std::process::exit(1);
+            }
+        };
+        if let Err(e) = writeln!(f, "{header}") {
+            eprintln!("ITEMS={path}: write header failed: {e}");
+            std::process::exit(1);
+        }
+        for (id, _rows) in per_item.iter() {
+            let mut line = format!("{id}");
+            for m in &modes_used {
+                let (n1, n3, s1) = by_mode.get(&(m.clone(), *id)).copied().unwrap_or((-1, -1, -1));
+                line.push_str(&format!("\t{n1}\t{n3}\t{s1}"));
+            }
+            if let Err(e) = writeln!(f, "{line}") {
+                eprintln!("ITEMS={path}: write row failed: {e}");
+                std::process::exit(1);
+            }
+        }
+        if let Err(e) = f.flush() {
+            eprintln!("ITEMS={path}: flush failed: {e}");
+            std::process::exit(1);
         }
     }
 }

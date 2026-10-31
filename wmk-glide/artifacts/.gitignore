@@ -13,6 +13,12 @@ out/eval_*/
 out/*.log
 out/*.wmlm
 out/*.wmlm.sha256
+# teacher-free work (tools/wmlm/soft_mask.py, slice_data.py): derived data,
+# run directories and hashes are large or re-creatable; masks.json stays
+# untracked too because each build rewrites it.
+out/*/
+out/*.sha256
+out/*.masks.json
 data/*.txt
 data/*.txt.gz
 data/*.tsv
