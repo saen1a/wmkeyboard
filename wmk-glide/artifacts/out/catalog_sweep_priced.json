@@ -1,0 +1,482 @@
+{
+ "prompt": "Ich will nach Hause gehen und morgen",
+ "models": {
+  "MiniMaxAI/MiniMax-M2.7": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tChfM-2kFHot-a54eed5eef76d39e\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.3
+  },
+  "MiniMaxAI/MiniMax-M3": {
+   "ok": false,
+   "reason": "HTTP 400: {\"error\":{\"type\":\"invalid_request_error\",\"code\":\"batch_prompts_not_supported\",\"message\":\"Batched prompt arrays",
+   "type": "chat",
+   "price_in": 0.3
+  },
+  "MiniMaxAI/MiniMax-M3.1-Flash": {
+   "ok": false,
+   "reason": "choice 0: the echoed tokens do not reproduce the prompt (']<]minimax[>[' vs 'Ich will nach Hause gehen und morgen'); a m",
+   "type": "chat",
+   "price_in": 0.15
+  },
+  "NousResearch/Nous-Hermes-2-Mixtral-8x7B-DPO": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCiHV-2kFHot-a54eed6bcd6b1ca9\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.6
+  },
+  "Qwen/QwQ-32B": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCiNR-2kFHot-a54eed6dbc5cdbb1\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 1.2
+  },
+  "Qwen/Qwen2-1.5B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCiTA-2kFHot-a54eed6f5f35d24f\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.02
+  },
+  "Qwen/Qwen2-72B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCiYM-2kFHot-a54eed710862652e\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.9
+  },
+  "Qwen/Qwen2-VL-72B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCidJ-2kFHot-a54eed72fdd8475f\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 1.2
+  },
+  "Qwen/Qwen2.5-14B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCika-2kFHot-a54eed74ca3bdcac\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.8
+  },
+  "Qwen/Qwen2.5-72B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCirB-2kFHot-a54eed778db3f2a8\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 1.2
+  },
+  "Qwen/Qwen2.5-72B-Instruct-Turbo": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCiwX-2kFHot-a54eed799bdbcf8e\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 1.2
+  },
+  "Qwen/Qwen2.5-7B-Instruct-Turbo": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCj2S-2kFHot-a54eed7b5ce2d9d3\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.3
+  },
+  "Qwen/Qwen2.5-Coder-32B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCj7d-2kFHot-a54eed7d2f874e32\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.8
+  },
+  "Qwen/Qwen2.5-VL-72B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCjCd-2kFHot-a54eed7f0d4e9756\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 1.95
+  },
+  "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCjHW-2kFHot-a54eed80db24b18f\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 2.0
+  },
+  "Qwen/Qwen3-Coder-Next-FP8": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCjNp-2kFHot-a54eed82ce8a7641\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.5
+  },
+  "Qwen/Qwen3-Next-80B-A3B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCjUC-2kFHot-a54eed848c7a8d30\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.15
+  },
+  "Qwen/Qwen3-Next-80B-A3B-Thinking": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCjZg-2kFHot-a54eed868b0c1e64\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.15
+  },
+  "Qwen/Qwen3-VL-32B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCjeT-2kFHot-a54eed887d89760d\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.5
+  },
+  "Qwen/Qwen3-VL-8B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCjjm-2kFHot-a54eed8a4fa4077f\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.18000000000000002
+  },
+  "Qwen/Qwen3.5-397B-A17B": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCjpi-2kFHot-a54eed8c2ab5d24e\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.6
+  },
+  "Qwen/Qwen3.6-Plus": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCk63-2kFHot-a54eed90dbc87ed5\",   \"error\": {     \"message\": \"<400> InternalError.Algo.InvalidPara",
+   "type": "chat",
+   "price_in": 0.5
+  },
+  "Qwen/Qwen3.7-Max": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCka7-2kFHot-a54eed9b086995b3\",   \"error\": {     \"message\": \"<400> InternalError.Algo.InvalidPara",
+   "type": "chat",
+   "price_in": 2.5
+  },
+  "Qwen/Qwen3.7-Plus": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCkzg-2kFHot-a54eeda4f80df4f1\",   \"error\": {     \"message\": \"<400> InternalError.Algo.InvalidPara",
+   "type": "chat",
+   "price_in": 0.32
+  },
+  "Qwen/Qwen3.8-2.4T-A95B": {
+   "ok": false,
+   "reason": "HTTP 400: {\"error\":{\"type\":\"Bad Request\",\"code\":\"batch_prompts_not_supported\",\"message\":\"Batched prompt arrays are not s",
+   "type": "chat",
+   "price_in": 2.0
+  },
+  "Qwen/Qwen3.8-Flash": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCvF7-2kFHot-a54eee6768087310\",   \"error\": {     \"message\": \"Role must be in [\\\"user\\\", \\\"assista",
+   "type": "chat",
+   "price_in": 0.15
+  },
+  "arcee-ai/trinity-mini": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCvbM-2kFHot-a54eee6e9b3ccd05\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.045000000000000005
+  },
+  "arize-ai/qwen-2-1.5b-instruct": {
+   "ok": false,
+   "reason": "HTTP 422: {   \"id\": \"p7tCvf4-zfFMX-a54eee705affd9dc\",   \"error\": {     \"message\": \"Unprocessable Entity\",     \"type\": \"i",
+   "type": "chat",
+   "price_in": 0.1
+  },
+  "deepseek-ai/DeepSeek-R1-0528": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCvmF-2kFHot-a54eee723a9c3e5e\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 3.0
+  },
+  "deepseek-ai/DeepSeek-R1-Distill-Llama-70B": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCvrN-2kFHot-a54eee73fd41bb50\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 2.0
+  },
+  "deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCvwe-2kFHot-a54eee75dc57dbbd\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.18000000000000002
+  },
+  "deepseek-ai/DeepSeek-R1-Distill-Qwen-14B": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCw2i-2kFHot-a54eee77bc611ce4\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 1.6
+  },
+  "deepseek-ai/DeepSeek-V3.1": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCw75-2kFHot-a54eee798bef0686\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.6
+  },
+  "deepseek-ai/DeepSeek-V4-Pro-0813": {
+   "ok": false,
+   "reason": "HTTP 400: {\"error\":{\"type\":\"invalid_request_error\",\"code\":\"batch_prompts_not_supported\",\"message\":\"Batched prompt arrays",
+   "type": "chat",
+   "price_in": 1.32
+  },
+  "deepseek-ai/DeepSeek-V4.1-Flash": {
+   "ok": false,
+   "reason": "choice 0: the echoed tokens do not reproduce the prompt (' wieder' vs 'Ich will nach Hause gehen und morgen'); a misalig",
+   "type": "chat",
+   "price_in": 0.3
+  },
+  "deepseek-ai/DeepSeek-V4.1-Flash-1017": {
+   "ok": false,
+   "reason": "choice 0: the echoed tokens do not reproduce the prompt (' fr' vs 'Ich will nach Hause gehen und morgen'); a misaligned ",
+   "type": "chat",
+   "price_in": 0.3
+  },
+  "deepseek-ai/deepseek-coder-33b-instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCwPg-2kFHot-a54eee7f797adc88\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.8
+  },
+  "google/gemma-2-27b-it": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCwUM-2kFHot-a54eee811ffb9a07\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.8
+  },
+  "google/gemma-4-31B-it": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCwZU-2kFHot-a54eee82ec73629f\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.39
+  },
+  "meta-llama/Llama-3-8b-chat-hf": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCwf1-2kFHot-a54eee84aa269781\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.2
+  },
+  "meta-llama/Llama-3.1-405B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCwjf-2kFHot-a54eee86aa203412\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 3.5
+  },
+  "meta-llama/Llama-3.2-1B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCwq2-2kFHot-a54eee886b6e37ec\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.060000000000000005
+  },
+  "meta-llama/Llama-3.2-3B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCwv5-2kFHot-a54eee8a6fb12954\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.060000000000000005
+  },
+  "meta-llama/Llama-3.3-70B-Instruct-Turbo": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCwzd-2kFHot-a54eee8c3965bbb0\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 1.0399999999999998
+  },
+  "meta-llama/Llama-4-Scout-17B-16E-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCx5P-2kFHot-a54eee8dca607c0a\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.18000000000000002
+  },
+  "meta-llama/Meta-Llama-3-70B-Instruct-Turbo": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCxAC-2kFHot-a54eee8f8be891d1\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.88
+  },
+  "meta-llama/Meta-Llama-3-8B-Instruct": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCxFk-2kFHot-a54eee9148ccbbf7\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.2
+  },
+  "meta-llama/Meta-Llama-3.1-70B-Instruct-Turbo": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCxLj-2kFHot-a54eee9349143825\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.88
+  },
+  "meta-llama/Meta-Llama-3.1-8B": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCxRd-2kFHot-a54eee951e04d9d8\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "language",
+   "price_in": 0.2
+  },
+  "meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCxW9-2kFHot-a54eee96e9193a54\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.18000000000000002
+  },
+  "meta-models/Muse-Glimmer-30B": {
+   "ok": false,
+   "reason": "choice 0: the echoed tokens do not reproduce the prompt ('<|begin_of_text|>Ich will nach Hause gehen und morgen früh' vs",
+   "type": "chat",
+   "price_in": 0.35
+  },
+  "meta-models/Muse-Spark-Open-816B-A42B": {
+   "ok": false,
+   "reason": "HTTP 400: {\"error\":{\"type\":\"invalid_request_error\",\"code\":\"batch_prompts_not_supported\",\"message\":\"Batched prompt arrays",
+   "type": "chat",
+   "price_in": 1.25
+  },
+  "mistralai/Ministral-3-14B-Instruct-2512": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCxvU-2kFHot-a54eee9f683535e8\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.2
+  },
+  "mistralai/Mistral-7B-Instruct-v0.1": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCy1c-2kFHot-a54eeea14e035d78\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.2
+  },
+  "mistralai/Mistral-7B-Instruct-v0.3": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCy6s-2kFHot-a54eeea3494568c0\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.2
+  },
+  "mistralai/Mistral-Small-24B-Instruct-2501": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCyC3-2kFHot-a54eeea518b80de3\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.1
+  },
+  "mistralai/Mixtral-8x7B-Instruct-v0.1": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCyGL-2kFHot-a54eeea6fd938e2c\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.6
+  },
+  "moonshotai/Kimi-K2.5-fp4": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCyM3-2kFHot-a54eeea88b0adcd1\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.5
+  },
+  "moonshotai/Kimi-K2.6": {
+   "ok": false,
+   "reason": "HTTP 400: {\"error\":{\"message\":\"No deployments are ready to serve this endpoint; all configured deployments are stopped. ",
+   "type": "chat",
+   "price_in": 1.2
+  },
+  "moonshotai/Kimi-K2.7-Code": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tCyWZ-2kFHot-a54eeeabea1fe7e7\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.95
+  },
+  "moonshotai/Kimi-K3": {
+   "ok": false,
+   "reason": "HTTP 400: {\"error\":{\"type\":\"invalid_request_error\",\"code\":\"batch_prompts_not_supported\",\"message\":\"Batched prompt arrays",
+   "type": "chat",
+   "price_in": 3.0
+  },
+  "nvidia/Llama-3.1-Nemotron-70B-Instruct-HF": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tD3FE-2kFHot-a54eeefa7ec730c0\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.88
+  },
+  "nvidia/NVIDIA-Nemotron-3.5-Super-VL": {
+   "ok": false,
+   "reason": "choice 0: the echoed tokens do not reproduce the prompt (' wieder' vs 'Ich will nach Hause gehen und morgen'); a misalig",
+   "type": "chat",
+   "price_in": 0.15
+  },
+  "nvidia/NVIDIA-Nemotron-Nano-9B-v2": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tD3V5-2kFHot-a54eeeff8a8890e7\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.060000000000000005
+  },
+  "nvidia/nemotron-3-ultra-550b-a55b": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tD3Zy-2kFHot-a54eef013f2e914d\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.6
+  },
+  "openai/gpt-oss-20b": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tD3fM-2kFHot-a54eef032e984d56\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.05
+  },
+  "reflection/Beam-1.0-501B-A23B": {
+   "ok": false,
+   "reason": "choice 0: the echoed tokens do not reproduce the prompt (' früh' vs 'Ich will nach Hause gehen und morgen'); a misaligne",
+   "type": "chat",
+   "price_in": 0.4
+  },
+  "thinkingmachines/Inkling": {
+   "ok": false,
+   "reason": "HTTP 422: {   \"id\": \"p7tD3is-41H8Z5-a54eef068ae1d34d\",   \"error\": {     \"message\": \"Unprocessable Entity\",     \"type\": \"",
+   "type": "chat",
+   "price_in": 1.0
+  },
+  "together/Tev1-4B-experimental": {
+   "ok": false,
+   "reason": "HTTP 400: {\"error\":{\"type\":\"invalid_request_error\",\"code\":\"batch_prompts_not_supported\",\"message\":\"Batched prompt arrays",
+   "type": "chat",
+   "price_in": 0.041999999999999996
+  },
+  "zai-org/GLM-4.5-Air-FP8": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tD4Gk-2kFHot-a54eef101f5a98bd\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.2
+  },
+  "zai-org/GLM-4.6": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tD4Mc-2kFHot-a54eef11cbe4d38a\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.6
+  },
+  "zai-org/GLM-4.7": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tD4SY-3pDw3Z-a54eef138af586e3\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 0.45
+  },
+  "zai-org/GLM-5": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tD4Wg-2kFHot-a54eef1518c7973d\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 1.0
+  },
+  "zai-org/GLM-5.1": {
+   "ok": false,
+   "reason": "HTTP 400: {   \"id\": \"p7tD4bt-2kFHot-a54eef16db344d37\",   \"error\": {     \"message\": \"Unable to access non-serverless mode",
+   "type": "chat",
+   "price_in": 1.4
+  },
+  "zai-org/GLM-5.2": {
+   "ok": true,
+   "reason": "width 5-5, positions 6",
+   "type": "chat",
+   "price_in": 1.4
+  },
+  "zai-org/GLM-5.3": {
+   "ok": false,
+   "reason": "choice 0: the echoed tokens do not reproduce the prompt (' früh' vs 'Ich will nach Hause gehen und morgen'); a misaligne",
+   "type": "chat",
+   "price_in": 1.4
+  },
+  "zai-org/GLM-5.3-Flash": {
+   "ok": false,
+   "reason": "HTTP 400: {\"error\":{\"type\":\"invalid_request_error\",\"code\":\"batch_prompts_not_supported\",\"message\":\"Batched prompt arrays",
+   "type": "chat",
+   "price_in": 0.15
+  }
+ },
+ "usable": [
+  "zai-org/GLM-5.2"
+ ],
+ "note": "Full sweep: one 4-token echo request per priced text model. usable = echo reproduces the prompt AND >=2 alternatives at some position. 'priced' (input>0) is the serverless signal; 0-priced models answered 'Unable to access non-serverless model'.",
+ "summary": {
+  "probed": 77,
+  "usable": [
+   "zai-org/GLM-5.2"
+  ],
+  "non_serverless": 55,
+  "batch_prompts_unsupported": 7,
+  "echo_not_honoured": 7,
+  "chat_only": 1,
+  "other": 7
+ }
+}

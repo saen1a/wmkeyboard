@@ -233,7 +233,7 @@ A/B: **unter 1 h Rechenzeit, unter 1 €**. Bis dahin bleibt die lokale
 | **Hugging Face TGI** | `details.prefill` | **nur tatsächliches Token?** | beliebig | L4/GPU | Top-k für Prompt unklar |
 | Fireworks / OpenAI / Novita | `echo` | **5** | Qwen/Llama/GPT | – | zu sparse |
 | Groq / Cerebras / Vertex | – | 5 / kein Prompt | – | – | fällt aus |
-| Together | ja auf `/v1/completions` (`echo`), **nur** serverless erreichbar: `Qwen3.5-9B` (Array) und `gpt-oss-120b` (Einzel-Prompt) | **5 (harte Grenze)** | Qwen/GPT-OSS | 0,36–1,35 $/150k | 5 breit → für top-24 untauglich; als „5 + echtes Token“-Ziel A/B-würdig (§2c); Modell-Matrix: `together-teacher-plan.md` §6 |
+| Together | ja auf `/v1/completions` (`echo`), **nur** serverless erreichbar: `GLM-5.2` (Array, 42 S/s), `Qwen3.5-9B` (Array, 121–498 S/s), `gpt-oss-120b` (Einzel-Prompt) — Sweep über alle 77 bezahlten Modelle | **5 (harte Grenze)** | Qwen/GPT-OSS | 0,36–1,35 $/150k | 5 breit → für top-24 untauglich; als „5 + echtes Token“-Ziel A/B-würdig (§2c); Modell-Matrix: `together-teacher-plan.md` §6 |
 | DeepInfra | `echo` | 1–2 | Qwen/GPT-OSS | – | **live FAIL** |
 
 **Nebius:** Der Completion-Endpunkt hat `extra_body` als freies Feld; das ist

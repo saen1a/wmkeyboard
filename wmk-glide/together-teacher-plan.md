@@ -172,13 +172,23 @@ behandelt:
 | Echo wird nicht erfüllt | `zai-org/GLM-5.3-Flash` (Antwort `'\n\n'`), `deepseek-ai/DeepSeek-V4.1-Flash` (Antwort `'?'`) | **keine** Prompt-Logprobs; der Client bricht hart ab („a misaligned row is worse than a missing one“) |
 | `batch_prompts_not_supported` bzw. 200 mit nur 1 Choice | `openai/gpt-oss-120b`, `GLM-5.3-Flash` | Client erkennt beide Formen und schaltet auf **Einzel-Prompt** um (String statt Array — auch ein 1-Element-Array wird abgelehnt) |
 
-**Damit sind genau zwei Modelle nutzbar**, und eines davon ist deutlich
-schlechter auf Deutsch:
+**Vollständiger Sweep (03.11.2026, `catalog_sweep.py`):** 77 Modelle mit
+Preis > 0 (das Serverless-Signal) je eine Echo-Anfrage. Ergebnis: **55
+non-serverless**, **7** verweigern Array-Prompts, **7** erfüllen das Echo
+nicht, **1** ist chat-only, **7** sonstiges — und **genau ein zusätzliches
+Modell ist nutzbar: `zai-org/GLM-5.2`**. Damit sind es **drei**, und das neue
+ist das beste gemessene:
 
-| Modell | Breite | NLL ↓ | top-1 | Masse | Wort-Rate ↑ | tok/Wort | 200 Sätze |
-|---|---:|---:|---:|---:|---:|---:|---:|
-| `Qwen/Qwen3.5-9B` | 5–5,5 | **4,527** | **0,296** | **0,544** | **57,0 %** | 1,66 | 1 Request (Array) |
-| `openai/gpt-oss-120b` | 5–5,7 | 6,124 | 0,177 | 0,376 | 57,8 % | 1,62 | ~200 Requests (Einzel) |
+| Modell | Breite | NLL ↓ | top-1 ↑ | Masse ↑ | Wort-Rate ↑ | tok/Wort | Preis in/out | Betrieb |
+|---|---:|---:|---:|---:|---:|---:|---:|---|
+| `zai-org/GLM-5.2` | 4–5,5 | **4,327** | **0,358** | **0,638** | 57,8 % | 1,72 | 1,4 / 4,4 | Array, 42 Sätze/s |
+| `Qwen/Qwen3.5-9B` | 5–5,5 | 4,527 | 0,296 | 0,544 | **63,5 %** | 1,56 | **0,17 / 0,25** | Array, 121–498 Sätze/s |
+| `openai/gpt-oss-120b` | 5–5,7 | 6,124 | 0,177 | 0,376 | 57,8 % | 1,62 | 0,15 / 0,60 | nur Einzel-Prompt |
+
+GLM-5.2 gewinnt auf allen Qualitätsmaßen (NLL, top-1, Masse), kostet aber
+**8× mehr pro Token**: 150k Sätze ≈ **2,52 $** statt 0,31 $, 2M ≈ **34 $**
+statt 4 $. In absoluten Zahlen bleibt beides billig; die Wahl ist
+Qualität gegen Faktor 8 im Preis und Faktor 3 in der Zeit.
 
 Zum Vergleich, **gleiche 200 Sätze**, lokale Base-Lehrer aus
 `artifacts/out/ab_3way.json` (Token-NLL, dieselbe Metrik): `Qwen3.5-4B-Base`
@@ -252,7 +262,51 @@ Zweitlehrer **nur für die Sätze, die blinde Zeilen haben** (`--fill-below`);
 anschließbar; der Grenznutzen fällt mit dem Gewicht des Zweiten schon auf
 ~1 %.
 
-## 8. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
+## 8. Den 2M-Cache ergänzen oder reparieren?
+
+Der bestehende Cache (`de_soft_2m.npz`, 1 979 982 Sätze, 21 378 590 Rows,
+top-24, Qwen3.8-27B) hat drei gemessene Löcher (`audit_signal.json` 2m):
+
+| Loch | Umfang | Wirkung im Training |
+|---|---:|---|
+| Piece-Rows mit Lehrermasse **0,0** | **15,17 %** = 3,24 Mio. Rows (in 75,7 % der Sätze) | KD unterdrückt das richtige Piece-Wort auf `p_b = 1−α` |
+| echtes Wort **nicht** in top-24 | 18,3 % = 3,9 Mio. Rows | KD kennt die Wahrheit nicht |
+| leere Rows (ohne Row 0) | ~1 % = ~0,2 Mio. Rows | kein KD-Signal |
+
+**Weg A — ergänzen (neue Sätze).** Verifiziert: ein Together-File auf
+`--topk 24` gepolstert (6 echte Kandidaten, Rest Nullen) wird von
+`merge_soft.py` mit dem 27B-Cache **akzeptiert** (gleiche 4 Keys, gleiches
+topk, disjunkte Sentence-IDs) — Test mit synthetischen Chunks gelaufen. Kosten:
+150k Sätze ≈ 5 min / 0,31 $ (Qwen) bzw. ~1 h / 2,52 $ (GLM-5.2). Effekt: mehr
+Rows eines **schmaleren** Lehrers; mit `weight = mass` automatisch
+niedriger gewichtet.
+Wichtig: nur **neue** Sätze einspeisen — dieselben Sätze mit einem zweiten
+Lehrer zu überschreiben gäbe widersprüchliche Ziele.
+
+**Weg B — reparieren (die blinden Rows).** `patch_soft.py` holt nur die Sätze
+mit blinden Rows, behält die 24 Kandidaten des 27B und schreibt das **echte
+Wort mit exakter Wahrscheinlichkeit** (aus `echo`, auch mehrteilig) in den
+letzten Slot. Breite, Zeilenzahl und Reihenfolge bleiben identisch, das File
+bleibt vier Schlüssel; ein Report zählt jede Änderung. Selbsttest plus
+Live-Lauf gegen die echte API (14 von 14 geflaggten Rows gepatcht).
+
+```bash
+python3 cloud/together/patch_soft.py --data-dir out/de_lm_2m \
+    --soft out/de_soft_2m.npz --map out/wordmap_glm52.json \
+    --out out/de_soft_2m_patched.npz --model zai-org/GLM-5.2 \
+    --report out/de_soft_2m_patched.report.json
+```
+
+Kosten für Weg B: nur die betroffenen Sätze (1,50 Mio. von 1,98 Mio.) →
+~40 min / ~3 $ mit Qwen3.5-9B, ~10 h / ~25 $ mit GLM-5.2.
+
+**Empfehlung:** **B vor A.** B entfernt den Suppressions-Defekt
+(`p_b = 1−α`) an genau den Zeilen, an denen er entsteht, kann per Konstruktion
+nicht schaden (es kommt nur die Wahrheit hinzu) und ist mit dem bestehenden
+Gate-Vertrag verträglich — der Schüler sieht dieselbe Zielbreite wie bisher.
+A ist danach eine reine Mengenfrage und mit `weight = mass` sauber dosiert.
+
+## 9. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
 
 1. **100k-Slice sammeln** (Together, 8-wide, `--weight-mode mass`):
    ~1 min, ~0,21 $. Vorher `wordmap.py` einmal.
