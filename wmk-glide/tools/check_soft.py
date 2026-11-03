@@ -90,6 +90,11 @@ def validate_soft(path, vocab_size=None, expect_sentences=None, min_mass_ratio=0
             raise SoftError(f"{path}: row mass > 1.001")
         nonzero = int((mass > 0).sum())
         ratio = nonzero / rows
+        # Two different quantities used to share one name (audit 2026-11-03):
+        # `row_coverage` is the share of rows with *any* mass (what the 90 %
+        # gate means), `mean_mass` is how much of the teacher's probability a
+        # filled row captures (0.906 at top-24, 0.755 at 5 wide).
+        mean_mass = float(mass[mass > 0].mean()) if nonzero else 0.0
         if ratio < min_mass_ratio:
             raise SoftError(
                 f"{path}: only {ratio:.1%} of rows carry teacher mass "
@@ -98,13 +103,16 @@ def validate_soft(path, vocab_size=None, expect_sentences=None, min_mass_ratio=0
     else:
         nonzero = 0
         ratio = 0.0
+        mean_mass = 0.0
 
     return {
         "path": path,
         "sentences": len(sentences),
         "rows": rows,
         "topk": int(ids.shape[1]),
-        "mass_ratio": ratio,
+        "row_coverage": ratio,
+        "mean_mass": mean_mass,
+        "mass_ratio": ratio,   # kept: older scripts and logs print this key
         "id_max": int(ids.max()) if rows else -1,
     }
 
@@ -114,7 +122,10 @@ def main():
     ap.add_argument("path")
     ap.add_argument("--vocab-size", type=int, default=None)
     ap.add_argument("--expect-sentences", type=int, default=None)
-    ap.add_argument("--min-mass-ratio", type=float, default=0.9)
+    ap.add_argument("--min-mass-ratio", type=float, default=0.9,
+                    help="minimum share of ROWS that carry any teacher mass "
+                         "(not the teacher's probability mass; that is reported "
+                         "as mean row mass)")
     args = ap.parse_args()
     try:
         s = validate_soft(
@@ -128,7 +139,8 @@ def main():
         return 1
     print(
         f"OK {s['path']}: {s['sentences']} sentences, {s['rows']} rows, "
-        f"top-{s['topk']}, mass {s['mass_ratio']:.1%}, max id {s['id_max']}"
+        f"top-{s['topk']}, row coverage {s['row_coverage']:.1%}, "
+        f"mean row mass {s['mean_mass']:.3f}, max id {s['id_max']}"
     )
     return 0
 

@@ -352,11 +352,11 @@ Ziele haben im Mittel 16,79 Kandidaten, und die Trefferquote des echten
 nächsten Tokens liegt bei top-24 **81,7 %** gegenüber top-8 **48,2 %**
 (`artifacts/out/audit_soft.json`), also **nicht empfohlen**.
 Die Probes liegen bereit und sind auf den Cap eingestellt:
-`TOGETHER_API_KEY=... python3 tools/together_echo_probe.py --model
+`TOGETHER_API_KEY=... python3 wmk-glide/cloud/together/probe.py --model
 Qwen/Qwen3.5-9B` (`--top-n 5`, `--min-top 10`; ein korrektes 5-weites
 Ergebnis meldet deshalb `FAIL`, `--min-top 5` zeigt die Obergrenze als
 `PASS`). Danach
-[`tools/together_token_test.py`](tools/together_token_test.py) auf 100
+[`cloud/together/token_test.py`](cloud/together/token_test.py) auf 100
 Sätzen aus `out/de_lm` (Top-1/Top-k des echten nächsten Lehrer-Tokens;
 braucht die Korpusdaten, die nur auf dem wmlm-Rechner liegen).
 
@@ -373,9 +373,9 @@ unter 1 €.
 
 ```powershell
 # Probe (Windows oder WSL), Key außerhalb des Repos
-python wmk-glide\tools\together_echo_probe.py --key-file C:\Users\saenta\.together.key --model Qwen/Qwen3.5-9B
+python wmk-glide\cloud\together\probe.py --key-file C:\Users\saenta\.together.key --model Qwen/Qwen3.5-9B
 # Token-Test in WSL (numpy/venv)
-wsl -d Ubuntu-24.04 -u root -e bash -lc 'cd /root/wmlm-de; /opt/wmlm-venv/bin/python tools/wmlm/together_token_test.py --key-file /mnt/c/Users/saenta/.together.key --data-dir out/de_lm --model Qwen/Qwen3.5-9B --sentences 100'
+wsl -d Ubuntu-24.04 -u root -e bash -lc 'cd /root/wmlm-de; /opt/wmlm-venv/bin/python wmk-glide/cloud/together/token_test.py --key-file /mnt/c/Users/saenta/.together.key --data-dir out/de_lm --model Qwen/Qwen3.5-9B --sentences 100'
 ```
 
 Der Token-Test misst **Lehrer-Token-Top-8**, nicht die 45,1 der lokalen 4B

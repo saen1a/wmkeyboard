@@ -84,7 +84,10 @@ Start-Piece-Abdeckung) und der Upstream-Issue-Entwurf:
    der alte 1-Eintrag/422/403-Lauf ungültig; Qwen3.5-9B und gpt-oss-120b je
    5/5). 5 < 10 → für Soft-Targets untauglich, Grund jetzt belegt.
    **Scaleway** nur nach einem 100-Satz-A/B; **kein größerer Schüler** (d288
-   ohne Gewinn); **Englisch entfernen** ist kein Hebel.
+   ohne Gewinn); **Englisch entfernen** ist kein Hebel. **Together-Pfad ist
+   gebaut** (`cloud/together/`: Collector, Wort-Map, Probe, Tests) — 8-wide
+   mit `mass`-Gewichtung, Entscheidung per A/B
+   ([`together-teacher-plan.md`](together-teacher-plan.md)).
 
 ## Befehle
 

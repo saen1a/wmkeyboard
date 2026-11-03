@@ -35,6 +35,7 @@ def main():
     sentences, ids, probs = [], [], []
     starts = [0]
     topk = None
+    extras = {}          # extra per-row arrays (e.g. `weight`, `mass`)
     for path in args.chunks:
         try:
             validate_soft(path, vocab_size=args.vocab_size, min_mass_ratio=0.0)
@@ -54,6 +55,16 @@ def main():
         sentences.append(z["sentences"])
         ids.append(z["ids"])
         probs.append(z["probs"])
+        # Carry any additional per-row array through the merge. The collector
+        # writes per-row diagnostics (`mass`, `actual`, `weight`) that a KD
+        # term or a weight file needs; dropping them here silently lost them
+        # (audit finding, 2026-11-03).
+        for key in z.files:
+            if key in ("sentences", "starts", "ids", "probs"):
+                continue
+            arr = z[key]
+            if arr.ndim == 1 and arr.shape[0] == len(z["ids"]):
+                extras.setdefault(key, []).append(arr)
 
     out_sent = np.concatenate(sentences)
     if len(out_sent) and not np.all(np.diff(out_sent) > 0):
@@ -67,14 +78,17 @@ def main():
         sys.exit("internal offset mismatch while merging")
 
     # Atomic write: a killed merge must not leave a plausible-looking npz.
+    persona = {"sentences": out_sent.astype(np.int32, copy=False),
+               "starts": np.asarray(starts, dtype=np.int64),
+               "ids": out_ids,
+               "probs": out_probs}
+    for key, parts in extras.items():
+        if len(parts) != len(args.chunks):
+            sys.exit(f"extra array {key} present in {len(parts)} of "
+                     f"{len(args.chunks)} chunks; refusing to merge")
+        persona[key] = np.concatenate(parts)
     tmp = args.out + ".tmp.npz"
-    np.savez_compressed(
-        tmp,
-        sentences=out_sent.astype(np.int32, copy=False),
-        starts=np.asarray(starts, dtype=np.int64),
-        ids=out_ids,
-        probs=out_probs,
-    )
+    np.savez_compressed(tmp, **persona)
     os.replace(tmp, args.out)
 
     try:
@@ -88,7 +102,8 @@ def main():
         sys.exit(f"FAIL merged: {e}")
     print(
         f"wrote {args.out}: {len(args.chunks)} chunks, {s['sentences']} sentences, "
-        f"{s['rows']} rows, mass {s['mass_ratio']:.1%}"
+        f"{s['rows']} rows, row coverage {s['row_coverage']:.1%}, "
+        f"mean row mass {s['mean_mass']:.3f}"
     )
 
 

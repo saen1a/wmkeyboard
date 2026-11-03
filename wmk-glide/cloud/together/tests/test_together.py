@@ -86,6 +86,47 @@ class ClientTest(unittest.TestCase):
         self.assertEqual(t.calls[0]["temperature"], 0)
         self.assertIs(t.calls[0]["echo"], True)
 
+    def test_prompt_lengths_are_per_choice_not_from_usage(self):
+        """Array prompts report a summed `usage.prompt_tokens`; a per-choice
+        count derived from it truncated every prompt (live bug 2026-11-03)."""
+        class T:
+            def __call__(self, body):
+                prompts = body["prompt"]
+                out = []
+                for i, pr in enumerate(prompts):
+                    toks = pr.split(" ") if " " not in pr else [w if j == 0 else " " + w
+                                                               for j, w in enumerate(pr.split(" "))]
+                    toks = [t if j == 0 else (t if t.startswith(" ") else " " + t)
+                            for j, t in enumerate(toks)]
+                    out.append({"index": i, "text": "x",
+                                "logprobs": {"tokens": toks,
+                                             "token_logprobs": [None] + [-0.5] * (len(toks) - 1),
+                                             "top_logprobs": [{}] * len(toks)}})
+                # deliberately wrong aggregate: 1 per choice for the whole batch
+                return {"choices": out, "usage": {"prompt_tokens": len(prompts),
+                                                  "completion_tokens": len(prompts)}}
+
+        c = make_client(T(), batch=8)
+        out = c.score(["a b c", "d", "e f"])
+        self.assertEqual([o.prompt_tokens for o in out], [3, 1, 2])
+        self.assertEqual(out[0].tokens, ["a", " b", " c"])
+
+    def test_misaligned_echo_is_fatal(self):
+        def bad(body):
+            return {"choices": [{"index": 0, "text": "",
+                                 "logprobs": {"tokens": ["nope"], "token_logprobs": [None],
+                                              "top_logprobs": [{}]}}],
+                    "usage": {"prompt_tokens": 1}}
+        c = make_client(bad)
+        with self.assertRaises(tg.TogetherError):
+            c.score(["a b"])
+
+    def test_prompt_len_helper(self):
+        self.assertEqual(tg.prompt_len([" a", " b", " c"], " a b c"), 3)
+        self.assertEqual(tg.prompt_len([" a", " b", " c", " x"], " a b c"), 3)
+        self.assertIsNone(tg.prompt_len([" a", " b"], " a b c"))
+        self.assertIsNone(tg.prompt_len([" b"], " a b"))
+
     def test_choice_count_mismatch_is_fatal(self):
         c = make_client(FakeTransport(drop_choice=True), batch=4)
         with self.assertRaises(tg.TogetherError):
@@ -226,14 +267,38 @@ class TargetsTest(unittest.TestCase):
         self.assertAlmostEqual(a["top1"], 0.5, places=6)
         self.assertAlmostEqual(a["mean_nll"], (-LP(0.9) - LP(0.2)) / 2, places=6)
 
+    def test_row_weights_modes(self):
+        import numpy as np
+        mass = np.array([0.0, 0.9, 0.5], dtype=np.float32)
+        counts = np.array([0, 6, 3], dtype=np.float32)
+        piece = np.array([0, 0, 1], dtype=bool)
+        w = tc.row_weights("mass", mass, counts, piece, 8)
+        assert list(np.round(w, 3)) == [0.0, 0.9, 0.5], w
+        w = tc.row_weights("cand", mass, counts, piece, 6)
+        assert list(np.round(w, 3)) == [0.0, 1.0, 0.5], w
+        w = tc.row_weights("piece", mass, counts, piece, 8, piece_weight=0.1)
+        assert list(np.round(w, 3)) == [0.0, 1.0, 0.1], w
+        # empty rows always weigh 0, whatever the mode
+        for mode in ("mass", "cand", "piece"):
+            assert tc.row_weights(mode, mass, counts, piece, 8)[0] == 0.0
+        with self.assertRaises(ValueError):
+            tc.row_weights("nonsense", mass, counts, piece, 8)
+
     def test_audit_sibling_roundtrip(self):
         import tempfile
         import numpy as np
         with tempfile.TemporaryDirectory() as d:
             path = os.path.join(d, "x.audit.npz")
-            tc.save_audit(path, [0.0, 0.5], [-1, 7], [0.0, 0.25])
+            tc.save_audit(path, [0.0, 0.5], [-1, 7], [0.0, 0.25],
+                          weight=[0.0, 0.5], piece=[0, 1])
             got = tc.load_audit(path)
             self.assertEqual(sorted(got), sorted(tc.AUDIT_KEYS))
+            self.assertAlmostEqual(float(got["weight"][1]), 0.5, places=6)
+            self.assertEqual(int(got["piece"][1]), 1)
+            # the optional arrays really are optional
+            tc.save_audit(path, [0.0, 0.5], [-1, 7], [0.0, 0.25])
+            self.assertEqual(sorted(tc.load_audit(path)),
+                             ["actual", "actual_p", "mass"])
             self.assertAlmostEqual(float(got["mass"][1]), 0.5, places=3)
             self.assertEqual(int(got["actual"][1]), 7)
             self.assertAlmostEqual(float(got["actual_p"][1]), 0.25, places=3)

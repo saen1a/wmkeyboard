@@ -52,7 +52,7 @@ import vllm_common as vc  # noqa: E402  (path bootstrap above)
 MAX_LOGPROBS = 5        # Together's hard cap (logprobs=6 -> HTTP 400)
 MAX_CANDIDATES = MAX_LOGPROBS + 1   # returned alternatives + the actual token
 DEFAULT_TOPK = 8        # 6 candidates + the injected actual word + headroom
-AUDIT_KEYS = ("mass", "actual", "actual_p")
+AUDIT_KEYS = ("mass", "actual", "actual_p", "weight", "piece")
 
 
 # ------------------------------------------------------------------ helpers
@@ -280,8 +280,39 @@ def sentence_audit(tokens, logs, alts, prompt_tokens):
     }
 
 
+# ----------------------------------------------------------------- weights
+def row_weights(mode, mass, counts, piece, topk, piece_weight=0.1, word_weight=1.0):
+    """Per-row KD weight, the array `train_v2.py distill_weight=` consumes.
+
+    * `mass`  — the teacher probability the row actually captured. The
+      principled choice: a row whose candidates explain 40 % of the teacher's
+      distribution should not weigh like one that explains 99 %. This is the
+      "true per-row tail" signal `plans/student-quality-audit.md:251-255`
+      asks for.
+    * `cand`  — `filled candidates / topk`, what `soft_mask.py build
+      --weight=cand` does (candidate-count discount).
+    * `piece` — `piece_weight` on rows whose word is spelled in pieces,
+      `word_weight` elsewhere, `0` on empty rows; this reproduces
+      `build_kd_weight.py` (student v2 default: 0.1 / 1.0 / 0).
+    """
+    mass = np.asarray(mass, dtype=np.float32)
+    counts = np.asarray(counts, dtype=np.float32)
+    piece = np.asarray(piece, dtype=bool)
+    empty = mass <= 0.0
+    if mode == "mass":
+        w = mass.astype(np.float32)
+    elif mode == "cand":
+        w = np.clip(counts / float(max(1, topk)), 0.0, 1.0).astype(np.float32)
+    elif mode == "piece":
+        w = np.where(piece, piece_weight, word_weight).astype(np.float32)
+    else:
+        raise ValueError(f"unknown weight mode {mode!r}")
+    w[empty] = 0.0
+    return w
+
+
 # ------------------------------------------------------------ audit sibling
-def save_audit(path, mass, actual, actual_p, extra=None):
+def save_audit(path, mass, actual, actual_p, weight=None, piece=None, extra=None):
     """Write the per-row diagnostics next to a soft npz (atomic)."""
     tmp = path + ".tmp.npz"
     payload = {
@@ -289,6 +320,10 @@ def save_audit(path, mass, actual, actual_p, extra=None):
         "actual": np.asarray(actual, dtype=np.int32),
         "actual_p": np.asarray(actual_p, dtype=np.float16),
     }
+    if weight is not None:
+        payload["weight"] = np.asarray(weight, dtype=np.float32)
+    if piece is not None:
+        payload["piece"] = np.asarray(piece, dtype=np.uint8)
     for key, arr in (extra or {}).items():
         payload[key] = arr
     with open(tmp, "wb") as f:

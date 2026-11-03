@@ -108,7 +108,12 @@ def inspect(choice, prompt, min_top=10):
 
 def run_completions(args):
     client = tg.Client(model=args.model, key_file=args.key_file, batch=1)
-    choice = client.score_one(args.prompt)
+    try:
+        choice = client.score_one(args.prompt)
+    except tg.TogetherError as e:
+        print(json.dumps({"mode": "completions", "verdict": "MISALIGNED",
+                          "error": str(e)}, indent=2, ensure_ascii=False))
+        return 4
     res = inspect(choice, args.prompt, args.min_top)
     res.update({"mode": "completions", "model": args.model, "provider": "together",
                 "cost_usd": round(client.cost_usd(0.17, 0.25), 6)})

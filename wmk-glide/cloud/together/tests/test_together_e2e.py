@@ -163,6 +163,14 @@ def self_test():
         assert mass.max() <= 1.001, mass.max()
         assert (audit["actual_p"].astype(np.float64) > 0).any()
 
+        # the `weight` array is what train_v2.py distill_weight= reads
+        weight = audit["weight"].astype(np.float64)
+        assert weight.shape == mass.shape, (weight.shape, mass.shape)
+        assert np.all(weight[mass <= 0] == 0.0), "empty rows must weigh 0"
+        assert np.all(weight[mass > 0] > 0.0), "filled rows must weigh > 0"
+        assert weight.max() <= 1.001, weight.max()
+        assert set(np.unique(audit["piece"])) <= {0, 1}
+
         # 4. rows carry the real next word from the vocabulary, not the filler
         known = {vocab.index(w) for w in WORDS}
         hit = sum(1 for row in z["ids"] if set(int(x) for x in row if x) & known)

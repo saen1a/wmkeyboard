@@ -78,12 +78,13 @@ Serverless-Modellen über `/v1/completions` mit `echo: true`, `logprobs: 5`,
    Soft-Targets also unbrauchbar, nur `/v1/completions` zählt.
 
 **Was das an den Messungen vom 29.10. erklärt.** Beide Probes haben
-`logprobs: 20` gesendet (`tools/together_echo_probe.py`,
-`tools/together_token_test.py`) — ein Wert, den Together ablehnt. GPT-OSS-120B
+`logprobs: 20` gesendet (`tools/together_echo_probe.py` und
+`tools/together_token_test.py`, inzwischen durch `cloud/together/probe.py` und
+`cloud/together/token_test.py` ersetzt) — ein Wert, den Together ablehnt. GPT-OSS-120B
 → **422** war dieser Validierungsfehler; die frühere Schlussfolgerung
 „Prompt-Logprobs kaputt“ war damit nie belegt.
 
-**Live nachgemessen 03.11.2026** (`tools/together_echo_probe.py`, frischer
+**Live nachgemessen 03.11.2026** (`cloud/together/probe.py`, frischer
 Key; 20 deutsche Sätze über die Probe, Masse/Recall über ein Wegwerfskript
 mit 233 Prompt-Positionen):
 

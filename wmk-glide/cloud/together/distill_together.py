@@ -79,17 +79,20 @@ def save_npz(path, sentences, starts, ids, probs):
 
 
 def word_ids_of(row):
-    """Student ids of the word groups of one `train.npz` row.
+    """`[(student id, is_piece), ...]` for the word groups of one train.npz row.
 
     Mirrors `vllm_common.prompt_text`: the 4-token prefix and the trailing
-    `</s>` are dropped, `##` continuations belong to the previous word.
+    `</s>` are dropped, `##` continuations belong to the previous word. A
+    group whose first token is a piece marker (`▁`/`##`) is a word the
+    vocabulary only spells, i.e. `soft_mask.py`'s PIECE row.
     """
     out = []
     for t in row[PREFIX_LEN:-1]:
         w = sp_vocab_lookup(int(t))
         if w.startswith(vc.CONT):
             continue
-        out.append(int(t))
+        piece = w.startswith(vc.START) or w.startswith(vc.CONT)
+        out.append((int(t), piece))
     return out
 
 
@@ -146,6 +149,7 @@ def identity(args, data_dir, map_meta):
         "map_model": map_meta.get("model"),
         "map_vocab_sha256": map_meta.get("vocab_sha256"),
         "inject_actual": not args.no_inject,
+        "weight_mode": args.weight_mode,
     }
 
 
@@ -174,7 +178,8 @@ def rows_for_sentence(text, ends, actual, by_first, topk, inject, choice):
         raise ValueError(f"echo mismatch: {echoed[:60]!r} != {text[:60]!r}")
     return tc.rows_from_sentence(choice.tokens, choice.logs, choice.alts, n, ends,
                                  by_first, topk=topk, id_dtype=ID_DTYPE,
-                                 inject_actual=inject, actual=actual)
+                                 inject_actual=inject,
+                                 actual=([sid for sid, _ in actual] or None))
 
 
 def collect(args, client, by_first, chosen, tokens, starts, vocab, shards):
@@ -250,7 +255,11 @@ def collect(args, client, by_first, chosen, tokens, starts, vocab, shards):
                                                "error": str(e)})
                     continue
                 blocks[sid] = (ids, probs)
-                audit[sid] = (mass, act, ap)
+                pieces = np.zeros(ids.shape[0], dtype=np.uint8)
+                for k, (_, is_piece) in enumerate(actual):
+                    if k < len(pieces):
+                        pieces[k] = 1 if is_piece else 0
+                audit[sid] = (mass, act, ap, pieces)
                 summary["rows"] += int(ids.shape[0])
                 summary["filled"] += int(stats["filled"])
                 summary["injected"] += int(stats["injected"])
@@ -267,10 +276,16 @@ def collect(args, client, by_first, chosen, tokens, starts, vocab, shards):
                 starts_out.append(starts_out[-1] + blocks[s][0].shape[0])
             save_npz(path, sids, starts_out, ids, probs)
             got = validate_soft(path, len(vocab), len(sids), args.min_mass_ratio)
+            mass_all = np.concatenate([audit[s][0] for s in sids])
+            piece_all = np.concatenate([audit[s][3] for s in sids])
+            weight_all = tc.row_weights(args.weight_mode, mass_all,
+                                        (probs > 0).sum(axis=1), piece_all,
+                                        args.topk, args.piece_weight)
             tc.save_audit(path[:-4] + ".audit.npz",
-                          np.concatenate([audit[s][0] for s in sids]),
+                          mass_all,
                           np.concatenate([audit[s][1] for s in sids]),
-                          np.concatenate([audit[s][2] for s in sids]))
+                          np.concatenate([audit[s][2] for s in sids]),
+                          weight=weight_all, piece=piece_all)
             with open(path + ".sha256", "w", encoding="utf-8") as f:
                 f.write(sha256_file(path) + "\n")
             summary["shards"] += 1
@@ -295,7 +310,7 @@ def merge(args, shards, vocab_size):
     if missing:
         raise SystemExit(f"cannot merge, {len(missing)} shard(s) missing, e.g. {missing[0]}")
     sentences, ids, probs, starts_out = [], [], [], [0]
-    mass, act, ap = [], [], []
+    mass, act, ap, weight, piece = [], [], [], [], []
     topk = None
     for p in paths:
         z = np.load(p, allow_pickle=False)
@@ -313,13 +328,19 @@ def merge(args, shards, vocab_size):
             mass.append(a["mass"])
             act.append(a["actual"])
             ap.append(a["actual_p"])
+            if "weight" in a:
+                weight.append(a["weight"])
+            if "piece" in a:
+                piece.append(a["piece"])
     out_sent = np.concatenate(sentences)
     if len(out_sent) and not np.all(np.diff(out_sent) > 0):
         raise SystemExit("shards overlap or are out of order")
     save_npz(args.out, out_sent, starts_out, np.concatenate(ids), np.concatenate(probs))
     if mass:
         tc.save_audit(args.out[:-4] + ".audit.npz", np.concatenate(mass),
-                      np.concatenate(act), np.concatenate(ap))
+                      np.concatenate(act), np.concatenate(ap),
+                      weight=(np.concatenate(weight) if weight else None),
+                      piece=(np.concatenate(piece) if piece else None))
     got = validate_soft(args.out, vocab_size, None, args.min_mass_ratio)
     with open(args.out + ".sha256", "w", encoding="utf-8") as f:
         f.write(sha256_file(args.out) + "\n")
@@ -345,6 +366,11 @@ def build_parser():
     ap.add_argument("--shard-size", type=int, default=25000)
     ap.add_argument("--max-nll", type=float, default=12.0)
     ap.add_argument("--min-mass-ratio", type=float, default=0.90)
+    ap.add_argument("--weight-mode", default="mass", choices=["mass", "cand", "piece"],
+                    help="per-row KD weight written as `weight` in the audit sibling "
+                         "(mass = captured teacher probability, cand = soft_mask --weight=cand, "
+                         "piece = build_kd_weight.py's 0.1/1.0)")
+    ap.add_argument("--piece-weight", type=float, default=0.1)
     ap.add_argument("--no-inject", action="store_true",
                     help="do not add the true word when the top-5 missed it")
     ap.add_argument("--key-file", default="")

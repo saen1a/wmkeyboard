@@ -19,6 +19,11 @@ re-discovers it:
 * `prompt` may be an **array**: one `choices` entry per prompt, `index == i`,
   `choices[i].logprobs.tokens` are the tokens of prompt `i`. Measured
   throughput 498 sentences/s at 1000 prompts per request.
+* With **array** prompts `usage.prompt_tokens` is the *sum over the batch*,
+  not a per-choice count: for a batch of 16 it reported `3` after integer
+  division in the first version of this client, which silently truncated
+  every prompt. The per-choice prompt length is therefore measured from the
+  response itself (`prompt_len`), and `usage` is only used for cost.
 * `logit_bias` does **not** apply to prompt positions (151k of ~152k ids
   biased to -100 left prompt log-probs bit-identical), so no suppression
   trick can widen the support.
@@ -110,6 +115,24 @@ class Choice:
     def __repr__(self):
         return (f"Choice(prompt_tokens={self.prompt_tokens}, "
                 f"tokens={len(self.tokens)})")
+
+
+def prompt_len(tokens, prompt):
+    """How many of `tokens` are the prompt (echo shape), measured.
+
+    The echoed tokens reconstruct the prompt character for character, so the
+    prompt ends where the joined tokens first equal it. Returns `None` when
+    the response does not reproduce the prompt (a hard error for the caller:
+    a misaligned row is worse than a missing one).
+    """
+    acc = ""
+    for i, t in enumerate(tokens):
+        acc += t
+        if acc == prompt:
+            return i + 1
+        if not prompt.startswith(acc):
+            return None
+    return None
 
 
 def _parse_alts(entry):
@@ -216,7 +239,7 @@ class Client:
                 "echo": True,
                 "logprobs": self.logprobs,
             })
-            out.extend(self._parse(payload, len(chunk), cid))
+            out.extend(self._parse(payload, chunk, cid))
             self.stats["chunks"] += 1
         self.stats["prompts"] += len(prompts)
         return out
@@ -224,7 +247,8 @@ class Client:
     def score_one(self, prompt):
         return self.score([prompt])[0]
 
-    def _parse(self, payload, n_prompts, chunk_id):
+    def _parse(self, payload, prompts, chunk_id):
+        n_prompts = len(prompts)
         choices = payload.get("choices")
         if not isinstance(choices, list):
             raise TogetherError(f"no choices in response: {str(payload)[:200]}")
@@ -254,9 +278,14 @@ class Client:
             # that need positions check the length themselves.
             if len(tokens) < 1:
                 raise TogetherError(f"choice {i}: empty token list")
-            out.append(Choice(tokens, logs, alts,
-                              int(usage.get("prompt_tokens") or 0) // max(1, n_prompts),
-                              c.get("text") or "", chunk_id))
+            n = prompt_len(tokens, prompts[i])
+            if n is None:
+                raise TogetherError(
+                    f"choice {i}: the echoed tokens do not reproduce the prompt "
+                    f"({''.join(tokens)[:60]!r} vs {prompts[i][:60]!r}); "
+                    "a misaligned row is worse than a missing one"
+                )
+            out.append(Choice(tokens, logs, alts, n, c.get("text") or "", chunk_id))
         return out
 
     # -------------------------------------------------------------- report
