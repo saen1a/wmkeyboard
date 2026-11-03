@@ -442,7 +442,47 @@ python3 tools/wmlm/soft_mask.py build out/de_lm_2m out/de_soft_2m_qwen_glm.npz \
 # Trainer: distill_topk=0, distill_align=..., distill_weight=<out>.audit.npz, alpha 0.3
 ```
 
-## 11. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
+## 11. Was noch zu heben ist — nach Preis und Wirkung
+
+**A. Kostenlos (kein Lehrer, kein API-Key, Minuten):**
+
+| Hebel | Werkzeug | Wirkung | Stand |
+|---|---|---|---|
+| **Temperatur auf dem Cache** (T 1,5–2,0) | `retemper.py --sweep 1,1.5,2` dann `--temperature 1.5` | Entropie/Kalibrierung des Ziels; bei renormierten Rows approximativ (wird berichtet) | **neu, ungemessen** |
+| **KD-Gewicht je Zeile** = getragene Masse | `distill_together.py --weight-mode mass` (neue Daten) | dosiert Zeilen nach Zielgüte statt nach Kandidatenzahl | vorhanden, A/B offen |
+| **Residual-Bucket im Verlust** | Trainer (Gate-Pfad) | `KL = Σ_S p log(p/q) + R log(R/q_rest)`, `R = 1−mass` exakt bekannt | Formel dokumentiert, Trainer-Änderung offen |
+| **Piece-Soft-Weight 0,1** | `build_kd_weight.py` (v2) | nimmt den `p_b = 1−α`-Druck | in v2 aktiv; mit reparierten Daten unnötig |
+| **α/K-Sweep** | `distill_alpha`, `distill_topk` | Standard-Audit-Empfehlung | Gate G5 (bei 6 breit: `distill_topk=0`) |
+
+**B. Ein Collect (Minuten bis Stunden, 0,3–47 $):**
+
+| Hebel | Aufruf | Gemessene Wirkung |
+|---|---|---|
+| **Blend Qwen+GLM, π≈0,45** | `--extra-model zai-org/GLM-5.2 --extra-mode blend --extra-share 0.45` | **−11,6 %** Wort-NLL (chat −10,1 %, news −6,5 %) |
+| **Fill für blinde Rows** | `--extra-mode fill --fill-below 0.5` | **+33 %** getragene Masse, 16,6 % der Rows ≥ +0,10 |
+| **Breite 24 polstern** | `--topk 24` | merge-fähig mit dem 27B-Cache (verifiziert) |
+| **Register-Routing** | `--only-field chat` / `news` + zwei Läufe | chat→Qwen (6,47), news→GLM (6,78) statt Blend 6,16 — billiger, etwas schlechter |
+
+**C. Noch nicht gebaut, aber der nächste echte Hebel:**
+
+- **Satzauswahl nach Schülerunsicherheit** (on-policy KD): heute zieht `distill.py`
+  zufällig. Die Literatur und die eigene Gate-Erfahrung sagen, dass der Lehrer
+  dort am meisten lehrt, wo der Schüler unsicher ist — Kosten: Schüler-Inferenz
+  über den Korpus (lokal, GPU), dann gezielte Collects. Nicht implementiert.
+- **Korpus-Hygiene:** 15,1 % OpenSubtitles (Lizenzfrage), Dedup und
+  Register-Balance sind offene Punkte aus `plans/student-quality-audit.md`.
+
+**D. Was gemessen *nicht* hilft:** `gpt-oss-120b` als Partner (−1,1 % bei 40×
+Zeit), Wiederholen/`logit_bias`/`temperature` am Endpunkt (keine Breite),
+Renormieren ohne Masse-Signal (vergrößert die Tail-Lüge), Label-Smoothing als
+Tail-Ersatz.
+
+**Der eine offene Punkt, der alles entscheidet:** ob 6 Kandidaten plus
+`weight = mass` den Schüler nicht schlechter machen als 24. Dafür ist der
+100k-A/B da (3 000 Steps, Gate 0,05 nats) — und der läuft erst, wenn der
+laufende 90k ein Ergebnis hat.
+
+## 12. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
 
 1. **100k-Slice sammeln** (Together, 8-wide, `--weight-mode mass`):
    ~1 min, ~0,21 $. Vorher `wordmap.py` einmal.
