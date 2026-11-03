@@ -168,7 +168,7 @@ behandelt:
 | Blocker | Modelle (gemessen) | Konsequenz |
 |---|---|---|
 | `Unable to access non-serverless model …` | **alle** `language`-Basismodelle (`Qwen3-{0.6,1.7,4,8,14}B-Base`, `Qwen3-30B-A3B-Base`, `Qwen2{-1.5,7,72}B`, `gemma-3-{1b,27b}-pt`, `Llama-3.2-3B`, `Meta-Llama-3.1-8B`, `Mixtral-8x7B-v0.1`) **und** `Qwen3.5-397B-A17B`, `Qwen3-235B-A22B-Instruct-2507-FP8`, `GLM-4.5-Air-FP8`, `GLM-4.7`, `GLM-5.1`, `GLM-4.6`, `Ministral-3-14B-Instruct`, `Llama-3.3-70B-Instruct-Turbo`, `DeepSeek-V3.1`, `gemma-3-27b-it`, `gemma-4-31B-it`, `Mistral-Small-24B`, `Qwen3-4B-Instruct-2507` | nur mit **dediziertem Deployment** (GPU-Stunden). Damit gilt weiter: **kein Base-Lehrer und kein 397B auf dem Pay-per-Token-Pfad** |
-| `403 … requires third-party data sharing …` | `Qwen/Qwen3.8-Flash` | nach Aktivierung der Datenfreigabe **unverändert** 403 → Einstellung greift für diese Organisation/Key nicht (oder erst nach Propagation). Vor einem Kauf/Vertrag nachprüfen |
+| Datenfreigabe aktiviert, aber **Completions ist chat-only** | `Qwen/Qwen3.8-Flash` | mit neuem Key und allen drei Privacy-Schaltern an: statt 403 jetzt zuerst `only supports streaming`, mit `stream: true` dann `Role must be in ["user","assistant",…]` → **kein Prompt-Scoring**, also keine Prompt-Logprobs. Chat liefert nur Top-1 pro Position |
 | Echo wird nicht erfüllt | `zai-org/GLM-5.3-Flash` (Antwort `'\n\n'`), `deepseek-ai/DeepSeek-V4.1-Flash` (Antwort `'?'`) | **keine** Prompt-Logprobs; der Client bricht hart ab („a misaligned row is worse than a missing one“) |
 | `batch_prompts_not_supported` bzw. 200 mit nur 1 Choice | `openai/gpt-oss-120b`, `GLM-5.3-Flash` | Client erkennt beide Formen und schaltet auf **Einzel-Prompt** um (String statt Array — auch ein 1-Element-Array wird abgelehnt) |
 
@@ -186,6 +186,10 @@ Zum Vergleich, **gleiche 200 Sätze**, lokale Base-Lehrer aus
 Together-9B liegt mit **4,53** darunter — mit zwei Vorbehalten: es ist
 **post-trained** (nicht Base) und seine Tokenisierung ist nicht bitgleich mit
 dem lokalen 9B-Base, die Zahlen sind also indikativ, nicht exakt.
+
+Der Streaming-Weg ist im Client eingebaut (`stream: true`, SSE-Stitching in
+`parse_sse`, automatischer Retry, wenn ein Modell „only supports streaming“
+meldet) — er hat Qwen3.8-Flash nur bis zur chat-only-Grenze gebracht.
 
 **Was daraus folgt:** ein Basismodell ist auf Together nicht zu bekommen
 (dediziertes Deployment = GPU-Stunden, also Scaleway-Pfad). Für den

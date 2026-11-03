@@ -29,6 +29,11 @@ re-discovers it:
   division in the first version of this client, which silently truncated
   every prompt. The per-choice prompt length is therefore measured from the
   response itself (`prompt_len`), and `usage` is only used for cost.
+* Some models are **streaming-only** (`Qwen/Qwen3.8-Flash`, measured
+  2026-11-03: `400 This model only supports streaming`). The client retries
+  such a request with `stream: true`, accumulates the SSE chunks
+  (`data: {...}` … `data: [DONE]`) and stitches them back into one
+  completions payload, so the rest of the pipeline never sees the difference.
 * `logit_bias` does **not** apply to prompt positions (151k of ~152k ids
   biased to -100 left prompt log-probs bit-identical), so no suppression
   trick can widen the support.
@@ -158,6 +163,46 @@ def _parse_alts(entry):
     return out
 
 
+def parse_sse(lines):
+    """Stitch SSE `data:` lines into one legacy-completions payload.
+
+    Streaming-only models send the prompt log-probs in the first chunk(s) and
+    the generated positions later; accumulating by `choices[].index` gives the
+    same shape a non-streaming answer has.
+    """
+    acc, usage = {}, {}
+    for raw in lines:
+        line = raw.strip()
+        if not line or not line.startswith("data:"):
+            continue
+        data = line[5:].strip()
+        if data == "[DONE]":
+            break
+        try:
+            obj = json.loads(data)
+        except ValueError:
+            continue
+        if obj.get("usage"):
+            usage = obj["usage"]
+        for ch in obj.get("choices") or []:
+            i = int(ch.get("index") or 0)
+            slot = acc.setdefault(i, {"tokens": [], "token_logprobs": [],
+                                      "top_logprobs": [], "text": ""})
+            lp = ch.get("logprobs") or {}
+            slot["tokens"] += lp.get("tokens") or []
+            slot["token_logprobs"] += lp.get("token_logprobs") or []
+            slot["top_logprobs"] += lp.get("top_logprobs") or []
+            slot["text"] += ch.get("text") or ""
+    if not acc:
+        raise TogetherError("stream produced no choices")
+    choices = [{"index": i, "text": slot["text"],
+                "logprobs": {"tokens": slot["tokens"],
+                             "token_logprobs": slot["token_logprobs"],
+                             "top_logprobs": slot["top_logprobs"]}}
+               for i, slot in sorted(acc.items())]
+    return {"choices": choices, "usage": usage}
+
+
 class Client:
     """Batched prompt scoring against `/v1/completions`.
 
@@ -184,9 +229,42 @@ class Client:
         }
         # Set when the model refuses array prompts (gRPC backends).
         self.single_prompt = False
+        # Set when the model is streaming-only (SSE).
+        self.stream = False
 
     # ---------------------------------------------------------------- http
+    def _http_stream(self, body):
+        """SSE request, stitched into one legacy-completions payload.
+
+        Chunks carry `choices[].logprobs` fragments per prompt index; prompt
+        positions arrive with the first chunk(s), generated positions later.
+        """
+        body = dict(body)
+        body["stream"] = True
+        req = urllib.request.Request(
+            ENDPOINT,
+            data=json.dumps(body).encode("utf-8"),
+            headers={
+                "Content-Type": "application/json",
+                "Authorization": f"Bearer {self.key}",
+                "User-Agent": USER_AGENT,
+                "Accept": "text/event-stream",
+            },
+            method="POST",
+        )
+        try:
+            resp = urllib.request.urlopen(req, timeout=self.timeout)
+        except urllib.error.HTTPError as e:
+            payload = e.read().decode("utf-8", "replace")
+            raise TogetherError(f"HTTP {e.code}: {payload[:300]}", e.code, payload) from e
+        except urllib.error.URLError as e:
+            raise _Transient(f"transport error: {e}") from e
+        with resp:
+            return parse_sse(raw.decode("utf-8", "replace") for raw in resp)
+
     def _http(self, body):
+        if body.get("stream"):
+            return self._http_stream(body)
         req = urllib.request.Request(
             ENDPOINT,
             data=json.dumps(body).encode("utf-8"),
@@ -214,12 +292,19 @@ class Client:
         last = None
         for attempt in range(self.retries + 1):
             try:
+                if self.stream and not body.get("stream"):
+                    body = dict(body, stream=True)
                 payload = self._transport(body)
                 self.stats["requests"] += 1
                 return payload
             except _Transient as e:
                 last = TogetherError(str(e))
             except TogetherError as e:
+                if not self.stream and "only supports streaming" in (e.body or ""):
+                    # streaming-only model: switch once and retry immediately
+                    self.stream = True
+                    self.stats["stream_fallback"] = 1
+                    continue
                 if e.status not in RETRY_STATUS:
                     raise
                 last = e

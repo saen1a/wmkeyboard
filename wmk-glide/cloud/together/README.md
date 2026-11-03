@@ -24,6 +24,8 @@ Measured endpoint facts (2026-11-03, `probe.py`, `Qwen/Qwen3.5-9B` and
 | token ids | not exposed (`return_tokens_as_token_ids` ignored, no `/v1/tokenize`) |
 | array prompts | yes: 1000 prompts per request, **498 sentences/s**, 150k ≈ 5 min, ≈ $0.31 |
 | chat endpoint | no prompt log-probs; closed path |
+| streaming-only models | `400 This model only supports streaming` → the client retries with `stream: true` and stitches the SSE chunks (`parse_sse`). Qwen3.8-Flash gets one step further and then demands chat roles: its completions are chat-only, so no prompt scoring |
+| data sharing | with all three privacy toggles on, `Qwen3.8-Flash` loses the 403 but stays unusable (above); no other model becomes reachable |
 
 ## Files
 

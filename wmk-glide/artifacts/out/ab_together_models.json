@@ -1,9 +1,9 @@
 {
- "date": "2026-11-03",
+ "date": "2026-11-03 (new key, all three privacy toggles on)",
  "sentences_file": "/home/paseo/.paseo/worktrees/3qqpox6m/swift-zebra/wmk-glide/artifacts/out/ab_sentences.tsv",
  "sentences": 200,
  "word_types": 500,
- "note": "usable models measured on all 200 A/B sentences; the rest were rejected by the endpoint itself (see reason). Base models, the 397B and most GLM/DeepSeek/Llama variants are non-serverless.",
+ "note": "usable models measured on all 200 A/B sentences; the rest were rejected by the endpoint itself. Non-serverless models need a dedicated deployment (GPU-hours); Qwen3.8-Flash is reachable after enabling data sharing but its /v1/completions is chat-only, so it cannot score a raw prompt at all.",
  "usable": {
   "Qwen/Qwen3.5-9B": {
    "sentences": 200,
@@ -50,7 +50,7 @@
   "Qwen/Qwen3-4B-Instruct-2507": "non-serverless (needs dedicated deployment)",
   "Qwen/Qwen3-8B-Base": "non-serverless (needs dedicated deployment)",
   "Qwen/Qwen3.5-397B-A17B": "non-serverless (needs dedicated deployment)",
-  "Qwen/Qwen3.8-Flash": "403: third-party data sharing still required after activation",
+  "Qwen/Qwen3.8-Flash": "completions is chat-only after enabling data sharing ('Role must be in [user, assistant, ...]' with stream=true) -> no prompt log-probs",
   "deepseek-ai/DeepSeek-V3.1": "non-serverless (needs dedicated deployment)",
   "deepseek-ai/DeepSeek-V4.1-Flash": "echo not honoured (no prompt log-probs)",
   "google/gemma-3-27b-it": "non-serverless (needs dedicated deployment)",
@@ -64,6 +64,17 @@
   "zai-org/GLM-4.7": "non-serverless (needs dedicated deployment)",
   "zai-org/GLM-5": "non-serverless (needs dedicated deployment)",
   "zai-org/GLM-5.1": "non-serverless (needs dedicated deployment)",
-  "zai-org/GLM-5.3-Flash": "echo not honoured (no prompt log-probs)"
+  "zai-org/GLM-5.3-Flash": "echo not honoured (no prompt log-probs)",
+  "Qwen/Qwen3.5-35B-A3B": "non-serverless (needs dedicated deployment)",
+  "Qwen/Qwen3.5-2B": "non-serverless (needs dedicated deployment)",
+  "google/gemma-4-E4B-it": "non-serverless (needs dedicated deployment)",
+  "MiniMaxAI/MiniMax-M2": "non-serverless (needs dedicated deployment)",
+  "Qwen/Qwen2.5-72B-Instruct-Turbo": "non-serverless (needs dedicated deployment)"
+ },
+ "privacy_toggles": {
+  "prompt_storage": true,
+  "passthrough_models": true,
+  "model_training": true,
+  "effect": "Qwen3.8-Flash went from 403 to chat-only completions; no model became usable as a prompt-logprob teacher"
  }
 }

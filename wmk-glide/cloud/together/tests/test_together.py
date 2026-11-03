@@ -127,6 +127,50 @@ class ClientTest(unittest.TestCase):
         self.assertIsNone(tg.prompt_len([" a", " b"], " a b c"))
         self.assertIsNone(tg.prompt_len([" b"], " a b"))
 
+    def test_streaming_only_model_retries_with_stream_and_stitches(self):
+        """Qwen3.8-Flash answered `400 This model only supports streaming`.
+        The retry must set stream=true and the SSE fragments must stitch into
+        the same shape a non-streaming answer has."""
+        class StreamOnly:
+            def __init__(self):
+                self.streamed = []
+            def __call__(self, body):
+                if not body.get("stream"):
+                    raise tg.TogetherError(
+                        "HTTP 400: This model only supports streaming", 400,
+                        '{"error":{"message":"This model only supports streaming"}}')
+                self.streamed.append(True)
+                return payload_for([body["prompt"][0] if isinstance(body["prompt"], list)
+                                    else body["prompt"]])
+
+        t = StreamOnly()
+        c = make_client(t, batch=1)
+        out = c.score(["a b c"])
+        self.assertTrue(c.stream)
+        self.assertEqual(len(out), 1)
+        self.assertEqual(c.stats["stream_fallback"], 1)
+        self.assertEqual(t.streamed, [True])
+
+    def test_parse_sse_stitches_fragments(self):
+        lines = [
+            'data: {"choices":[{"index":0,"logprobs":{"tokens":[" a"," b"],'
+            '"token_logprobs":[null,-0.5],"top_logprobs":[{},{" x":-1.0}]},"text":""}]}',
+            "",
+            ": keep-alive",
+            'data: {"choices":[{"index":0,"logprobs":{"tokens":[" c"],'
+            '"token_logprobs":[-0.7],"top_logprobs":[{" y":-2.0}]},"text":" c"}]}',
+            'data: {"usage":{"prompt_tokens":2,"completion_tokens":1}}',
+            "data: [DONE]",
+            'data: {"choices":[{"index":0,"logprobs":{"tokens":["never"],'
+            '"token_logprobs":[-9.0],"top_logprobs":[{}]},"text":"never"}]}',
+        ]
+        p = tg.parse_sse(lines)
+        self.assertEqual(len(p["choices"]), 1)
+        lp = p["choices"][0]["logprobs"]
+        self.assertEqual(lp["tokens"], [" a", " b", " c"])       # [DONE] stops the feed
+        self.assertEqual(lp["token_logprobs"], [None, -0.5, -0.7])
+        self.assertEqual(p["usage"], {"prompt_tokens": 2, "completion_tokens": 1})
+
     def test_batched_prompts_unsupported_falls_back_to_single(self):
         """gRPC-backed models reject array prompts; the client must degrade
         to one prompt per request instead of failing the run."""
