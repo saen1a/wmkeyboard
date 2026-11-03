@@ -213,7 +213,46 @@ API-Lehrer bleibt `Qwen3.5-9B`; `gpt-oss-120b` ist als Zweitlehrer nur
 interessant, wenn man eine 2-Lehrer-Mixtur wollte, und ist pro Satz ~25×
 teurer an Zeit (Einzel-Prompt).
 
-## 7. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
+## 7. Zwei Lehrer parallel — gemessen, und nur in einer Richtung sinnvoll
+
+Token-Ebene geht nicht (Qwen-BPE vs. o200k), **Wort-Ebene schon**: jedes Modell
+bekommt eine eigene Wort-Map, und `p(echtes Wort)` ist bei beiden exakt. Also
+ist eine Mischung oder Auswahl pro Zeile möglich (`ensemble_probe.py`,
+`distill_together.py --extra-model`).
+
+Messung (`ab_together_ensemble.json`, 40 Sätze, 304 Wort-Rows, 232-Wörter-
+Stand-in-Vokabular — absolute Massen sind dadurch niedrig, die Deltas zählen):
+
+| Größe | Qwen3.5-9B | gpt-oss-120b | Mischung / Union |
+|---|---:|---:|---:|
+| Wort-NLL | **6,517** | 7,399 | **6,445** bei π=0,8 (−0,072) |
+| getragene Masse | 0,183 | 0,185 | Union (max): **0,272** (+0,089) |
+| Kandidaten-Überlappung | – | – | 86,5 % der Rows, Jaccard 0,59 |
+| Rows mit ≥0,10 Massengewinn | – | – | **11,8 %** |
+
+Zwei Schlüsse:
+
+1. **Mischen (blend) bringt fast nichts und kostet Masse.** Der schwächere
+   Lehrer (1,21 bits/Zeichen gegen 0,93) zieht jede Zeile nach unten; Wort-NLL
+   −1,1 % bei π=0,8, getragene Masse sogar *schlechter* (0,114 gegen 0,125 im
+   Live-Smoke).
+2. **Auswählen (fill) ist der richtige Modus.** Nur Zeilen, in denen der
+   Primärlehrer blind ist, kommen vom Zweitlehrer; Masse im Live-Smoke
+   **0,125 → 0,154 (+23 %)**. Das ist genau die Union-by-max-Kopfraum-Zahl, und
+   sie kann per Konstruktion nicht schaden.
+
+Kosten: `gpt-oss-120b` nimmt **keine Array-Prompts** (Einzel-Request), ist also
+~40× langsamer pro Satz. Deshalb holt der Collector in `fill`-Modus den
+Zweitlehrer **nur für die Sätze, die blinde Zeilen haben** (`--fill-below`);
+`blend` bräuchte ihn überall und ist damit wirtschaftlich unsinnig
+(150k Sätze: 5 min gegen 3–5 h für −1 % NLL).
+
+**Empfehlung:** Primär `Qwen3.5-9B`, Zweitlehrer nur als `fill`
+(`--extra-mode fill --fill-below 0.5`). Ein dritter Lehrer wäre genauso
+anschließbar; der Grenznutzen fällt mit dem Gewicht des Zweiten schon auf
+~1 %.
+
+## 8. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
 
 1. **100k-Slice sammeln** (Together, 8-wide, `--weight-mode mass`):
    ~1 min, ~0,21 $. Vorher `wordmap.py` einmal.

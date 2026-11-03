@@ -38,6 +38,7 @@ Measured endpoint facts (2026-11-03, `probe.py`, `Qwen/Qwen3.5-9B` and
 | `token_test.py` | corpus-level sanity: mean NLL, top-1 (argmax), top-k hits, captured mass on `out/de_lm` sentences |
 | `probe.py` | endpoint probe: width, echo alignment, argmax agreement; modes `chat`, `repeat`, `breadth` |
 | `model_ab.py` | model comparison on the 200 A/B sentences: NLL, top-1, width, candidate mass, word-spell rate; writes JSON + markdown |
+| `ensemble_probe.py` | can two teachers be combined? Word-level NLL of each model and of a π-blend, candidate overlap, and the union-by-max mass (= the headroom a gap-fill rule could use) |
 | `tests/test_together.py` | 21 offline unit tests (client, targets, weights, audit sibling) |
 | `tests/test_together_e2e.py` | synthetic `prep.py` corpus + fake transport → real collector → `check_soft.validate_soft` |
 
@@ -51,6 +52,11 @@ python3 probe.py --self-test            # classifier fixtures
 python3 model_ab.py --models Qwen/Qwen3.5-9B,openai/gpt-oss-120b \
         --out ../../artifacts/out/ab_together.json
 ```
+
+Two teachers cannot be blended at token level (different tokenizers), but at
+**word level** they can: each model gets its own word map, and the true word's
+probability is exact in both. `ensemble_probe.py` measures whether that is
+worth the second pass.
 
 `model_ab.py` also reports the three ways a Together model can be unusable —
 `non-serverless` (every base model), `batch_prompts_not_supported` (gRPC
@@ -66,6 +72,11 @@ it. Per row the collector emits:
 
 * `ids`/`probs` — up to `--topk` (default 8) student ids, renormalised over
   the kept candidates: the four-array contract stays untouched.
+* a second teacher (`--extra-model --extra-map --extra-mode fill|blend`,
+  `--extra-share`, `--fill-below`): word-level merge, so different tokenizers
+  are fine. **`fill` is the measured winner** (+23 % captured mass in the live
+  smoke) and fetches the second teacher only for sentences with blind rows;
+  `blend` costs mass because the weaker teacher pulls every row down.
 * `mass` (sibling `<out>.audit.npz`) — the teacher probability the row
   actually captured **before** renormalisation, i.e. `1 − residual`.
 * `actual`, `actual_p` — the true word's id and its **exact** teacher

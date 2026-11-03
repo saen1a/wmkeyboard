@@ -78,6 +78,15 @@ def save_npz(path, sentences, starts, ids, probs):
     os.replace(tmp, path)
 
 
+def pieces_of(actual, ids):
+    """uint8 flag per row: the word is spelled in pieces (soft_mask's PIECE)."""
+    out = np.zeros(ids.shape[0], dtype=np.uint8)
+    for k, (_, is_piece) in enumerate(actual):
+        if k < len(out):
+            out[k] = 1 if is_piece else 0
+    return out
+
+
 def word_ids_of(row):
     """`[(student id, is_piece), ...]` for the word groups of one train.npz row.
 
@@ -151,6 +160,9 @@ def identity(args, data_dir, map_meta):
         "inject_actual": not args.no_inject,
         "weight_mode": args.weight_mode,
         "temperature": args.temperature,
+        "extra_model": args.extra_model or None,
+        "extra_mode": args.extra_mode,
+        "extra_share": args.extra_share,
     }
 
 
@@ -184,7 +196,8 @@ def rows_for_sentence(text, ends, actual, by_first, topk, inject, choice, temper
                                  temperature=temperature)
 
 
-def collect(args, client, by_first, chosen, tokens, starts, vocab, shards):
+def collect(args, client, by_first, chosen, tokens, starts, vocab, shards,
+            extra=None):
     """Fill every shard that is not already valid. Returns a summary."""
     summary = {"shards": 0, "sentences": 0, "rows": 0, "filled": 0, "injected": 0,
                "skipped_sentences": 0, "high_nll": 0, "mean_nll_sum": 0.0,
@@ -231,13 +244,22 @@ def collect(args, client, by_first, chosen, tokens, starts, vocab, shards):
                 continue
             try:
                 answers = client.score(texts)
+                # blend needs both teachers everywhere; fill only where the
+                # primary is blind, so the (much slower) second teacher is
+                # called for those sentences only
+                extra_answers = (extra[0].score(texts)
+                                 if extra and args.extra_mode == "blend" else None)
             except tg.TogetherError as e:
                 vc.append_jsonl(failures, {"event": "failed", "shard": idx,
                                            "sids": keep[:20], "error": str(e)})
                 log(f"shard {idx}: chunk failed, shard left unwritten: {e}")
                 break
 
-            for sid, text, ends, actual, ch in zip(keep, texts, mains, actuals, answers):
+            pairs = (list(zip(answers, extra_answers)) if extra_answers is not None
+                     else [(a, None) for a in answers])
+            pending_fill = []
+            for (sid, text, ends, actual, ch), (_, ch2) in zip(
+                    zip(keep, texts, mains, actuals, answers), pairs):
                 st = tc.sentence_audit(ch.tokens, ch.logs, ch.alts, ch.prompt_tokens)
                 if st["mean_nll"] is not None:
                     summary["mean_nll_sum"] += st["mean_nll"]
@@ -256,15 +278,51 @@ def collect(args, client, by_first, chosen, tokens, starts, vocab, shards):
                     vc.append_jsonl(failures, {"event": "unaligned", "sid": sid,
                                                "error": str(e)})
                     continue
+                if extra is not None and args.extra_mode == "fill" and ch2 is None:
+                    if float(np.min(mass)) < args.fill_below:
+                        pending_fill.append((sid, text, ends, actual, ids, probs,
+                                             mass, act, ap, pieces_of(actual, ids)))
+                        continue
+                if ch2 is not None:
+                    ids2, probs2, mass2, act2, ap2, _ = rows_for_sentence(
+                        text, ends, actual, extra[1], args.topk,
+                        not args.no_inject, ch2, args.temperature)
+                    ids, probs, mass, act, ap = tc.merge_rows(
+                        (ids, probs, mass, act, ap),
+                        (ids2, probs2, mass2, act2, ap2),
+                        share=args.extra_share, mode=args.extra_mode,
+                        fill_below=args.fill_below, topk=args.topk)
                 blocks[sid] = (ids, probs)
-                pieces = np.zeros(ids.shape[0], dtype=np.uint8)
-                for k, (_, is_piece) in enumerate(actual):
-                    if k < len(pieces):
-                        pieces[k] = 1 if is_piece else 0
-                audit[sid] = (mass, act, ap, pieces)
+                audit[sid] = (mass, act, ap, pieces_of(actual, ids))
                 summary["rows"] += int(ids.shape[0])
                 summary["filled"] += int(stats["filled"])
                 summary["injected"] += int(stats["injected"])
+            # second teacher, only for the sentences whose primary rows are blind
+            if pending_fill:
+                try:
+                    fills = extra[0].score([t for _, t, _, _, _, _, _, _, _, _ in pending_fill])
+                except tg.TogetherError as e:
+                    vc.append_jsonl(failures, {"event": "extra_failed", "shard": idx,
+                                               "error": str(e)})
+                    log(f"shard {idx}: second teacher failed, keeping primary rows: {e}")
+                    fills = None
+                for row, ch2 in zip(pending_fill, fills or []):
+                    (sid, text, ends, actual, ids, probs, mass, act, ap, pieces) = row
+                    if ch2 is not None:
+                        try:
+                            ids2, probs2, mass2, act2, ap2, _ = rows_for_sentence(
+                                text, ends, actual, extra[1], args.topk,
+                                not args.no_inject, ch2, args.temperature)
+                            ids, probs, mass, act, ap = tc.merge_rows(
+                                (ids, probs, mass, act, ap),
+                                (ids2, probs2, mass2, act2, ap2),
+                                share=args.extra_share, mode="fill",
+                                fill_below=args.fill_below, topk=args.topk)
+                        except ValueError as e:
+                            vc.append_jsonl(failures, {"event": "unaligned_extra",
+                                                       "sid": sid, "error": str(e)})
+                    blocks[sid] = (ids, probs)
+                    audit[sid] = (mass, act, ap, pieces)
         else:
             # every batch of this shard ran: write it
             if not blocks:
@@ -368,6 +426,18 @@ def build_parser():
     ap.add_argument("--shard-size", type=int, default=25000)
     ap.add_argument("--max-nll", type=float, default=12.0)
     ap.add_argument("--min-mass-ratio", type=float, default=0.90)
+    ap.add_argument("--extra-model", default="",
+                    help="second teacher; its rows are merged at word level "
+                         "(different tokenizers are fine)")
+    ap.add_argument("--extra-map", default="", help="word map for --extra-model")
+    ap.add_argument("--extra-mode", default="off", choices=["off", "blend", "fill"],
+                    help="blend = share*primary + (1-share)*extra; "
+                         "fill = use extra only where the primary row is blind")
+    ap.add_argument("--extra-share", type=float, default=0.8,
+                    help="weight of the primary teacher in blend mode "
+                         "(measured optimum on German: 0.8)")
+    ap.add_argument("--fill-below", type=float, default=0.5,
+                    help="fill mode: replace rows whose captured mass is below this")
     ap.add_argument("--temperature", type=float, default=1.0,
                     help="teacher softening p^(1/T) before ranking; mass stays raw "
                          "(KD guidance: 1.5-2.0, plans/student-quality-audit.md §3.2)")
@@ -429,7 +499,19 @@ def main(argv=None, transport=None):
     client = tg.Client(model=args.model, key_file=args.key_file, batch=args.batch,
                        retries=args.retries, timeout=args.timeout,
                        transport=transport, key=("test-key" if transport else None))
-    summary = collect(args, client, by_first, chosen, tokens, starts, vocab, shards)
+    extra = None
+    if args.extra_model and args.extra_mode != "off":
+        if not args.extra_map or not os.path.exists(args.extra_map):
+            raise SystemExit(f"--extra-model needs --extra-map ({args.extra_map or 'missing'})")
+        extra_by_first, extra_meta = wm.load_map(args.extra_map)
+        if extra_meta.get("vocab_sha256") != map_meta.get("vocab_sha256"):
+            raise SystemExit("--extra-map was built for a different vocabulary")
+        extra = (tg.Client(model=args.extra_model, key_file=args.key_file,
+                           batch=args.batch, retries=args.retries,
+                           timeout=args.timeout, transport=transport,
+                           key=("test-key" if transport else None)), extra_by_first)
+    summary = collect(args, client, by_first, chosen, tokens, starts, vocab, shards,
+                      extra=extra)
     summary["cost_usd"] = round(client.cost_usd(PRICE_IN.get(args.model, 0.20)), 4)
     vc.write_json(os.path.join(shards["shard_dir"], "summary.json"), summary)
     log(json.dumps(summary, indent=2))

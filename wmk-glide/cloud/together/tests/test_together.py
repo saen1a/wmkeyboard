@@ -377,6 +377,39 @@ class TargetsTest(unittest.TestCase):
             temperature=0.5, **kw)
         self.assertGreater(float(pr3[2, 0]), float(pr1[2, 0]))
 
+    def test_merge_rows_blend_and_fill(self):
+        import numpy as np
+        a = (np.array([[11, 12], [13, 0]], dtype=np.int16),
+             np.array([[0.75, 0.25], [1.0, 0.0]], dtype=np.float16),
+             np.array([0.80, 0.30], dtype=np.float32),
+             np.array([11, 13], dtype=np.int32),
+             np.array([0.60, 0.30], dtype=np.float32))
+        b = (np.array([[11, 14], [15, 0]], dtype=np.int16),
+             np.array([[0.60, 0.40], [1.0, 0.0]], dtype=np.float16),
+             np.array([0.50, 0.90], dtype=np.float32),
+             np.array([11, 15], dtype=np.int32),
+             np.array([0.40, 0.90], dtype=np.float32))
+
+        ids, probs, mass, act, ap = tc.merge_rows(a, b, share=0.5, mode="blend", topk=4)
+        # row 0: 11 -> .5*.6 + .5*.3 = .45 ; 12 -> .5*.2 = .10 ; 14 -> .5*.2 = .10
+        # (three candidates => the union needs room beyond either input's width)
+        row = dict(zip(ids[0].tolist(), probs[0].astype(float)))
+        self.assertEqual(int(ids[0, 0]), 11)
+        self.assertAlmostEqual(row[11], 0.45 / 0.65, places=2)
+        self.assertAlmostEqual(row[12], 0.10 / 0.65, places=2)
+        self.assertAlmostEqual(row[14], 0.10 / 0.65, places=2)
+        self.assertAlmostEqual(float(mass[0]), 0.65, places=2)
+        self.assertAlmostEqual(float(ap[0]), 0.5 * 0.6 + 0.5 * 0.4, places=5)
+
+        # fill: row 0 keeps A (mass .8 >= .5), row 1 takes B (.3 < .5 and .9 > .3)
+        ids, probs, mass, act, ap = tc.merge_rows(a, b, share=1.0, mode="fill",
+                                                  fill_below=0.5)
+        self.assertEqual(int(ids[0, 0]), 11)
+        self.assertAlmostEqual(float(mass[0]), 0.80, places=5)
+        self.assertEqual(int(ids[1, 0]), 15)
+        self.assertAlmostEqual(float(mass[1]), 0.90, places=5)
+        self.assertEqual(int(act[1]), 15)
+
     def test_row_weights_modes(self):
         import numpy as np
         mass = np.array([0.0, 0.9, 0.5], dtype=np.float32)

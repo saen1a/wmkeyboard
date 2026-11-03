@@ -182,8 +182,40 @@ def self_test():
         assert rc == 0, rc
         assert transport.calls == before, (before, transport.calls)
 
-        # 6. identity: a changed top-k without --allow-identity-change must stop
-        rc = run(root, transport, ["--topk", "6"]) if False else 0
+        # 6. a second teacher: same fake endpoint, merged at word level
+        out2 = os.path.join(root, "de_soft_two.npz")
+        run_dir = os.path.join(root, "two")
+        os.makedirs(run_dir, exist_ok=True)
+        rc = dt.main([root, out2, "--map", os.path.join(root, "wordmap.json"),
+                      "--sentences", "6", "--batch", "2", "--shard-size", "3",
+                      "--min-mass-ratio", "0.0", "--topk", "8",
+                      "--extra-model", "fake/second-teacher",
+                      "--extra-map", os.path.join(root, "wordmap.json"),
+                      "--extra-mode", "blend", "--extra-share", "0.8"],
+                     transport=transport)
+        assert rc == 0, rc
+        two = np.load(out2, allow_pickle=False)
+        assert sorted(two.files) == sorted(dt.SOFT_KEYS), two.files
+        sums_two = two["probs"].astype(np.float64).sum(axis=1)
+        assert float((sums_two > 0).mean()) >= 0.70, float((sums_two > 0).mean())
+        shard_dir2 = out2[:-4] + "_shards"          # plan()'s rule
+        ident = json.load(open(os.path.join(shard_dir2, "run.json"), encoding="utf-8"))
+        assert ident["extra_model"] == "fake/second-teacher", ident
+        assert ident["extra_mode"] == "blend", ident
+
+        # 7. fill mode: the second teacher is only asked for blind sentences
+        out3 = os.path.join(root, "de_soft_fill.npz")
+        rc = dt.main([root, out3, "--map", os.path.join(root, "wordmap.json"),
+                      "--sentences", "6", "--batch", "2", "--shard-size", "3",
+                      "--min-mass-ratio", "0.0", "--topk", "8",
+                      "--extra-model", "fake/second-teacher",
+                      "--extra-map", os.path.join(root, "wordmap.json"),
+                      "--extra-mode", "fill", "--fill-below", "0.99"],
+                     transport=transport)
+        assert rc == 0, rc
+        fill = np.load(out3, allow_pickle=False)
+        sums_fill = fill["probs"].astype(np.float64).sum(axis=1)
+        assert int((sums_fill == 0).sum()) == n_sent, int((sums_fill == 0).sum())
         print(f"self-test ok: {n_sent} sentences, {got['rows']} rows, "
               f"coverage {got['mass_ratio']:.2f}, resume held, schema valid")
     return 0

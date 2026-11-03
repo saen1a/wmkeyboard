@@ -284,6 +284,78 @@ def sentence_audit(tokens, logs, alts, prompt_tokens):
     }
 
 
+# ------------------------------------------------------------- two teachers
+def merge_rows(a, b, share=0.8, mode="blend", fill_below=0.5, topk=None):
+    """Combine two teachers' rows for one sentence.
+
+    `a`/`b` are `(ids, probs, mass, actual, actual_p)` as
+    `rows_from_sentence` returns them; both are in *student word id* space, so
+    they merge even though the two models tokenize differently.
+
+    * `blend` — `p(w) = share·p_a(w) + (1-share)·p_b(w)` over the union of the
+      rows' candidates, renormalised; the true word's probability is blended
+      the same way. Measured optimum on German was `share ≈ 0.8` (a weaker
+      second teacher pulls the distribution down if it gets more weight).
+    * `fill` — keep `a` unless its captured mass is below `fill_below` and `b`
+      explains more of the row. Selection instead of mixing: never dilutes a
+      good row, only fills the blind spots.
+    """
+    ids_a, probs_a, mass_a, act_a, ap_a = a
+    ids_b, probs_b, mass_b, act_b, ap_b = b
+    rows = min(len(mass_a), len(mass_b))
+    # The union can be wider than either input row: without an explicit width
+    # the blend would silently drop the second teacher's extra candidates.
+    width = topk or (ids_a.shape[1] + ids_b.shape[1])
+    out_ids = np.zeros((rows, width), dtype=ids_a.dtype)
+    out_probs = np.zeros(out_ids.shape, dtype=np.float16)
+    out_mass = np.zeros(rows, dtype=np.float32)
+    out_act = np.full(rows, -1, dtype=np.int32)
+    out_ap = np.zeros(rows, dtype=np.float32)
+
+    for r in range(rows):
+        pa = {int(i): float(p) * float(mass_a[r])
+              for i, p in zip(ids_a[r], probs_a[r]) if p > 0}
+        pb = {int(i): float(p) * float(mass_b[r])
+              for i, p in zip(ids_b[r], probs_b[r]) if p > 0}
+        if mode == "fill":
+            take_b = (float(mass_a[r]) < fill_below) and (float(mass_b[r]) > float(mass_a[r]))
+            src_ids, src_probs, src_mass = (
+                (ids_b[r], probs_b[r], float(mass_b[r])) if take_b
+                else (ids_a[r], probs_a[r], float(mass_a[r])))
+            src_act = int(act_a[r]) if act_a[r] >= 0 else int(act_b[r])
+            src_ap = float(ap_a[r]) if ap_a[r] > 0 else float(ap_b[r])
+            if take_b:
+                src_act = int(act_b[r]) if act_b[r] >= 0 else int(act_a[r])
+                src_ap = float(ap_b[r]) if ap_b[r] > 0 else float(ap_a[r])
+            n = min(len(src_ids), width)
+            out_ids[r, :n] = src_ids[:n]
+            out_probs[r, :n] = src_probs[:n]
+            out_mass[r] = src_mass
+            out_act[r] = src_act
+            out_ap[r] = src_ap
+            continue
+
+        merged = {k: share * v for k, v in pa.items()}
+        for k, v in pb.items():
+            merged[k] = merged.get(k, 0.0) + (1.0 - share) * v
+        if not merged:
+            continue
+        ranked = sorted(merged.items(), key=lambda kv: (-kv[1], kv[0]))[:width]
+        total = sum(v for _, v in ranked)
+        if total <= 0.0 or not math.isfinite(total):
+            continue
+        out_mass[r] = min(1.0, total)
+        for i, (sid, v) in enumerate(ranked):
+            out_ids[r, i] = sid
+            out_probs[r, i] = v / total
+        out_act[r] = int(act_a[r]) if act_a[r] >= 0 else int(act_b[r])
+        if ap_a[r] > 0 and ap_b[r] > 0:
+            out_ap[r] = share * float(ap_a[r]) + (1.0 - share) * float(ap_b[r])
+        else:
+            out_ap[r] = float(ap_a[r] or ap_b[r])
+    return out_ids, out_probs, out_mass, out_act, out_ap
+
+
 # ----------------------------------------------------------------- weights
 def row_weights(mode, mass, counts, piece, topk, piece_weight=0.1, word_weight=1.0):
     """Per-row KD weight, the array `train_v2.py distill_weight=` consumes.
