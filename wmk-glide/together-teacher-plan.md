@@ -368,7 +368,66 @@ Routing 23 $ / 1,9 h.
 **Was nicht lohnt:** `gpt-oss-120b` als Partner (nur Einzel-Prompt, 1,21
 bits/Zeichen, Blend-Gewinn −1,1 % → Zeitkosten 40×).
 
-## 10. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
+## 10. Was ein neuer 2M-Lauf anders macht als der bestehende
+
+Der vorhandene Cache (`de_soft_2m.npz`, 1 979 982 Sätze / 21 378 590 Rows,
+top-24, Qwen3.8-27B-FP8 über vLLM) bleibt gültig — aber ein neuer Lauf mit
+diesem Collector ist in **sieben** Punkten messbar anders. Alle Zahlen der
+linken Spalte stehen in `artifacts/out/audit_signal.json` / `audit_soft.json`.
+
+| Dimension | Bestehender 2M-Cache | Neuer Lauf | Wirkung |
+|---|---|---|---|
+| **Breite** | top-24, im Mittel 16,79 Kandidaten (p10 = 8) | **6 Kandidaten** (5 + echtes Token), `--topk 8` gepolstert | **schlechter**: getragene Masse fällt (0,906 → erwartet ~0,6–0,75) |
+| **echtes Wort im Ziel** | nur in **81,67 %** der Rows (Piece-Rows: **0,0 %**) | **100 %** — exakt via `echo`, auch mehrteilig, notfalls injiziert | **besser**, das ist der Kern |
+| **Piece-Rows** | 15,17 % (3,24 Mio.) mit Lehrermasse **0,0** → KD drückt das richtige Wort auf `p_b = 1−α` | echte Wahrscheinlichkeit je Row (`actual_p`), Maske/Soft-Weight wird unnötig | **besser**, ohne Trainingsseitige Krücke |
+| **Masse je Row** | nirgends gespeichert; nur Zeilen-Summe 0,906 | `mass` im Audit-Sibling (vor Renormierung) | **neu**: erlaubt `weight = mass` statt „Zeilen zählen" |
+| **KD-Gewicht** | `--weight=cand` = `nz/topk` (≥ 3 Kandidaten ≈ 1,0) | `weight` je Row aus `mass` (oder `cand`/`piece`) | **besser dosiert**, besonders bei 6 breit |
+| **Lehrerqualität (token-NLL)** | 27B-FP8: chat 5,278 / news 4,616 | Qwen3.5-9B: 4,596 / 4,497 · GLM-5.2: 4,897 / **4,082** · Blend: Wort-NLL −11,6 % | **besser** (beide API-Lehrer schlagen den 27B im Mittel) |
+| **Regex/Produktion** | vLLM auf gemieteter GPU, .partial-Checkpoints, manuelle Passes | Array-Batching (196–533 Sätze/s), Resume je Shard, `run.json`-Identität, Retries, Streaming-/Einzel-Prompt-Fallback | **besser**: 2M in 1–3,9 h statt GPU-Session, ~5–47 $ |
+
+**Was sich *nicht* ändert:** die vier npz-Schlüssel und ihre Bedeutung
+(`sentences`, `starts`, `ids`, `probs`), die Zeilenlogik (eine Row je
+Wortgruppe, Row 0 leer — `soft_mask.py fill` besitzt sie), die
+Korpus-Selektion (`distill.py`-RNG), das Vokabular (22 512 gemappte Wörter),
+der Trainer, und der Gate-Vertrag. `patch_soft.py` kann den alten Cache
+stattdessen **in place reparieren** (nur die 1,50 Mio. betroffenen Sätze,
+~3,4 $, ~47 min) — dann bleibt die 24er-Breite und nur der Piece-Defekt
+verschwindet.
+
+**Was der Lauf entscheiden muss (nicht vorher festlegbar):**
+
+1. **Breite gegen Masse.** 6 Kandidaten sind weniger Support als heute. Ob
+   `weight = mass` das auffängt, ist eine Schüler-Frage → 100k-A/B,
+   3 000 Steps, Gate 0,05 nats.
+2. **Ein Lehrer oder zwei.** Blend (π≈0,45) ist auf Wort-Ebene −11,6 % NLL,
+   kostet aber 2× Tokens; Qwen+GLM-`fill` liefert die Masse ohne NLL-Gewinn.
+3. **Lehrerwahl.** GLM-5.2 gewinnt news, Qwen3.5-9B gewinnt chat — bei 8×
+   Preisunterschied. Für eine reine *Reparatur* reicht Qwen (es braucht nur
+   die exakte Wahrscheinlichkeit des echten Worts, keine Breite).
+
+**Konkreter Aufruf für einen neuen 2M-Lauf** (Beispiel: 100k-A/B zuerst):
+
+```bash
+# 1. Wort-Maps (einmal je Modell + Vokabular)
+python3 cloud/together/wordmap.py out/de_lm_2m --out out/wm_qwen.json
+python3 cloud/together/wordmap.py out/de_lm_2m --out out/wm_glm.json \
+        --model zai-org/GLM-5.2
+
+# 2. Sammeln: Blend, 8 Slots, Masse-Gewichtung, Temperatur 1,5
+python3 cloud/together/distill_together.py out/de_lm_2m out/de_soft_2m_qwen_glm.npz \
+    --map out/wm_qwen.json --sentences 2000000 --shard-size 25000 --batch 256 \
+    --topk 8 --weight-mode mass --temperature 1.5 \
+    --extra-model zai-org/GLM-5.2 --extra-map out/wm_glm.json \
+    --extra-mode blend --extra-share 0.45 --min-mass-ratio 0.85
+
+# 3. Gates wie bisher
+python3 wmk-glide/tools/check_soft.py out/de_soft_2m_qwen_glm.npz --vocab-size 24576
+python3 tools/wmlm/soft_mask.py build out/de_lm_2m out/de_soft_2m_qwen_glm.npz \
+        out/de_soft_2m_qwen_glm.masks --emit-align
+# Trainer: distill_topk=0, distill_align=..., distill_weight=<out>.audit.npz, alpha 0.3
+```
+
+## 11. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
 
 1. **100k-Slice sammeln** (Together, 8-wide, `--weight-mode mass`):
    ~1 min, ~0,21 $. Vorher `wordmap.py` einmal.
