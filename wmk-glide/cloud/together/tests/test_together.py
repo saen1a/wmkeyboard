@@ -127,6 +127,53 @@ class ClientTest(unittest.TestCase):
         self.assertIsNone(tg.prompt_len([" a", " b"], " a b c"))
         self.assertIsNone(tg.prompt_len([" b"], " a b"))
 
+    def test_batched_prompts_unsupported_falls_back_to_single(self):
+        """gRPC-backed models reject array prompts; the client must degrade
+        to one prompt per request instead of failing the run."""
+        class Grpc:
+            def __init__(self):
+                self.sizes = []
+            def __call__(self, body):
+                pr = body["prompt"]
+                pr = [pr] if isinstance(pr, str) else pr
+                self.sizes.append(len(pr))
+                if len(pr) > 1:
+                    raise tg.TogetherError(
+                        "HTTP 400: batch_prompts_not_supported", 400,
+                        '{"error":{"code":"batch_prompts_not_supported"}}')
+                return payload_for(pr)
+
+        t = Grpc()
+        c = make_client(t, batch=4)
+        out = c.score(["a b", "c d", "e f"])
+        self.assertEqual(len(out), 3)
+        self.assertTrue(c.single_prompt)
+        self.assertEqual(t.sizes, [3, 1, 1, 1])
+        self.assertEqual([o.tokens[0] for o in out], ["a", "c", "e"])
+        # a later call must stay in single mode (a 1-element array is refused too)
+        t.sizes.clear()
+        out2 = c.score(["g h", "i j"])
+        self.assertEqual(t.sizes, [1, 1])          # no array is attempted again
+
+    def test_array_that_silently_returns_one_choice_degrades(self):
+        """gRPC models answered 200 with a single choice for a batch; that must
+        trigger the same single-prompt fallback, not a truncated run."""
+        class Silent:
+            def __init__(self):
+                self.sizes = []
+            def __call__(self, body):
+                pr = body["prompt"]
+                pr = [pr] if isinstance(pr, str) else pr
+                self.sizes.append(len(pr))
+                return payload_for(pr[:1])      # silently drops the rest
+
+        t = Silent()
+        c = make_client(t, batch=4)
+        out = c.score(["a b", "c d", "e f"])
+        self.assertEqual(len(out), 3)
+        self.assertTrue(c.single_prompt)
+        self.assertEqual(t.sizes, [3, 1, 1, 1])
+
     def test_choice_count_mismatch_is_fatal(self):
         c = make_client(FakeTransport(drop_choice=True), batch=4)
         with self.assertRaises(tg.TogetherError):

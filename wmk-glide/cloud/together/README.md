@@ -35,6 +35,7 @@ Measured endpoint facts (2026-11-03, `probe.py`, `Qwen/Qwen3.5-9B` and
 | `distill_together.py` | sharded collector: `run.json` identity, resume, `.sha256`, `failures.jsonl`, merge, validation; `--temperature`, `--weight-mode`. `--self-test` (offline end-to-end) |
 | `token_test.py` | corpus-level sanity: mean NLL, top-1 (argmax), top-k hits, captured mass on `out/de_lm` sentences |
 | `probe.py` | endpoint probe: width, echo alignment, argmax agreement; modes `chat`, `repeat`, `breadth` |
+| `model_ab.py` | model comparison on the 200 A/B sentences: NLL, top-1, width, candidate mass, word-spell rate; writes JSON + markdown |
 | `tests/test_together.py` | 21 offline unit tests (client, targets, weights, audit sibling) |
 | `tests/test_together_e2e.py` | synthetic `prep.py` corpus + fake transport → real collector → `check_soft.validate_soft` |
 
@@ -43,7 +44,17 @@ cd wmk-glide/cloud/together
 python3 tests/test_together.py          # unit
 python3 tests/test_together_e2e.py      # end to end, no network
 python3 probe.py --self-test            # classifier fixtures
+
+# which model should be the teacher? (200 German sentences, both classes)
+python3 model_ab.py --models Qwen/Qwen3.5-9B,openai/gpt-oss-120b \
+        --out ../../artifacts/out/ab_together.json
 ```
+
+`model_ab.py` also reports the three ways a Together model can be unusable —
+`non-serverless` (every base model), `batch_prompts_not_supported` (gRPC
+backends; the client then falls back to one prompt per request) and a broken
+echo (no prompt log-probs at all). See
+[`../../together-teacher-plan.md`](../../together-teacher-plan.md) §6.
 
 ## What a row contains
 

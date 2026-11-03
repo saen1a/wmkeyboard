@@ -158,7 +158,42 @@ prüft (inkl. Resume: zweiter Lauf macht **0** Requests). Alle Selbsttests:
 | ebd. §2.1 | Top-k-Masse: k=4 69,6 %, k=8 85,1 %, k=16 97,4 % | 8-wide nur mit `mass`-Gewichtung sinnvoll |
 | `plans/student-quality-audit.md:251-255` | Tail-aware KD, Residual/OTHER-Bucket als Standard-Fix | deckungsgleich mit §2 |
 
-## 6. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
+## 6. Modell-Katalog: was von 190 Textmodellen wirklich taugt
+
+`GET /v1/models` listet **269 Modelle**, davon 190 Text (`chat`/`language`).
+Am 03.11.2026 durchgemessen (`cloud/together/model_ab.py`, 200 A/B-Sätze +
+500 Wortformen) — es gibt vier Ausschlussgründe, drei davon im Client
+behandelt:
+
+| Blocker | Modelle (gemessen) | Konsequenz |
+|---|---|---|
+| `Unable to access non-serverless model …` | **alle** `language`-Basismodelle (`Qwen3-{0.6,1.7,4,8,14}B-Base`, `Qwen3-30B-A3B-Base`, `Qwen2{-1.5,7,72}B`, `gemma-3-{1b,27b}-pt`, `Llama-3.2-3B`, `Meta-Llama-3.1-8B`, `Mixtral-8x7B-v0.1`) **und** `Qwen3.5-397B-A17B`, `Qwen3-235B-A22B-Instruct-2507-FP8`, `GLM-4.5-Air-FP8`, `GLM-4.7`, `GLM-5.1`, `GLM-4.6`, `Ministral-3-14B-Instruct`, `Llama-3.3-70B-Instruct-Turbo`, `DeepSeek-V3.1`, `gemma-3-27b-it`, `gemma-4-31B-it`, `Mistral-Small-24B`, `Qwen3-4B-Instruct-2507` | nur mit **dediziertem Deployment** (GPU-Stunden). Damit gilt weiter: **kein Base-Lehrer und kein 397B auf dem Pay-per-Token-Pfad** |
+| `403 … requires third-party data sharing …` | `Qwen/Qwen3.8-Flash` | nach Aktivierung der Datenfreigabe **unverändert** 403 → Einstellung greift für diese Organisation/Key nicht (oder erst nach Propagation). Vor einem Kauf/Vertrag nachprüfen |
+| Echo wird nicht erfüllt | `zai-org/GLM-5.3-Flash` (Antwort `'\n\n'`), `deepseek-ai/DeepSeek-V4.1-Flash` (Antwort `'?'`) | **keine** Prompt-Logprobs; der Client bricht hart ab („a misaligned row is worse than a missing one“) |
+| `batch_prompts_not_supported` bzw. 200 mit nur 1 Choice | `openai/gpt-oss-120b`, `GLM-5.3-Flash` | Client erkennt beide Formen und schaltet auf **Einzel-Prompt** um (String statt Array — auch ein 1-Element-Array wird abgelehnt) |
+
+**Damit sind genau zwei Modelle nutzbar**, und eines davon ist deutlich
+schlechter auf Deutsch:
+
+| Modell | Breite | NLL ↓ | top-1 | Masse | Wort-Rate ↑ | tok/Wort | 200 Sätze |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `Qwen/Qwen3.5-9B` | 5–5,5 | **4,527** | **0,296** | **0,544** | **57,0 %** | 1,66 | 1 Request (Array) |
+| `openai/gpt-oss-120b` | 5–5,7 | 6,124 | 0,177 | 0,376 | 57,8 % | 1,62 | ~200 Requests (Einzel) |
+
+Zum Vergleich, **gleiche 200 Sätze**, lokale Base-Lehrer aus
+`artifacts/out/ab_3way.json` (Token-NLL, dieselbe Metrik): `Qwen3.5-4B-Base`
+**5,24** · `Qwen3.5-9B-Base` **5,03** · `Qwen3.8-27B-FP8` **4,95**. Das
+Together-9B liegt mit **4,53** darunter — mit zwei Vorbehalten: es ist
+**post-trained** (nicht Base) und seine Tokenisierung ist nicht bitgleich mit
+dem lokalen 9B-Base, die Zahlen sind also indikativ, nicht exakt.
+
+**Was daraus folgt:** ein Basismodell ist auf Together nicht zu bekommen
+(dediziertes Deployment = GPU-Stunden, also Scaleway-Pfad). Für den
+API-Lehrer bleibt `Qwen3.5-9B`; `gpt-oss-120b` ist als Zweitlehrer nur
+interessant, wenn man eine 2-Lehrer-Mixtur wollte, und ist pro Satz ~25×
+teurer an Zeit (Einzel-Prompt).
+
+## 7. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
 
 1. **100k-Slice sammeln** (Together, 8-wide, `--weight-mode mass`):
    ~1 min, ~0,21 $. Vorher `wordmap.py` einmal.

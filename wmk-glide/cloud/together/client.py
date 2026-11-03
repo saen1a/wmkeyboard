@@ -19,6 +19,11 @@ re-discovers it:
 * `prompt` may be an **array**: one `choices` entry per prompt, `index == i`,
   `choices[i].logprobs.tokens` are the tokens of prompt `i`. Measured
   throughput 498 sentences/s at 1000 prompts per request.
+* …**but not for every model.** gRPC-backed ones (`openai/gpt-oss-120b`,
+  `zai-org/GLM-5.3-Flash`, measured 2026-11-03) answer
+  `400 batch_prompts_not_supported`. The client detects that code and falls
+  back to one prompt per request for the rest of the run (`single_prompt`),
+  which is ~100x slower per sentence but still works.
 * With **array** prompts `usage.prompt_tokens` is the *sum over the batch*,
   not a per-choice count: for a batch of 16 it reported `3` after integer
   division in the first version of this client, which silently truncated
@@ -177,6 +182,8 @@ class Client:
             "requests": 0, "prompts": 0, "prompt_tokens": 0,
             "completion_tokens": 0, "retried": 0, "chunks": 0,
         }
+        # Set when the model refuses array prompts (gRPC backends).
+        self.single_prompt = False
 
     # ---------------------------------------------------------------- http
     def _http(self, body):
@@ -228,21 +235,72 @@ class Client:
         """Score every prompt; returns one `Choice` per prompt, in order."""
         prompts = list(prompts)
         out = []
-        for start in range(0, len(prompts), self.batch):
-            chunk = prompts[start:start + self.batch]
-            cid = "" if chunk_ids is None else str(chunk_ids[start // self.batch])
-            payload = self._call({
-                "model": self.model,
-                "prompt": chunk,
-                "max_tokens": 1,
-                "temperature": 0,
-                "echo": True,
-                "logprobs": self.logprobs,
-            })
-            out.extend(self._parse(payload, chunk, cid))
+        # The step must shrink *inside* the loop: the first rejected batch
+        # flips `single_prompt`, and every later chunk has to follow at once.
+        # Two failure shapes count as "this model cannot do arrays": the
+        # explicit `batch_prompts_not_supported` (handled in `_call_body`) and
+        # a 200 that silently returns fewer choices than prompts (gRPC models
+        # that process only the first prompt). Both degrade, never truncate.
+        start, chunk_no = 0, 0
+        while start < len(prompts):
+            size = 1 if self.single_prompt else self.batch
+            chunk = prompts[start:start + size]
+            cid = "" if chunk_ids is None else str(chunk_ids[chunk_no])
+            try:
+                payload = self._call_body(chunk, single=self.single_prompt)
+                out.extend(self._parse(payload, chunk, cid))
+            except TogetherError:
+                if self.single_prompt or len(chunk) == 1:
+                    raise
+                self.single_prompt = True
+                self.stats["single_prompt_fallback"] = 1
+                continue          # same `start`, now one prompt per request
             self.stats["chunks"] += 1
+            start += len(chunk)
+            chunk_no += 1
         self.stats["prompts"] += len(prompts)
         return out
+
+    def _body(self, chunk, single=False):
+        """Request body. `single` sends the prompt as a plain string — gRPC
+        models reject arrays of *any* length, including one element."""
+        return {
+            "model": self.model,
+            "prompt": chunk[0] if single else chunk,
+            "max_tokens": 1,
+            "temperature": 0,
+            "echo": True,
+            "logprobs": self.logprobs,
+        }
+
+    def _call_body(self, chunk, single=False):
+        """Request one chunk, retrying it prompt-by-prompt if the model refuses
+        arrays (`batch_prompts_not_supported`).
+
+        `single` also covers the mode where one prompt is sent as a plain
+        string: gRPC models reject arrays of *any* length, so a 1-element
+        array is not a workaround."""
+        try:
+            return self._call(self._body(chunk, single=single))
+        except TogetherError as e:
+            if "batch_prompts_not_supported" not in (e.body or "") or len(chunk) == 1:
+                raise
+            self.single_prompt = True
+            self.stats["single_prompt_fallback"] = 1
+            answers = [self._call(self._body([p], single=True)) for p in chunk]
+            # stitch one payload per prompt back into the array shape; each
+            # sub-response numbers its own choice 0, so renumber here
+            stitched = []
+            for i, a in enumerate(answers):
+                for c in (a.get("choices") or []):
+                    c = dict(c)
+                    c["index"] = i
+                    stitched.append(c)
+            return {"choices": stitched,
+                    "usage": {"prompt_tokens": sum((a.get("usage") or {}).get("prompt_tokens") or 0
+                                                   for a in answers),
+                              "completion_tokens": sum((a.get("usage") or {}).get("completion_tokens") or 0
+                                                       for a in answers)}}
 
     def score_one(self, prompt):
         return self.score([prompt])[0]
