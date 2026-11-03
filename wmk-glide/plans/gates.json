@@ -14,7 +14,7 @@
     {
       "id": "G0",
       "title": "measurement baseline",
-      "state": "open",
+      "state": "passed",
       "entry": [],
       "machine": "cpu",
       "wall_hours": 1,
@@ -35,7 +35,7 @@
     {
       "id": "G1",
       "title": "alignment screen V1 vs V9",
-      "state": "blocked",
+      "state": "passed",
       "entry": ["G0"],
       "machine": "local_gpu",
       "wall_hours": 1.5,
@@ -54,7 +54,7 @@
     {
       "id": "G2",
       "title": "alignment confirm 2M @30k",
-      "state": "blocked",
+      "state": "passed",
       "entry": ["G1"],
       "machine": "local_gpu",
       "wall_hours": 12.6,
@@ -70,7 +70,7 @@
     {
       "id": "G3",
       "title": "repair screens V2/V3/V8",
-      "state": "blocked",
+      "state": "failed",
       "entry": ["G2"],
       "machine": "local_gpu",
       "wall_hours": 2.2,
@@ -128,8 +128,8 @@
     },
     {
       "id": "G7",
-      "title": "export + final paired evaluation",
-      "state": "blocked",
+      "title": "export + final paired eval",
+      "state": "failed",
       "entry": ["G6"],
       "machine": "cpu",
       "wall_hours": 1,

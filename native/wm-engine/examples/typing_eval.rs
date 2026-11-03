@@ -47,13 +47,15 @@ struct Sentence {
     words: Vec<String>,
 }
 
-fn qwerty_keys() -> Vec<(u16, f32, f32)> {
+fn qwertz_keys() -> Vec<(u16, f32, f32)> {
     let mut keys = Vec::new();
-    for (row, (letters, offset)) in [("qwertyuiop", 0.0f32), ("asdfghjkl", 0.25), ("zxcvbnm", 0.75)].iter().enumerate() {
+    for (row, (letters, offset)) in [("qwertzuiopü", 0.0f32), ("asdfghjklöä", 0.25), ("yxcvbnm", 0.75)].iter().enumerate() {
         for (col, ch) in letters.chars().enumerate() {
             keys.push((ch as u16, offset + col as f32, row as f32));
         }
     }
+    // ß sits on the dash key, right of the top row.
+    keys.push(('ß' as u16, 0.95, 0.0));
     keys
 }
 
@@ -129,7 +131,7 @@ fn main() {
     let held: HashSet<String> = by_count
         .iter()
         .enumerate()
-        .filter(|(rank, (w, _))| (3_000..60_000).contains(rank) && rank % 7 == 0 && w.len() >= 4 && w.bytes().all(|b| b.is_ascii_lowercase()))
+        .filter(|(rank, (w, _))| (3_000..60_000).contains(rank) && rank % 7 == 0 && w.chars().count() >= 4 && w.chars().all(|c| "abcdefghijklmnopqrstuvwxyzäöüß".contains(c)))
         .map(|(_, (w, _))| w.clone())
         .collect();
     let listed: HashSet<String> = entries.iter().map(|(w, _)| w.clone()).collect();
@@ -178,7 +180,7 @@ fn main() {
         read("en_trigrams.txt", 3, 75_000, &mut |w, c| b.add_trigram(w[0], w[1], w[2], c));
         wmng::write(&b.build())
     });
-    let seeds_path = std::env::var("SEEDS").unwrap_or_else(|_| "../../app/src/main/assets/dictionaries/en_bigrams.txt".into());
+    let seeds_path = std::env::var("SEEDS").unwrap_or_else(|_| "../../app/src/main/assets/dictionaries/de_bigrams.txt".into());
     let seeds_text = std::fs::read_to_string(&seeds_path).unwrap_or_default();
     let lm: Option<Arc<Lm>> = args.get(3).map(|p| Arc::new(Lm::open(std::fs::read(p).expect("the model file")).expect("a .wmlm the reader knows")));
     if let Some(lm) = &lm {
@@ -210,7 +212,7 @@ fn main() {
     let collect_items = items_path.is_some();
     // (mode, profile_idx, item_id, nextword_top1, nextword_top3, strip_top1)
     let mut items: Vec<(String, usize, usize, i32, i32, i32)> = Vec::new();
-    let keys = qwerty_keys();
+    let keys = qwertz_keys();
     let centre = |ch: char| keys.iter().find(|k| k.0 == ch as u16).map(|k| (k.1, k.2));
     let nearest = |p: (f32, f32)| {
         keys.iter()
@@ -237,8 +239,8 @@ fn main() {
         let build = |dict: &[(String, i32)]| {
             let mut p = Predictor::new();
             p.dictionary = Some(WordList::of(dict));
-            p.english_sources = true;
-            p.primary_language = "en".into();
+            p.english_sources = false;
+            p.primary_language = "de".into();
             p.context_rerank = true;
             p.seeds = SeedBigrams::parse(&seeds_text);
             p.ngrams = pack_bytes.as_ref().and_then(|b| Pack::open(b.clone()));
@@ -271,7 +273,8 @@ fn main() {
                 holed.lm_prefix = prefix;
                 for i in 0..s.words.len() {
                     let word = &s.words[i];
-                    if word.len() < 2 || !word.bytes().all(|b| b.is_ascii_lowercase()) {
+                    let n_chars = word.chars().count();
+                    if n_chars < 2 || !word.chars().all(|c| c.is_lowercase() && centre(c).is_some()) {
                         continue;
                     }
                     let context: Vec<&str> = s.words[..i].iter().map(String::as_str).collect();
@@ -302,11 +305,11 @@ fn main() {
                         if next1 == 1 { t.next_top1 += 1; }
                         if next3 == 1 { t.next_top3 += 1; }
                     }
-                    if word.len() < 3 {
+                    if n_chars < 3 {
                         continue;
                     }
                     // Typed by the finger.
-                    let mut taps = Vec::with_capacity(word.len());
+                    let mut taps = Vec::with_capacity(n_chars);
                     let mut typed = String::with_capacity(word.len());
                     for ch in word.chars() {
                         let (x, y) = centre(ch).unwrap();
@@ -329,11 +332,11 @@ fn main() {
                         }
                         if savings_pass > 0 && t.n < cases && listed.contains(word) && t.n % 4 == 0 {
                             t.savings_words += 1;
-                            t.savings_chars += word.len();
-                            for p in 1..word.len() {
-                                let strip = full.suggest_touch(&word[..p], &previous, 3, &taps[..p]);
+                            t.savings_chars += n_chars;
+                            for (p, (byte, _)) in word.char_indices().enumerate().skip(1) {
+                                let strip = full.suggest_touch(&word[..byte], &previous, 3, &taps[..p]);
                                 if strip.first().is_some_and(|w| w == word) {
-                                    t.savings_saved += word.len() - p;
+                                    t.savings_saved += n_chars - p;
                                     break;
                                 }
                             }
