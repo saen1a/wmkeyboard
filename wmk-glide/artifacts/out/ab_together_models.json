@@ -69,12 +69,20 @@
   "Qwen/Qwen3.5-2B": "non-serverless (needs dedicated deployment)",
   "google/gemma-4-E4B-it": "non-serverless (needs dedicated deployment)",
   "MiniMaxAI/MiniMax-M2": "non-serverless (needs dedicated deployment)",
-  "Qwen/Qwen2.5-72B-Instruct-Turbo": "non-serverless (needs dedicated deployment)"
+  "Qwen/Qwen2.5-72B-Instruct-Turbo": "non-serverless (needs dedicated deployment)",
+  "Qwen/Qwen3.8-2.4T-A95B": "echo not honoured (returns '.') -> no prompt log-probs",
+  "Prism-ML/Ternary-Bonsai-27B": "works, but unusable quality: NLL/token 7.505, top-1 0.076 (the only 27B-class model reachable on serverless)"
  },
  "privacy_toggles": {
   "prompt_storage": true,
   "passthrough_models": true,
   "model_training": true,
   "effect": "Qwen3.8-Flash went from 403 to chat-only completions; no model became usable as a prompt-logprob teacher"
- }
+ },
+ "bits_per_char": {
+  "Qwen/Qwen3.5-9B": 0.93,
+  "openai/gpt-oss-120b": 1.214,
+  "note": "40 sentences, sum(-logp)/characters; tokenizer-independent, so it is the only cross-provider quality number. ab_3way.json stores no character counts, so the local 4B/9B/27B cannot be converted from its per-token NLL."
+ },
+ "no_27b_on_together": "catalog contains no Qwen3.8-27B. 27B-class entries are gemma-3-27b-pt/-it, medgemma-27b, Prism Ternary-Bonsai-27B and gemma-2-27b-it — the first four are non-serverless, the last is usable but far worse (NLL 7.5)."
 }

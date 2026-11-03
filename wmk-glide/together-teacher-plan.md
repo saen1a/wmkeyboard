@@ -187,6 +187,22 @@ Together-9B liegt mit **4,53** darunter — mit zwei Vorbehalten: es ist
 **post-trained** (nicht Base) und seine Tokenisierung ist nicht bitgleich mit
 dem lokalen 9B-Base, die Zahlen sind also indikativ, nicht exakt.
 
+**Gibt es ein Modell in der 27B-Klasse?** Im Katalog steht **kein**
+`Qwen3.8-27B`. Die 27B-Einträge sind `gemma-3-27b-pt/-it`, `medgemma-27b`,
+`gemma-2-27b-it` (alle non-serverless) und
+`Prism-ML/Ternary-Bonsai-27B` — das läuft, ist aber mit **NLL/Token 7,505**
+und top-1 0,076 deutlich schlechter als das 9B (4,527 / 0,296).
+`Qwen/Qwen3.8-2.4T-A95B` liefert kein Echo (`'.'`), `Qwen3.8-Flash` ist
+chat-only.
+
+**Qualität tokenizer-unabhängig (bits/Zeichen, 40 Sätze):** `Qwen3.5-9B`
+**0,930** · `gpt-oss-120b` **1,214**. Aus `ab_3way.json` lässt sich das für
+die lokalen Lehrer **nicht** ausrechnen (keine Zeichenzahlen gespeichert);
+mit gleicher Zeichen/Token-Rate ergäbe der 27B-FP8 (NLL/Token 4,95) grob
+0,98 — der Together-9B wäre also **nicht schlechter**, nur schmaler
+[INFERENCE]. Genau dafür müsste der 27B-Lauf auf Scaleway die Zeichenzahlen
+mitschreiben.
+
 Der Streaming-Weg ist im Client eingebaut (`stream: true`, SSE-Stitching in
 `parse_sse`, automatischer Retry, wenn ein Modell „only supports streaming“
 meldet) — er hat Qwen3.8-Flash nur bis zur chat-only-Grenze gebracht.
