@@ -20,7 +20,16 @@ missing — so the row keeps its 24-wide shape, its teacher, and gains the one
 fact it was missing.
 
 The file it writes has exactly the four keys the trainer expects, the same
-`sentences`/`starts` and the same row count. A report lists every change.
+`sentences`/`starts` and the same row count. A report lists every change,
+broken down by reason and by corpus register.
+
+`--dry-run` needs **no API key and no word map**: it only reads the corpus and
+the soft file and counts what would be repaired. That is the pre-flight step
+before any token is spent.
+
+Memory: the 2M cache is 21.4M rows x 24 x (int16 + float16), i.e. ~1.0 GB per
+array. `run()` keeps copies of `ids` and `probs` and writes a new npz, so plan
+for **~4-5 GB peak RSS** on top of whatever the trainer holds.
 
     python3 patch_soft.py --data-dir out/de_lm_2m --soft out/de_soft_2m.npz \
         --map out/wordmap_together.json --out out/de_soft_2m_patched.npz \
@@ -60,12 +69,30 @@ def word_groups(row):
     return out
 
 
-def blind_rows(ids, probs, starts, sentences, tokens, sents_starts):
-    """Row indices that need repair, grouped per sentence index.
+REASONS = ("empty", "piece", "missing_plain")
 
-    A row is blind when it carries no mass (and is not the sentence's first
-    row) or when its word is a piece the teacher cannot map. Rows that already
-    contain the true word are left alone.
+
+def field_of_row(row):
+    for t in row[:vc.PREFIX_LEN]:
+        w = dt.sp_vocab_lookup(int(t))
+        if w.startswith("<field:"):
+            return w
+    return ""
+
+
+def blind_rows(ids, probs, starts, sentences, tokens, sents_starts,
+               mode="pieces"):
+    """`{sid: [(row, word id, reason), ...]}` for the rows worth repairing.
+
+    Reasons, in the order the audit named them:
+
+    * `empty`   — the row carries no teacher mass at all (row 0 is excluded:
+      `soft_mask.py fill` owns it).
+    * `piece`   — the true word is a word the teacher only spells in pieces,
+      which the 27B mapping dropped to mass 0.0 (15.17 % of the 2M cache).
+    * `missing_plain` — a normal word the teacher left out of its top-24
+      (18.3 % of rows). Only collected in `mode="all"`, because injecting very
+      small probabilities everywhere is a different intervention.
     """
     out = {}
     for i, sid in enumerate(sentences):
@@ -81,8 +108,14 @@ def blind_rows(ids, probs, starts, sentences, tokens, sents_starts):
             wid, is_piece = groups[k]
             row_ids = {int(ids[r, j]) for j in range(ids.shape[1]) if probs[r, j] > 0}
             empty = float(probs[r].sum()) == 0.0
-            if empty or (is_piece and wid not in row_ids):
-                need.append((r, wid))
+            if empty:
+                need.append((r, wid, "empty"))
+            elif wid in row_ids:
+                continue
+            elif is_piece and mode in ("pieces", "all"):
+                need.append((r, wid, "piece"))
+            elif mode == "all":
+                need.append((r, wid, "missing_plain"))
         if need:
             out[int(sid)] = need
     return out
@@ -121,23 +154,42 @@ def run(args, transport=None, client=None):
     sentences = z["sentences"].copy()
     starts = z["starts"].copy()
 
+    todo = blind_rows(ids, probs, starts, sentences, tokens, sents_starts,
+                      mode=args.mode)
+    per_reason = {}
+    per_field = {}
+    for sid, entries in todo.items():
+        f = field_of_row(tokens[sents_starts[sid]:sents_starts[sid + 1]]) or "(none)"
+        for _, _, reason in entries:
+            per_reason[reason] = per_reason.get(reason, 0) + 1
+            per_field[f] = per_field.get(f, 0) + 1
+    flagged = int(sum(len(v) for v in todo.values()))
+    report = {"soft": args.soft, "model": args.model, "mode": args.mode,
+              "rows": int(len(ids)), "sentences_total": int(len(sentences)),
+              "sentences_needing_repair": len(todo),
+              "rows_flagged": flagged,
+              "share_rows_flagged": round(flagged / max(1, len(ids)), 4),
+              "by_reason": per_reason, "by_field": per_field,
+              "rows_patched": 0, "rows_no_probability": 0, "already_present": 0,
+              "dry_run": bool(args.dry_run)}
+    if args.limit:
+        todo = dict(list(sorted(todo.items()))[:args.limit])
+        report["limit"] = args.limit
+    if args.dry_run or not todo:
+        if args.report:
+            tmpj = args.report + ".tmp"
+            with open(tmpj, "w", encoding="utf-8") as f:
+                json.dump(report, f, indent=2, ensure_ascii=False)
+                f.write("\n")
+            os.replace(tmpj, args.report)
+        print(json.dumps(report, indent=2))
+        return report
+
     by_first, meta = wm.load_map(args.map)
     if meta.get("vocab_sha256") and args.data_dir:
         want = wm.vocab_digest(os.path.join(args.data_dir, "vocab.txt"))
         if meta["vocab_sha256"] != want:
             raise SystemExit("word map was built for a different vocabulary")
-
-    todo = blind_rows(ids, probs, starts, sentences, tokens, sents_starts)
-    report = {"soft": args.soft, "model": args.model, "rows": int(len(ids)),
-              "sentences_total": int(len(sentences)),
-              "sentences_needing_repair": len(todo),
-              "rows_flagged": int(sum(len(v) for v in todo.values())),
-              "rows_patched": 0, "rows_no_probability": 0, "already_present": 0}
-    if args.limit:
-        todo = dict(list(sorted(todo.items()))[:args.limit])
-    if args.dry_run or not todo:
-        print(json.dumps(report, indent=2))
-        return report
 
     cl = client or tg.Client(model=args.model, key_file=args.key_file,
                              batch=args.batch, transport=transport,
@@ -162,7 +214,7 @@ def run(args, transport=None, client=None):
             ids_s, probs_s, mass, act, ap, _ = tc.rows_from_sentence(
                 ch.tokens, ch.logs, ch.alts, ch.prompt_tokens, ends_by[sid],
                 by_first, topk=args.topk, inject_actual=False, actual=actual)
-            for r, wid in todo[sid]:
+            for r, wid, _reason in todo[sid]:
                 k = r - int(starts[list(sentences).index(sid)])
                 if k >= len(ap):
                     continue
@@ -211,15 +263,24 @@ def self_test():
                  tokens=np.asarray(tokens, dtype=np.int32), starts=starts)
         dt.load_vocab(root)
 
-        ids = np.zeros((4, 24), dtype=np.int16)
-        probs = np.zeros((4, 24), dtype=np.float16)
-        ids[1, 0], probs[1, 0] = ich, 1.0        # row 1 has mass
-        # rows 2,3 are empty -> blind
+        # one row per word group: row 0 (by design), row 1 = "will", row 2 = piece
+        ids = np.zeros((3, 24), dtype=np.int16)
+        probs = np.zeros((3, 24), dtype=np.float16)
+        ids[1, 0], probs[1, 0] = ich, 1.0        # row 1 has mass but the WRONG word
         soft = os.path.join(root, "soft.npz")
-        np.savez(soft, sentences=np.array([0], dtype=np.int32), starts=np.array([0, 4]),
+        np.savez(soft, sentences=np.array([0], dtype=np.int32), starts=np.array([0, 3]),
                  ids=ids, probs=probs)
-        todo = blind_rows(ids, probs, np.array([0, 4]), np.array([0]), tokens, starts)
-        assert todo[0] == [(2, hau), (3, hause)] or todo[0] == [(2, hau)], todo
+        soft_starts = np.array([0, 3])
+        todo = blind_rows(ids, probs, soft_starts, np.array([0]), tokens, starts)
+        got = {r: (w, why) for r, w, why in todo[0]}
+        assert got[2] == (hau, "empty"), got        # piece row, no mass yet
+        pieces_only = blind_rows(ids, probs, soft_starts, np.array([0]), tokens,
+                                 starts, mode="pieces")
+        all_reasons = blind_rows(ids, probs, soft_starts, np.array([0]), tokens,
+                                 starts, mode="all")
+        # mode="all" also sees row 1: the true word ("will") is missing there
+        assert len(all_reasons[0]) == len(pieces_only[0]) + 1, (all_reasons, pieces_only)
+        assert ("missing_plain" in [why for _, _, why in all_reasons[0]]), all_reasons
 
         # patching keeps the width and renormalises
         ids2, probs2 = ids.copy(), probs.copy()
@@ -268,6 +329,15 @@ def self_test():
             a.batch, a.topk, a.limit = 4, 8, 0
             a.key_file, a.report, a.dry_run = "", "", False
             a.min_mass_ratio = 0.0
+            a.mode = "pieces"
+            # the dry run needs neither a map nor a key: it is a CPU-only audit
+            dry = type(a)()
+            for k, v in vars(a).items():
+                setattr(dry, k, v)
+            dry.dry_run, dry.map, dry.out = True, "", ""
+            dreport = run(dry)
+            assert dreport["rows_flagged"] > 0 and dreport["by_reason"], dreport
+            assert dreport["rows_patched"] == 0, dreport
             rep = run(a, transport=FakeTransport(), client=cl)
             assert rep["rows_patched"] > 0, rep
             z = np.load(out, allow_pickle=False)
@@ -286,6 +356,9 @@ def build_parser():
     ap.add_argument("--out", required=False, help="patched soft npz")
     ap.add_argument("--map", required=False, help="word map for --model")
     ap.add_argument("--model", default="Qwen/Qwen3.5-9B")
+    ap.add_argument("--mode", default="pieces", choices=["pieces", "blind", "all"],
+                    help="pieces = piece rows (+ empty rows), blind = empty rows only, "
+                         "all = also plain rows whose true word is missing")
     ap.add_argument("--batch", type=int, default=64)
     ap.add_argument("--topk", type=int, default=tc.DEFAULT_TOPK)
     ap.add_argument("--limit", type=int, default=0, help="0 = all sentences")
@@ -301,9 +374,11 @@ def main(argv=None):
     args = build_parser().parse_args(argv)
     if args.self_test:
         return self_test()
-    for need in ("data_dir", "soft", "out", "map"):
+    needed = ["data_dir", "soft"] if args.dry_run else ["data_dir", "soft", "out", "map"]
+    for need in needed:
         if not getattr(args, need):
-            build_parser().error(f"--{need.replace('_', '-')} is required")
+            build_parser().error(f"--{need.replace('_', '-')} is required"
+                                 + (" (not for --dry-run)" if args.dry_run else ""))
     run(args)
     return 0
 

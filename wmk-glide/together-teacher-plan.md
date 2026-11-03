@@ -291,11 +291,26 @@ bleibt vier Schlüssel; ein Report zählt jede Änderung. Selbsttest plus
 Live-Lauf gegen die echte API (14 von 14 geflaggten Rows gepatcht).
 
 ```bash
+# 0. Trockenlauf: KEIN Key, KEIN GPU, KEIN Trainer-Eingriff — nur zaehlen
 python3 cloud/together/patch_soft.py --data-dir out/de_lm_2m \
-    --soft out/de_soft_2m.npz --map out/wordmap_glm52.json \
-    --out out/de_soft_2m_patched.npz --model zai-org/GLM-5.2 \
-    --report out/de_soft_2m_patched.report.json
+    --soft out/de_soft_2m.npz --dry-run --mode pieces \
+    --report out/de_soft_2m_repair_plan.json
+
+# 1. Reparieren (braucht den Key; Qwen genuegt, s. §9)
+python3 cloud/together/patch_soft.py --data-dir out/de_lm_2m \
+    --soft out/de_soft_2m.npz --map out/wordmap_qwen.json \
+    --out out/de_soft_2m_patched.npz --model Qwen/Qwen3.5-9B \
+    --mode pieces --report out/de_soft_2m_patched.report.json
 ```
+
+Der Trockenlauf berichtet `rows_flagged`, `share_rows_flagged`, `by_reason`
+(`empty` / `piece` / `missing_plain`) und `by_field` (`<field:chat>` usw.) —
+damit laesst sich der Aufwand **vor** jedem Token beziffern. Modi:
+`--mode blind` (nur leere Rows), `pieces` (Default: leere + Piece-Rows, der
+gemessene Defekt), `all` (zusaetzlich normale Woerter, die der 27B aus den
+top-24 verloren hat — 18,3 % der Rows, bewusst nicht Default).
+Speicher: der 2M-Cache belegt ~1,0 GB je Array; `run()` haelt Kopien und
+schreibt neu → **~4–5 GB Peak-RSS** zusaetzlich zum Trainer.
 
 Kosten für Weg B: nur die betroffenen Sätze (1,50 Mio. von 1,98 Mio.) →
 ~40 min / ~3 $ mit Qwen3.5-9B, ~10 h / ~25 $ mit GLM-5.2.

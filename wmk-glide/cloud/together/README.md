@@ -39,7 +39,7 @@ Measured endpoint facts (2026-11-03, `probe.py`, `Qwen/Qwen3.5-9B` and
 | `probe.py` | endpoint probe: width, echo alignment, argmax agreement; modes `chat`, `repeat`, `breadth` |
 | `model_ab.py` | model comparison on the 200 A/B sentences: NLL, top-1, width, candidate mass, word-spell rate; writes JSON + markdown |
 | `catalog_sweep.py` | one echo request per priced text model: the definitive answer to "which models can teach at all" (writes JSON) |
-| `patch_soft.py` | repair the blind rows of an existing soft-target file with the true word's exact probability (keeps width, keys, row count; writes a report) |
+| `patch_soft.py` | repair the blind rows of an existing soft-target file with the true word's exact probability (keeps width, keys, row count). `--dry-run` counts them with **no key and no word map**; `--mode blind|pieces|all` picks which defect to fix; the report breaks down by reason and corpus register |
 | `ensemble_probe.py` | can two teachers be combined? Word-level NLL of each model and of a π-blend, candidate overlap, and the union-by-max mass (= the headroom a gap-fill rule could use) |
 | `tests/test_together.py` | 21 offline unit tests (client, targets, weights, audit sibling) |
 | `tests/test_together_e2e.py` | synthetic `prep.py` corpus + fake transport → real collector → `check_soft.validate_soft` |
