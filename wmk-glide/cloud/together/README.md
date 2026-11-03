@@ -32,7 +32,7 @@ Measured endpoint facts (2026-11-03, `probe.py`, `Qwen/Qwen3.5-9B` and
 | `client.py` | batched scoring: array prompts, retries with backoff, UA (Cloudflare `403 code 1010`), cap enforcement, per-choice alignment checks, cost accounting; transport injectable for tests |
 | `together_common.py` | target construction: candidates = 5 alternatives ∪ actual token, multi-token chains, exact `p(true word)` per row (+ injection), `mass`, per-row weights. `--self-test` |
 | `wordmap.py` | measures the **teacher-token → student-word** map through the API itself (`prompt " wort"` → echoed tokens), so no local tokenizer version can disagree with the teacher |
-| `distill_together.py` | sharded collector: `run.json` identity, resume, `.sha256`, `failures.jsonl`, merge, validation. `--self-test` (offline end-to-end) |
+| `distill_together.py` | sharded collector: `run.json` identity, resume, `.sha256`, `failures.jsonl`, merge, validation; `--temperature`, `--weight-mode`. `--self-test` (offline end-to-end) |
 | `token_test.py` | corpus-level sanity: mean NLL, top-1 (argmax), top-k hits, captured mass on `out/de_lm` sentences |
 | `probe.py` | endpoint probe: width, echo alignment, argmax agreement; modes `chat`, `repeat`, `breadth` |
 | `tests/test_together.py` | 21 offline unit tests (client, targets, weights, audit sibling) |
@@ -59,6 +59,10 @@ it. Per row the collector emits:
   probability `p(w) = ∏ p(token)`.
 * `weight` — per-row KD weight for `train_v2.py distill_weight=`
   (`--weight-mode mass|cand|piece`, default `mass`).
+* `--temperature T` softens the teacher as `p^(1/T)` before ranking
+  (`plans/student-quality-audit.md` §3.2 suggests 1,5–2,0 for the KD side);
+  `mass` deliberately stays the **raw** probability, so the tail signal means
+  the same thing at every T.
 * `piece` — the row is a word the vocabulary only spells.
 
 Why that matters, in one line each:
@@ -87,7 +91,8 @@ python3 token_test.py --data-dir /root/wmlm-de/out/de_lm --sentences 100 --key-f
 # 3. collect (sharded, resumable) + merge
 python3 distill_together.py /root/wmlm-de/out/de_lm /root/wmlm-de/out/de_soft_together.npz \
         --map /root/wmlm-de/out/wordmap_together.json --sentences 150000 \
-        --shard-size 25000 --batch 256 --weight-mode mass --key-file "$KEY"
+        --shard-size 25000 --batch 256 --weight-mode mass --temperature 1.5 \
+        --key-file "$KEY"
 ```
 
 Then the existing student path, unchanged except for two knobs:

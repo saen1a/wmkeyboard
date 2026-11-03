@@ -141,7 +141,7 @@ def word_mass(tokens, logs, alts, tok_ends, word_start, word_end):
 # ------------------------------------------------------------- target rows
 def rows_from_sentence(tokens, logs, alts, prompt_tokens, word_ends, by_first,
                        topk=DEFAULT_TOPK, id_dtype=np.int16, inject_actual=True,
-                       actual=None, min_mass=0.0):
+                       actual=None, min_mass=0.0, temperature=1.0):
     """Soft rows for one sentence.
 
     `tokens`/`logs`/`alts` are the raw response arrays, `prompt_tokens` the
@@ -237,15 +237,19 @@ def rows_from_sentence(tokens, logs, alts, prompt_tokens, word_ends, by_first,
         if not mass:
             stats["empty_after"] += 1
             continue
+        raw_total = sum(mass.values())
+        if raw_total < min_mass:
+            stats["empty_after"] += 1
+            continue
+        if temperature != 1.0:
+            inv = 1.0 / float(temperature)
+            mass = {sid: (v ** inv if v > 0.0 else 0.0) for sid, v in mass.items()}
         ranked = sorted(mass.items(), key=lambda kv: (-kv[1], kv[0]))[:topk]
         total = sum(v for _, v in ranked)
         if total <= 0.0 or not math.isfinite(total):
             stats["empty_after"] += 1
             continue
-        if total < min_mass:
-            stats["empty_after"] += 1
-            continue
-        mass_out[k] = total
+        mass_out[k] = raw_total
         for i, (sid, v) in enumerate(ranked):
             ids[k, i] = sid
             probs[k, i] = v / total

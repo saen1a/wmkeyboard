@@ -267,6 +267,25 @@ class TargetsTest(unittest.TestCase):
         self.assertAlmostEqual(a["top1"], 0.5, places=6)
         self.assertAlmostEqual(a["mean_nll"], (-LP(0.9) - LP(0.2)) / 2, places=6)
 
+    def test_temperature_softens_but_keeps_raw_mass(self):
+        import numpy as np
+        kw = dict(topk=4, actual=[-1, -1, 12])
+        ids1, pr1, m1, _, _, _ = tc.rows_from_sentence(
+            self.tokens, self.logs, self.alts, 3, self.word_ends, self.by_first, **kw)
+        ids2, pr2, m2, _, _, _ = tc.rows_from_sentence(
+            self.tokens, self.logs, self.alts, 3, self.word_ends, self.by_first,
+            temperature=2.0, **kw)
+        # same candidates, same rank, but flatter: the top entry loses share
+        self.assertEqual(ids1[2].tolist(), ids2[2].tolist())
+        self.assertLess(float(pr2[2, 0]), float(pr1[2, 0]))
+        # mass is the RAW captured probability, independent of T
+        self.assertAlmostEqual(float(m1[2]), float(m2[2]), places=6)
+        # a sharper teacher concentrates more on the leader
+        _, pr3, _, _, _, _ = tc.rows_from_sentence(
+            self.tokens, self.logs, self.alts, 3, self.word_ends, self.by_first,
+            temperature=0.5, **kw)
+        self.assertGreater(float(pr3[2, 0]), float(pr1[2, 0]))
+
     def test_row_weights_modes(self):
         import numpy as np
         mass = np.array([0.0, 0.9, 0.5], dtype=np.float32)

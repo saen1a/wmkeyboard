@@ -150,6 +150,7 @@ def identity(args, data_dir, map_meta):
         "map_vocab_sha256": map_meta.get("vocab_sha256"),
         "inject_actual": not args.no_inject,
         "weight_mode": args.weight_mode,
+        "temperature": args.temperature,
     }
 
 
@@ -170,7 +171,7 @@ def check_identity(path, want, allow_change):
 
 
 # ---------------------------------------------------------------- collection
-def rows_for_sentence(text, ends, actual, by_first, topk, inject, choice):
+def rows_for_sentence(text, ends, actual, by_first, topk, inject, choice, temperature=1.0):
     """Guard the echo alignment, then build the rows."""
     n = choice.prompt_tokens
     echoed = "".join(choice.tokens[:n])
@@ -179,7 +180,8 @@ def rows_for_sentence(text, ends, actual, by_first, topk, inject, choice):
     return tc.rows_from_sentence(choice.tokens, choice.logs, choice.alts, n, ends,
                                  by_first, topk=topk, id_dtype=ID_DTYPE,
                                  inject_actual=inject,
-                                 actual=([sid for sid, _ in actual] or None))
+                                 actual=([sid for sid, _ in actual] or None),
+                                 temperature=temperature)
 
 
 def collect(args, client, by_first, chosen, tokens, starts, vocab, shards):
@@ -248,7 +250,7 @@ def collect(args, client, by_first, chosen, tokens, starts, vocab, shards):
                 try:
                     ids, probs, mass, act, ap, stats = rows_for_sentence(
                         text, ends, actual, by_first, args.topk,
-                        not args.no_inject, ch)
+                        not args.no_inject, ch, args.temperature)
                 except ValueError as e:
                     summary["skipped_sentences"] += 1
                     vc.append_jsonl(failures, {"event": "unaligned", "sid": sid,
@@ -366,6 +368,9 @@ def build_parser():
     ap.add_argument("--shard-size", type=int, default=25000)
     ap.add_argument("--max-nll", type=float, default=12.0)
     ap.add_argument("--min-mass-ratio", type=float, default=0.90)
+    ap.add_argument("--temperature", type=float, default=1.0,
+                    help="teacher softening p^(1/T) before ranking; mass stays raw "
+                         "(KD guidance: 1.5-2.0, plans/student-quality-audit.md §3.2)")
     ap.add_argument("--weight-mode", default="mass", choices=["mass", "cand", "piece"],
                     help="per-row KD weight written as `weight` in the audit sibling "
                          "(mass = captured teacher probability, cand = soft_mask --weight=cand, "

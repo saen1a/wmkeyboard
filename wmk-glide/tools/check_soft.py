@@ -14,6 +14,7 @@ Usage:
 Exit 0 when valid, 1 with the first errors otherwise.
 """
 import argparse
+import os
 import sys
 
 import numpy as np
@@ -94,6 +95,10 @@ def validate_soft(path, vocab_size=None, expect_sentences=None, min_mass_ratio=0
         # `row_coverage` is the share of rows with *any* mass (what the 90 %
         # gate means), `mean_mass` is how much of the teacher's probability a
         # filled row captures (0.906 at top-24, 0.755 at 5 wide).
+        # NOTE: for the renormalised targets `distill.py`/`distill_vllm.py`
+        # write, a filled row sums to 1 by construction, so this is a schema
+        # check, NOT the teacher's captured probability. The captured mass of
+        # an un-renormalised collector lives in its `<out>.audit.npz` sibling.
         mean_mass = float(mass[mass > 0].mean()) if nonzero else 0.0
         if ratio < min_mass_ratio:
             raise SoftError(
@@ -111,10 +116,33 @@ def validate_soft(path, vocab_size=None, expect_sentences=None, min_mass_ratio=0
         "rows": rows,
         "topk": int(ids.shape[1]),
         "row_coverage": ratio,
-        "mean_mass": mean_mass,
+        "mean_mass": mean_mass,       # == mean row sum, see the note above
+        "mean_row_sum": mean_mass,
         "mass_ratio": ratio,   # kept: older scripts and logs print this key
         "id_max": int(ids.max()) if rows else -1,
     }
+
+
+def captured_mass(path):
+    """Mean captured teacher mass from the audit sibling, when there is one.
+
+    `distill_together.py` records `mass` per row (the teacher probability the
+    row's candidates carry before renormalisation). Reading it here keeps the
+    two numbers apart: row coverage and row sum are schema facts, captured
+    mass is the teacher-quality fact.
+    """
+    sibling = path[:-4] + ".audit.npz" if path.endswith(".npz") else path + ".audit.npz"
+    if not os.path.exists(sibling):
+        return None
+    try:
+        z = np.load(sibling, allow_pickle=False)
+        if "mass" not in z.files:
+            return None
+        mass = z["mass"].astype(np.float64)
+        filled = mass > 0
+        return float(mass[filled].mean()) if filled.any() else None
+    except Exception:      # noqa: BLE001 - a broken sibling must not fail the gate
+        return None
 
 
 def main():
@@ -137,10 +165,12 @@ def main():
     except SoftError as e:
         print(f"FAIL: {e}", file=sys.stderr)
         return 1
+    captured = captured_mass(args.path)
+    extra = f", mean captured mass {captured:.3f}" if captured is not None else ""
     print(
         f"OK {s['path']}: {s['sentences']} sentences, {s['rows']} rows, "
         f"top-{s['topk']}, row coverage {s['row_coverage']:.1%}, "
-        f"mean row mass {s['mean_mass']:.3f}, max id {s['id_max']}"
+        f"mean row sum {s['mean_row_sum']:.3f}{extra}, max id {s['id_max']}"
     )
     return 0
 

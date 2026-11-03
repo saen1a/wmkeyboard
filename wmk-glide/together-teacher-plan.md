@@ -80,6 +80,11 @@ Zwei Verwendungen, beide ohne Retraining-Experiment belegbar:
   behauptet stattdessen, der Rest sei null — bei 0,62 Masse ist diese Lüge
   sechsmal so groß wie bei 0,906. Deshalb: `distill_topk=0` und `mass`-Gewicht.
 
+**Temperatur:** `--temperature T` rechnet `p^(1/T)` vor Ranking und
+Renormierung (KD-Empfehlung 1,5–2,0, `plans/student-quality-audit.md` §3.2);
+`mass` bleibt bewusst die **rohe** Masse, damit das Tail-Signal bei jedem T
+dasselbe bedeutet.
+
 **Grenzen, die bleiben** (und im A/B adressiert werden): 15,3 % Piece-Rows
 haben jetzt ein echtes Ziel, aber der Lehrer ist **post-trained** (kein
 Base-Qwen im Serverless-Katalog), und 8-wide ist schmaler als 24 — beides
