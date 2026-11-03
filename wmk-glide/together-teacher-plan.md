@@ -306,7 +306,69 @@ nicht schaden (es kommt nur die Wahrheit hinzu) und ist mit dem bestehenden
 Gate-Vertrag verträglich — der Schüler sieht dieselbe Zielbreite wie bisher.
 A ist danach eine reine Mengenfrage und mit `weight = mass` sauber dosiert.
 
-## 9. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
+## 9. Preis/Leistung: welcher Mix ist der beste?
+
+Durchsatz bei Array-Prompts (`client.py`, batch 1000, gemessen 04.11.2026):
+**Qwen3.5-9B 533 Sätze/s · GLM-5.2 196 Sätze/s** — GLM skaliert sauber mit
+dem Batch (32 → 79, 128 → 128, 256 → 172, 1000 → 196 Sätze/s) und verweigert
+Arrays **nicht**.
+
+Qualität, gleiche 200 A/B-Sätze, token-NLL pro Klasse:
+
+| Lehrer | chat | news | Mittel | Wort-NLL (Wort-Ebene) |
+|---|---:|---:|---:|---:|
+| `Qwen3.8-27B-FP8` (vorhanden, GPU) | 5,278 | 4,616 | 4,947 | – |
+| `Qwen3.5-9B-Base` (lokal) | 5,244 | 4,816 | 5,030 | – |
+| `Qwen3.5-9B` (Together) | **4,596** | 4,497 | 4,546 | 6,97 (chat **6,47**, news 7,24) |
+| `GLM-5.2` (Together) | 4,897 | **4,082** | **4,490** | 6,77 (chat 6,74, news **6,78**) |
+
+Wort-Ebene mit beiden Lehrern (`ensemble_probe.py`, 50 chat + 50 news,
+1081 Wort-Rows, Stand-in-Vokabular → absolute Werte niedrig, Vergleiche gültig):
+
+| | Qwen | GLM | **Blend** | bestes π | Union-Masse |
+|---|---:|---:|---:|---:|---:|
+| alle | 6,967 | 6,768 | **6,157** (−11,6 %) | 0,4 | 0,341 statt 0,256 (+33 %) |
+| chat | **6,472** | 6,742 | **5,820** (−10,1 %) | 0,5 | 0,328 |
+| news | 7,238 | **6,782** | **6,341** (−6,5 %) | 0,4 | 0,348 |
+
+Kandidaten-Überlappung 89,7 % der Rows, Jaccard **0,51** — die beiden Lehrer
+widersprechen sich bei der Hälfte der Kandidaten, und genau daraus kommt der
+Blend-Gewinn. 16,6 % der Rows gewinnen ≥ 0,10 Masse durch die Vereinigung.
+
+**Kosten und Zeit für 150k Sätze** (12,3 Token/Satz, gemessene Durchsätze):
+
+| Variante | Kosten | Zeit | Qualität |
+|---|---:|---:|---|
+| Qwen3.5-9B allein | **0,34 $** | 4,7 min | Basis (chat-sieger) |
+| GLM-5.2 allein | 3,18 $ | 12,8 min | −2,9 % Wort-NLL, +38 % Masse gegen Qwen |
+| Register-Routing (chat→Qwen, news→GLM) | 1,76 $ | 8,7 min | ≈ −4,5 % |
+| **Blend π≈0,45 (Qwen+GLM)** | 3,52 $ | 17,5 min | **−11,6 %** |
+| Qwen + GLM als `fill` (nur blinde Sätze) | ≈1,9 $ | ≈10 min | +0,085 Masse, kein NLL-Gewinn |
+
+Für 2M Sätze ×13,3: Qwen 4,5 $ / 1 h · GLM 42 $ / 2,8 h · Blend 47 $ / 3,9 h ·
+Routing 23 $ / 1,9 h.
+
+**Empfehlung — drei Regeln, nach Ziel:**
+
+1. **Bestehende 2M-Daten reparieren: `patch_soft.py` mit Qwen.** Die Reparatur
+   braucht nur die *exakte Wahrscheinlichkeit des echten Worts*, nicht die
+   Breite — dafür ist das billigste Modell genug. 1,5 Mio. betroffene Sätze ≈
+   **3,4 $ / 47 min**. Das ist der beste Preis/Leistungs-Punkt überhaupt: es
+   entfernt den `p_b = 1−α`-Defekt (15,17 % Piece-Rows), ohne Schema, Breite
+   oder Gate zu ändern.
+2. **Neue Daten, Qualität first: Blend Qwen+GLM bei π≈0,45** (`--extra-model
+   zai-org/GLM-5.2 --extra-mode blend --extra-share 0.45`). −11,6 % Wort-NLL
+   für 3,5 $/150k; beide Modelle sind gebatcht, also kein Zeitproblem.
+3. **Neue Daten, Kosten first: Qwen allein** (0,34 $/150k) **plus GLM als
+   `fill`** für blinde Zeilen (≈1,9 $): gleiche Masse wie der Blend, ohne
+   NLL-Gewinn. Register-Routing (chat→Qwen, news→GLM; `--only-field`) ist der
+   Mittelweg und lohnt nur, wenn man die Klassenzuordnung ohnehin im Korpus
+   hat — der Blend ist bei ähnlichem Preis besser.
+
+**Was nicht lohnt:** `gpt-oss-120b` als Partner (nur Einzel-Prompt, 1,21
+bits/Zeichen, Blend-Gewinn −1,1 % → Zeitkosten 40×).
+
+## 10. Nächste Schritte (in der Reihenfolge des Gate-Vertrags)
 
 1. **100k-Slice sammeln** (Together, 8-wide, `--weight-mode mass`):
    ~1 min, ~0,21 $. Vorher `wordmap.py` einmal.

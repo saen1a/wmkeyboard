@@ -74,6 +74,8 @@ it. Per row the collector emits:
 
 * `ids`/`probs` — up to `--topk` (default 8) student ids, renormalised over
   the kept candidates: the four-array contract stays untouched.
+* `--only-field chat,news` restricts a run to corpus registers, so two runs can
+  route chat and news to different teachers and be merged with `merge_soft.py`.
 * a second teacher (`--extra-model --extra-map --extra-mode fill|blend`,
   `--extra-share`, `--fill-below`): word-level merge, so different tokenizers
   are fine. **`fill` is the measured winner** (+23 % captured mass in the live

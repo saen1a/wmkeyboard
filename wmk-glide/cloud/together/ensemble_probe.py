@@ -38,6 +38,7 @@ PRICE_IN = {"Qwen/Qwen3.5-9B": 0.17, "openai/gpt-oss-120b": 0.15}
 
 
 def load_sentences(path, limit=0):
+    """`[(class, text), ...]` — the class split matters: Qwen wins chat, GLM wins news."""
     rows = []
     with open(path, encoding="utf-8") as f:
         for line in f:
@@ -46,7 +47,7 @@ def load_sentences(path, limit=0):
                 continue
             parts = line.split("\t")
             if len(parts) >= 3:
-                rows.append(parts[2])
+                rows.append((parts[0], parts[2]))
     return rows[:limit] if limit else rows
 
 
@@ -67,8 +68,9 @@ def build_vocab(sentences):
     return list(vc.SPECIALS) + sorted(seen)
 
 
-def sentence_rows(client, text, ends, actual, by_first, topk=8, temperature=1.0):
-    ch = client.score([text])[0]
+def sentence_rows(choice, text, ends, actual, by_first, topk=8, temperature=1.0):
+    """Rows for one sentence from an already-fetched answer (no request here)."""
+    ch = choice
     if "".join(ch.tokens[:ch.prompt_tokens]) != text:
         return None
     ids, probs, mass, act, ap, _ = tc.rows_from_sentence(
@@ -176,6 +178,8 @@ def main(argv=None):
     ap.add_argument("--models", default=",".join(DEFAULT_MODELS))
     ap.add_argument("--sentences", default=DEFAULT_SENTENCES)
     ap.add_argument("--limit", type=int, default=60)
+    ap.add_argument("--per-class", type=int, default=0,
+                    help="take N sentences from each class (the A/B file is sorted by class)")
     ap.add_argument("--topk", type=int, default=8)
     ap.add_argument("--temperature", type=float, default=1.0)
     ap.add_argument("--key-file", default="")
@@ -190,7 +194,16 @@ def main(argv=None):
     models = [m.strip() for m in a.models.split(",") if m.strip()]
     if len(models) != 2:
         ap.error("exactly two models")
-    texts = load_sentences(a.sentences, a.limit)
+    rows_in = load_sentences(a.sentences, a.limit)
+    if a.per_class:
+        seen = {}
+        picked = []
+        for cls, text in load_sentences(a.sentences, 0):
+            if seen.get(cls, 0) < a.per_class:
+                seen[cls] = seen.get(cls, 0) + 1
+                picked.append((cls, text))
+        rows_in = picked
+    texts = [t for _, t in rows_in]
     vocab = build_vocab(texts)
     print(f"{len(texts)} sentences, {len(vocab)} word types", file=sys.stderr)
 
@@ -205,26 +218,47 @@ def main(argv=None):
 
     flat = {m: [] for m in models}
     dropped = 0
-    for text in texts:
-        parts = text.split()
-        txt, ends, ids = word_prompt_parts(vocab, parts)
+    # One batched request per model for all sentences: the probe used to send
+    # one request per sentence and timed out at 200 sentences.
+    prompts, prepared = [], []
+    for (cls, text) in rows_in:
+        txt, ends, ids = word_prompt_parts(vocab, text.split())
+        prompts.append(txt)
+        prepared.append((cls, txt, ends, ids))
+    answers = {m: clients[m].score(prompts) for m in models}
+
+    per_class = {}
+    for i, (cls, txt, ends, ids) in enumerate(prepared):
         got = {}
         for m in models:
-            got[m] = sentence_rows(clients[m], txt, ends, ids, maps[m], a.topk,
+            got[m] = sentence_rows(answers[m][i], txt, ends, ids, maps[m], a.topk,
                                    a.temperature)
         if any(v is None for v in got.values()):
             dropped += 1
             continue
         rows_n = min(got[m][0].shape[0] for m in models)
+        bucket = per_class.setdefault(cls, {m: [] for m in models})
         for r in range(rows_n):
             for m in models:
                 ids_m, probs_m, mass_m, _act, ap_m = got[m]
-                flat[m].append((ids_m[r], probs_m[r], float(mass_m[r]),
-                                float(ap_m[r])))
+                row = (ids_m[r], probs_m[r], float(mass_m[r]), float(ap_m[r]))
+                flat[m].append(row)
+                bucket[m].append(row)
 
     res = {"models": models, "sentences": len(texts), "vocab": len(vocab),
            "dropped_sentences": dropped}
     res.update(blend_metrics(flat))
+    res["by_class"] = {}
+    for cls, buckets in per_class.items():
+        m = blend_metrics(buckets)
+        res["by_class"][cls] = {"rows": m["rows"],
+                                "word_nll": {n: m["single"][n]["word_nll"]
+                                             for n in m["single"]},
+                                "blend_best": (min(m["blend"].values())
+                                               if m["blend"] else None),
+                                "pi_best": m["pi_best"],
+                                "union_mass_max": m["union_mass_max"],
+                                "mass_gain": m["mass_gain"]}
     print(json.dumps(res, indent=2, ensure_ascii=False, default=str))
     if a.out:
         tmp = a.out + ".tmp"

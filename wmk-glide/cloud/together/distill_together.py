@@ -112,6 +112,34 @@ def sp_vocab_lookup(i):
     return _VOCAB[i]
 
 
+def field_of(row):
+    """The `<field:...>` marker of a train.npz row, or ''."""
+    for t in row[:PREFIX_LEN]:
+        w = sp_vocab_lookup(int(t))
+        if w.startswith("<field:"):
+            return w
+    return ""
+
+
+def filter_by_field(chosen, tokens, starts, wanted):
+    """Keep sentences whose field marker is in `wanted` (empty = keep all).
+
+    The corpus carries the register in the prefix, so a per-register teacher
+    choice ("chat from Qwen, news from GLM") is a filter, not a new pipeline:
+    two runs plus `merge_soft.py` over disjoint sentence ids.
+    """
+    if not wanted:
+        return chosen
+    want = {w.strip() for w in wanted.split(",") if w.strip()}
+    want = {w if w.startswith("<field:") else f"<field:{w}>" for w in want}
+    keep = []
+    for sid in chosen:
+        f = field_of(tokens[starts[sid]:starts[sid + 1]])
+        if f in want:
+            keep.append(sid)
+    return np.asarray(keep, dtype=chosen.dtype)
+
+
 def load_vocab(data_dir):
     global _VOCAB
     with open(os.path.join(data_dir, "vocab.txt"), encoding="utf-8") as f:
@@ -163,6 +191,7 @@ def identity(args, data_dir, map_meta):
         "extra_model": args.extra_model or None,
         "extra_mode": args.extra_mode,
         "extra_share": args.extra_share,
+        "only_field": args.only_field or None,
     }
 
 
@@ -438,6 +467,9 @@ def build_parser():
                          "(measured optimum on German: 0.8)")
     ap.add_argument("--fill-below", type=float, default=0.5,
                     help="fill mode: replace rows whose captured mass is below this")
+    ap.add_argument("--only-field", default="",
+                    help="comma list of fields (chat,news,email,other) to keep; "
+                         "lets two runs route chat and news to different teachers")
     ap.add_argument("--temperature", type=float, default=1.0,
                     help="teacher softening p^(1/T) before ranking; mass stays raw "
                          "(KD guidance: 1.5-2.0, plans/student-quality-audit.md §3.2)")
@@ -492,6 +524,9 @@ def main(argv=None, transport=None):
 
     chosen = vc.select_indices(len(starts) - 1, args.sentences, args.seed,
                               args.start, args.count)
+    chosen = filter_by_field(chosen, tokens, starts, args.only_field)
+    if args.only_field:
+        log(f"--only-field {args.only_field}: {len(chosen)} sentences kept")
     if args.merge_only:
         merge(args, shards, len(vocab))
         return 0
