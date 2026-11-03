@@ -2,11 +2,24 @@
 """Does Together AI's completions endpoint return a usable prompt-logprob
 distribution?
 
-Together documents `echo: true` together with `logprobs: N` (0-20) as
-returning log-probabilities for the prompt tokens, including
-`top_logprobs`. That is exactly what `tools/wmlm/distill.py` needs. This
-probe checks one cheap request and reports whether the distribution is wide
-enough for a student top-k target.
+Together returns prompt log-probabilities from `/v1/completions` with
+`echo: true` plus `logprobs: N`, but `N` is hard-capped at **5**: Together
+support confirmed 2026-11-03 that values above 5 are a validation error,
+although the API reference still lists 0-20. The same message confirms that
+`/v1/chat/completions` carries only the single top alternative per prompt
+position, so the completions endpoint is the only option.
+
+That cap is below this project's requirement of >= 10 alternatives per
+position (`kb-inference-providers.md` §1), so Together cannot become the
+soft-target teacher. Run this probe only to record what a model actually
+returns at `--top-n 5`; `--min-top` defaults to the requirement, not to the
+provider ceiling, so a correct 5-wide answer still reports FAIL.
+
+Measured 29.10.2026 with `logprobs: 20` (a value Together now rejects):
+`Qwen/Qwen3.5-9B` answered 200 with a single top entry,
+`openai/gpt-oss-120b` answered HTTP 422. Both are consistent with the cap
+only if 20 is clamped for some models and rejected for others, so the 5-wide
+call is the one that has to be re-measured.
 
 Usage:
     TOGETHER_API_KEY=... python3 together_echo_probe.py
@@ -49,8 +62,12 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--model", default=MODEL)
     ap.add_argument("--prompt", default=PROMPT)
-    ap.add_argument("--top-n", type=int, default=20, help="Together allows 0..20")
-    ap.add_argument("--min-top", type=int, default=5)
+    ap.add_argument("--top-n", type=int, default=5,
+                    help="alternatives per position; Together rejects >5 with a "
+                         "validation error, so 5 is the maximum")
+    ap.add_argument("--min-top", type=int, default=10,
+                    help="PASS threshold; the default is the project requirement "
+                         "(>=10), which Together's 5-wide cap can never meet")
     ap.add_argument("--key-file", default="")
     ap.add_argument("--dry-run", action="store_true")
     ap.add_argument("--self-test", action="store_true")

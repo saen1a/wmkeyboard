@@ -76,8 +76,8 @@ ative/wm-engine/src/glide/mod.rs`: `freq_weight`, Längenprior (Default = ausgel
 | [`tools/merge_soft.py`](tools/merge_soft.py) | Sticht die 30×5k-Chunks eines langen Lehrer-Passes (`distill.py start=/count=`) zu einem `soft.npz` zusammen; atomar und validiert |
 | [`tools/run_teacher_chunks.sh`](tools/run_teacher_chunks.sh) | Idempotenter Overnight-Lauf: 30×5k, `flock`, Per-Chunk-Validierung, Merge, SHA256, `DONE`-Marker |
 | [`tools/wmlm-teacher.service`](tools/wmlm-teacher.service) | systemd-Unit für den Lehrer-Pass (`Restart=on-failure`); überlebt die Shell, solange WSL lebt |
-| [`tools/together_echo_probe.py`](tools/together_echo_probe.py) | Derselbe Test für Together AI (`echo` + `logprobs` 0–20); Signup funktioniert wieder, Probe bereit |
-| [`tools/together_token_test.py`](tools/together_token_test.py) | 100-Satz-Test: prüft, ob das echte nächste Lehrer-Token in den Together-Top-1/Top-8 liegt; read-only, Key nötig |
+| [`tools/together_echo_probe.py`](tools/together_echo_probe.py) | Derselbe Test für Together AI (`echo` + `logprobs`); Together-Cap ist **5**, deshalb `--top-n 5` und `--min-top 10` |
+| [`tools/together_token_test.py`](tools/together_token_test.py) | 100-Satz-Test: prüft, ob das echte nächste Lehrer-Token in den Together-Top-1/Top-k (k=5) liegt; read-only, Key nötig |
 | [`patches/`](patches/README.md) | Vier App-Patches gegen `22d5020b` (Harness, Blend, Join-Guard, Tests/CI) plus `0005-distill-multitoken` für `tools/wmlm/distill.py`; der Layout-Patch liegt optional in `experiments/` |
 
 ## Datengrundlage

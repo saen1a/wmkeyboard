@@ -79,8 +79,10 @@ Start-Piece-Abdeckung) und der Upstream-Issue-Entwurf:
    Telefon-Latenz; erst dann Katalog/Veröffentlichung.
 5. **Qwen4:** Tokenizer bleibt dieselbe BPE-Familie (~248k), kein
    Tokenizer-Sprung; ein Qwen4-27B-Base ist ein Lehrer-Kandidat, kein Grund zu
-   warten. **Together-API** ist für Prompt-Logprobs untauglich (GPT-OSS 422,
-   Qwen3.5 nur 1 Top-Eintrag, Qwen3.8 403; free Prism zu schwach).
+   warten. **Together-API** liefert prompt-Logprobs, aber **live gemessen
+   genau 5** Alternativen (03.11.2026; `logprobs: 20` → HTTP 400, deshalb war
+   der alte 1-Eintrag/422/403-Lauf ungültig; Qwen3.5-9B und gpt-oss-120b je
+   5/5). 5 < 10 → für Soft-Targets untauglich, Grund jetzt belegt.
    **Scaleway** nur nach einem 100-Satz-A/B; **kein größerer Schüler** (d288
    ohne Gewinn); **Englisch entfernen** ist kein Hebel.
 
@@ -186,10 +188,10 @@ und LightOn Qwen3-8B-DE. 27B/35B nur 3–4-bit, riskant. Details:
 ~4,8 Tage (4 Worker ~6,6; 16/32 nur Burst). Die stärkere
 `Qwen3.5-397B-A17B-TEE` läuft auf **SGLang** und liefert über den
 OpenAI-Gateway **keine** Prompt-Logprobs; Qwen3.6-27B genauso, 2.4T/Max
-sind extern (404). Together (1 Top-Eintrag/422/403) und DeepInfra (2 Einträge)
-sind live durchgefallen. Qwen3.8-27B lief im korrekten 100-Satz-Lauf
-**99/100** (98 first try, 1× NaN nach 3 Versuchen), Chat **99/100** (1×
-HTTP 502); frühere 1/10-Serien waren lastabhängig. Der NaN-Fehler ist der
+sind extern (404). Together (Cap 5; 29.10. mit `logprobs: 20` → 1 Eintrag/422/
+403) und DeepInfra (2 Einträge) sind live durchgefallen. Qwen3.8-27B lief im
+korrekten 100-Satz-Lauf **99/100** (98 first try, 1× NaN nach 3 Versuchen),
+Chat **99/100** (1× HTTP 502); frühere 1/10-Serien waren lastabhängig. Der NaN-Fehler ist der
 bekannte **vLLM-MTP-Bug #53488** (Fix #53520): der Drafter überschreibt
 Hidden States vor der Prompt-Logprob-Berechnung, kann auch **HTTP 200 mit
 falschen** Werten liefern. **Live bestätigt:** 9/10 Wiederholungen eines
@@ -209,7 +211,8 @@ Soft-Targets) → Confidence-Gate/Join-aware Scoring → volle
 typing_eval-/Glide-/Telefon-Messung → Veröffentlichung.
 
 Nicht tun: auf Qwen4-Tokenizer warten (gleiche BPE-Familie), Together-API für
-Prompt-Logprobs nutzen (GPT-OSS 422, Qwen3.5 1 Top-Eintrag, Qwen3.8 403),
+Prompt-Logprobs nutzen (Cap 5; der alte 1-Eintrag/422/403-Lauf sendete
+`logprobs: 20` und war ungültig),
 größeren Schüler trainieren (d288 ohne Gewinn), Englisch aus dem Korpus
 entfernen. Scaleway nur nach 100-Satz-A/B. Keine Keys/Secrets committen; kein
 Commit/Push ohne Aufforderung. Artefakte und Befehle: wmk-glide/artifacts/README.md.

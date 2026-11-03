@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
-"""Cheap Together AI probe on real corpus sentences: teacher-token top-1/top-8.
+"""Cheap Together AI probe on real corpus sentences: teacher-token top-1/top-k.
 
 This is the step between the single echo probe and a full `distill_api.py`:
-it sends 100 German sentences with `echo=true` and `logprobs=20`, then checks
-whether the actual next teacher token is inside the returned top-1/top-8 at
-every prompt position. No student-vocabulary mapping yet; that comes only if
-the API exposes a real distribution.
+it sends 100 German sentences with `echo=true` and `logprobs=5` (Together's
+hard cap; `together_echo_probe.py` explains why), then checks whether the
+actual next teacher token is inside the returned top-1/top-k at every prompt
+position. No student-vocabulary mapping yet; that comes only if the API
+exposes a real distribution.
 
 Usage:
     TOGETHER_API_KEY=... python3 together_token_test.py \
@@ -54,22 +55,25 @@ def sentence_text(row, vocab):
     return text, ends
 
 
-def top_keys(entry):
+def entries(entry):
+    """(token, logprob) pairs from one position of `top_logprobs`."""
     if isinstance(entry, dict):
-        return list(entry.keys())
-    if isinstance(entry, (list, tuple)):
-        out = []
-        for x in entry:
-            if isinstance(x, dict):
-                out.append(x.get("token", x.get("token_id")))
-            else:
-                out.append(x)
-        return out
-    return []
+        return list(entry.items())
+    out = []
+    for x in entry if isinstance(entry, list) else []:
+        if isinstance(x, dict):
+            out.append((x.get("token", x.get("token_id")), x.get("logprob")))
+    return out
 
 
-def parse_and_score(payload, topk=8):
-    """Return (positions, top1, topk) from a legacy completions body."""
+def parse_and_score(payload, topk=5):
+    """Return (positions, top1, topk_hits) from a legacy completions body.
+
+    Together returns `top_logprobs` as an **unordered** JSON object: measured
+    2026-11-03, only 11 of 233 positions came back sorted descending, and the
+    order changed between two identical requests. The rank of an alternative
+    therefore comes from its logprob, never from its position in the object.
+    """
     lp = (payload.get("choices") or [{}])[0].get("logprobs")
     if not isinstance(lp, dict) or "token_logprobs" not in lp:
         raise ValueError("no legacy logprobs in response")
@@ -81,13 +85,15 @@ def parse_and_score(payload, topk=8):
     tops = tops[:prompt_tokens]
     positions = top1 = hit = 0
     for i in range(1, len(tokens)):
-        keys = top_keys(tops[i]) if i < len(tops) else []
-        if not keys:
+        cand = entries(tops[i]) if i < len(tops) else []
+        cand = [(t, v) for t, v in cand if t is not None]
+        if not cand:
             continue
         positions += 1
-        if tokens[i] == keys[0]:
+        ranked = sorted(cand, key=lambda kv: -(kv[1] if isinstance(kv[1], (int, float)) else -1e9))
+        if tokens[i] == ranked[0][0]:
             top1 += 1
-        if tokens[i] in keys[:topk]:
+        if tokens[i] in [t for t, _ in ranked[:topk]]:
             hit += 1
     return positions, top1, hit
 
@@ -131,6 +137,8 @@ def load_sentences(data_dir, count, seed):
 
 
 def self_test():
+    # Deliberately unordered: position 2 lists "C" (logprob -1.0) after "B"
+    # (-2.0). A rank-from-position implementation scores it as a miss.
     payload = {
         "choices": [{
             "logprobs": {
@@ -139,18 +147,18 @@ def self_test():
                 "top_logprobs": [
                     {},
                     {"B": -1.0, "X": -2.0},
-                    {"C": -1.0, "B": -2.0},
+                    {"B": -2.0, "C": -1.0},
                     {"X": -1.0, "Y": -2.0},
                 ],
             }
         }],
         "usage": {"prompt_tokens": 4},
     }
-    positions, top1, hit = parse_and_score(payload, topk=8)
+    positions, top1, hit = parse_and_score(payload, topk=5)
     assert positions == 3, positions
     assert top1 == 2, top1
     assert hit == 2, hit
-    print("self-test ok: 3 positions, top-1 2, top-8 2")
+    print("self-test ok: 3 positions, top-1 2, top-5 2 (unordered input)")
     return 0
 
 

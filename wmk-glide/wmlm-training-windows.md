@@ -434,7 +434,8 @@ teurer als jede der Zeilen.
    aber nur **1–2 `top_logprobs`** pro Position, also kein top-k-Lehrer.
    **Lokal `Qwen/Qwen3.5-4B-Base`** ist der getestete Base-Lehrer: 45,1 %
    Top-8 / 16,1 % Top-1, **~3,5 Sätze/s** mit `batch=16` + fp16-Softmax,
-   150k Sätze ≈ **12 h**. API-Alternativen: Together AI (wieder verfügbar; Probe und
+   150k Sätze ≈ **12 h**. API-Alternativen: Together AI (nur **Cap 5**
+   Alternativen pro Position, Support 03.11.2026 → höchstens `topk<=5`; Probe und
    Token-Test bereit) und Nebius Token Factory (`echo` + `logprobs`). Nicht den
    Unsloth-Gemma-3-4B-Spiegel nehmen: fp16-NaN, bf16 degeneriert.
    **Phase 1 ist positiv (28.10.):** deutsches `de_context.wmlm`, 10,86 MB,

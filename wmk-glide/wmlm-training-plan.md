@@ -229,8 +229,8 @@ wegen des deutschen Tokenizers raus (13,6 % / 12,6 % ganze Wörter).
 Der Probe markiert das jetzt als `FAIL` („top_logprobs too sparse“). Die
 Preistabelle oben bleibt als Referenz, falls ein anderer Anbieter/Endpunkt
 die volle Verteilung liefert; DeepInfra selbst fällt für dieses Rezept aus.
-**Damit bleiben lokal (Qwen3.5-4B-Base), Scaleway (Qwen3.5-9B-Base / Soofi)
-oder Together (unten) als Wege.**
+**Damit bleiben lokal (Qwen3.5-4B-Base) oder Scaleway (Qwen3.5-9B-Base /
+Soofi) als Wege; Together fällt wegen des 5er-Caps aus (§1.7).**
 
 ### 1.7 API-Alternativen zu DeepInfra (geprüft 27.10., live nachgetragen 29.10.2026)
 
@@ -243,16 +243,23 @@ DeepInfra fällt aus (nur 1–2 `top_logprobs`). Andere Anbieter:
 | **Neuralwatt** | **nein** (nur Output-`logprobs`, Chat/Responses, kein `/v1/completions`) | 5? | Qwen3.8-27B, Qwen3.6-35B | 0,45/3,20 $; flex 0,29/2,08 $ | **für Soft-Targets ungeeignet; 2–15 Concurrent** |
 | **Scaleway GPU** (`distill.py` oder vLLM) | ja (`distill.py`: volle Softmax; vLLM: `prompt_logprobs`) | **voll / 100** | Qwen3.5-9B-Base, Soofi, Kolibri | ~1–3 € (L4/H100) | **zuverlässigster Weg, aber IaaS** |
 | ACS Infra | ja (`prompt_logprobs: -1`) | **voll** | Llama-8B, Llama-405B, Trinity | unbekannt, Approval | Base-API, aber Llama-Tokenizer |
-| Together AI | **nein (live 29.10.: 1 Top-Eintrag / 422 / 403)** | 20 dokumentiert | Qwen3.5-9B, Qwen3.8-Flash, GPT-OSS | 0,76–1,35 $ | **FAIL** |
+| Together AI | ja auf `/v1/completions` (`echo`), **Cap 5** (Support + live 03.11.; LIVE 29.10. mit `logprobs: 20`: 1 Top-Eintrag / 422 / 403) | **5** | Qwen3.5-9B, Qwen3.8-Flash, GPT-OSS | 0,76–1,35 $ | 5 breit → für top-24 FAIL; „5 + echtes Token“ A/B-würdig (KB §2c), 150k in ~5 min |
 | Fireworks | ja (`echo`) | **5** | Qwen, Llama, GPT-OSS | wenige $ | zu sparse |
 | OpenAI | ja (`echo`) | **5** | GPT-4.1/5 | teuer | zu sparse |
 | Novita | ja (`echo`) | **5** | Qwen/DeepSeek | wenige $ | zu sparse |
 | Hyperbolic/Featherless | unklar | ? | Qwen/Llama, Base-Modelle | wenige $ | ungeprüft |
 
-**Nachtrag 29.10.2026 (live):** Together fällt endgültig aus: Qwen3.5-9B
-liefert nur **einen** Top-Eintrag, GPT-OSS-120B antwortet **422**, Qwen3.8
-**403**; DeepInfra bleibt bei **zwei** Einträgen und Qwen3.8 liefert gar
-keine Logprobs. Beides ist mit den vorhandenen Keys erneut gemessen.
+**Nachtrag 29.10.2026 (live), korrigiert 03.11.2026:** Together lieferte im
+Test mit **`logprobs: 20`** nur **einen** Top-Eintrag (Qwen3.5-9B), bei
+GPT-OSS-120B **422** und bei Qwen3.8 **403**. Der Support bestätigt am
+03.11.2026, dass **5 die harte Obergrenze** ist und Werte > 5 ein
+Validierungsfehler sind (422) — die Request-Breite war also ungültig und
+„Prompt-Logprobs kaputt“ war nie belegt; offen bleibt nur, ob `logprobs: 5`
+wirklich 5 Alternativen liefert (auf dem wmlm-Rechner zu messen, hier liegt
+kein Key). An der Entscheidung ändert das nichts: 5 < 10 (Anforderung §1),
+deshalb bleibt Together für Soft-Targets untauglich (Details
+[`kb-inference-providers.md`](kb-inference-providers.md) §2b). DeepInfra
+bleibt bei **zwei** Einträgen, Qwen3.8 liefert dort gar keine Logprobs.
 
 **Chutes** (`https://llm.chutes.ai/v1`) ist der neue Fund: Die
 OpenAPI-Doku für **Qwen3.8-27B-TEE** und **Qwen3.5-397B-A17B-TEE** listet
@@ -320,23 +327,49 @@ auf 20 oder 16. Qwen3-30B/235B haben den schlechten Qwen3-Tokenizer
 (12,8 %); Qwen3.5-397B hat den guten Qwen3.5-Tokenizer (23,6 %) und ist
 trotz 397B für < 8 $ zu haben.
 
-**Together (überholt, live 29.10. FAIL):** Die folgenden Details sind
-historisch; der Live-Test lieferte nur einen Top-Eintrag (Qwen3.5), 422
-(GPT-OSS) bzw. 403 (Qwen3.8). `echo: true` + `logprobs: N` (0–20) ist
-dokumentiert, aber nicht so ausgeliefert.
-Preise: Qwen3.5-9B 0,17/0,25 $, Qwen3.8-Flash 0,15/0,47 $, GPT-OSS-120B
-0,15/0,60 $ pro 1M. 150k Sätze (1,8M Tokens) kosten im Echo-Worst-Case
+**Together (live 29.10. FAIL mit ungültiger Breite; Cap 5 am 03.11.2026
+live bestätigt):** `echo: true` + `logprobs: N` auf `/v1/completions`
+liefert prompt-Logprobs, aber `N` ist auf **5** begrenzt: `logprobs: 20`
+antwortet **HTTP 400** (`Validation error: range [{max: 5, min: 0}]`), und
+`/v1/chat/completions` gibt nur die Top-1 pro Prompt-Position. Mit
+`logprobs: 5` liefern **Qwen3.5-9B und gpt-oss-120b je 200 mit 5/5
+Alternativen** an allen nutzbaren Prompt-Positionen — der 29.10.-Lauf sendete
+`logprobs: 20` → 1 Top-Eintrag (Qwen3.5, still gekürzt), 422 (GPT-OSS), 403
+(Qwen3.8). Preis: Qwen3.5-9B 0,17/0,25 $, Qwen3.8-Flash 0,15/0,47 $,
+GPT-OSS-120B 0,15/0,60 $ pro 1M; 150k Sätze (1,8M Tokens) im Echo-Worst-Case
 **0,76 / 1,12 / 1,35 $**, normal **0,36 / 0,36 / 0,39 $**. Together hat
 **kein** Base-Qwen im Serverless-Katalog; die Modelle sind post-trained.
-Wegen `logprobs <= 20` den Schüler auf `topk=20` (oder 16) setzen.
-Der Probe liegt als [`tools/together_echo_probe.py`](tools/together_echo_probe.py)
-bereit: `TOGETHER_API_KEY=... python3 tools/together_echo_probe.py
---model Qwen/Qwen3.5-9B`. `PASS` nur, wenn mindestens 10 Alternativen pro
-Prompt-Position zurückkommen. Danach
+Gemessen (233 Prompt-Positionen): die 5 Alternativen tragen im Mittel
+**0,755** der Lehrer-Masse (top-24-Zeilen: 0,906), Recall des echten Tokens
+top-1 0,489 / top-5 0,760, logprob-Spanne Rang 1…5 **3,55 nats**;
+`top_logprobs` ist **unsortiert** (Rang aus dem Logprob, nicht aus der
+Position). Mehr Requests helfen nicht: `logit_bias` wirkt bei Together nur
+auf die Generierung (151k von ~152k Ids gesperrt → Prompt-Logprobs
+bit-identisch), und es gibt keine Token-Ids (`return_tokens_as_token_ids`
+ignoriert, kein `/v1/tokenize`) — Details in der KB §2b.
+Wegen des Caps ist der Schüler-`topk` hier höchstens 5 — die vorhandenen
+Ziele haben im Mittel 16,79 Kandidaten, und die Trefferquote des echten
+nächsten Tokens liegt bei top-24 **81,7 %** gegenüber top-8 **48,2 %**
+(`artifacts/out/audit_soft.json`), also **nicht empfohlen**.
+Die Probes liegen bereit und sind auf den Cap eingestellt:
+`TOGETHER_API_KEY=... python3 tools/together_echo_probe.py --model
+Qwen/Qwen3.5-9B` (`--top-n 5`, `--min-top 10`; ein korrektes 5-weites
+Ergebnis meldet deshalb `FAIL`, `--min-top 5` zeigt die Obergrenze als
+`PASS`). Danach
 [`tools/together_token_test.py`](tools/together_token_test.py) auf 100
-Sätzen aus `out/de_lm` (Top-1/Top-8 des echten nächsten Lehrer-Tokens);
-erst bei brauchbarem Ergebnis wird `distill_api.py` gebaut. Der Test ist
-read-only und braucht nur den Key.
+Sätzen aus `out/de_lm` (Top-1/Top-k des echten nächsten Lehrer-Tokens;
+braucht die Korpusdaten, die nur auf dem wmlm-Rechner liegen).
+
+**Die einzige Variante, die Together rettet** (Details + Messungen in
+[`kb-inference-providers.md`](kb-inference-providers.md) §2c): Ziel = **5
+Alternativen + das echte Token** (letzteres liefert `echo` exakt und
+flächendeckend, die heutigen top-24-Ziele treffen das echte Wort nur zu
+81,7 %), pro Zeile mit `covered_mass` gewichtet, Rest 0,375 als „other“.
+Betrieblich ist das attraktiv: **`prompt` als Array** schafft 498 Sätze/s
+(gemessen, 1000 Prompts pro Request), also **150k in ~5 min für 0,31 $**,
+2M in ~1 h für ~4 $. Ob die schmalere Verteilung den Schüler kostet,
+entscheidet ein A/B (100k, 3 000 Schritte, Gate 0,05 nats) — unter 1 h und
+unter 1 €.
 
 ```powershell
 # Probe (Windows oder WSL), Key außerhalb des Repos
@@ -998,14 +1031,22 @@ d320/8/1024 und 500k Soft-Targets.
   aber ohne `prompt_logprobs`-Feld; die Top-N-Dichte ist live ungetestet
   (kein `NEBIUS_API_KEY`). Signup + 1 $ frei. Probe liegt bereit; bei
   `PASS` Schüler-`topk` auf 20/16. Qwen3.5-397B ist der Qualitätskandidat.
-- **Together AI:** live **FAIL** (Qwen3.5 nur 1 Top-Eintrag, GPT-OSS 422,
-  Qwen3.8 403); DeepInfra 1–2 Einträge. Chutes: Key liegt, Balance 0 →
-  HTTP 402; nach Top-up zuerst 20-Satz-Probe.
+- **Together AI:** live gemessen **5** Alternativen pro Position
+  (03.11.2026, §1.7; `logprobs: 20` → HTTP 400, damit war der 29.10.-Lauf
+  mit 1 Top-Eintrag / 422 / 403 ungültig; Qwen3.5-9B und gpt-oss-120b je
+  5/5). Für das top-24-Rezept zu schmal (5 Alternativen tragen 0,755 der
+  Masse gegen 0,906 bei top-24), ohne Base-Qwen im Katalog. **Offen bleibt
+  nur der A/B**: Ziel „5 + echtes Token“ + `covered_mass`, 150k in ~5 min
+  für 0,31 $ (KB §2c) gegen die lokalen 4B-Base-top-24 — 3 000 Steps,
+  Gate 0,05 nats, unter 1 h.
+- **DeepInfra:** 1–2 Einträge. **Chutes:** Key liegt, Balance 0 → HTTP 402;
+  nach Top-up zuerst 20-Satz-Probe.
 - **Scaleway GPU:** `distill.py` mit voller Softmax ist der sauberste Weg,
   aber Instanz-Setup und Qwen3.5-9B-Base/Soofi-Zugang sind ungetestet;
   erst 100 Sätze, dann 150k.
-- **Fireworks/OpenAI/Novita:** `top_logprobs` ist auf 5 begrenzt; für
-  top-24 zu sparse. Nur mit `topk<=5` denkbar, nicht empfohlen.
+- **Fireworks/OpenAI/Novita/Together:** `top_logprobs` ist auf 5 begrenzt
+  (bei Together ist das der bestätigte Cap, nicht die Doku); für top-24 zu
+  sparse. Nur mit `topk<=5` denkbar, nicht empfohlen.
 - **Hyperbolic/Featherless:** vLLM-basiert, aber `echo`/Prompt-Logprobs
   nicht dokumentiert; nur mit Key testen, keine Priorität.
 - **Lehrergröße:** 4B ist der lokale Deckel (16 GB). 9B passt auf L4/L40S,

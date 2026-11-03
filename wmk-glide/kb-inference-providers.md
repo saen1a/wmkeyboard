@@ -14,7 +14,9 @@ Workern/Retries (4 Worker ~6,6 Tage), nicht 3–12 h. Die stärkere
 **`Qwen3.5-397B-A17B-TEE`** läuft auf **SGLang** und
 liefert über den OpenAI-Gateway **keine** Prompt-Logprobs; Qwen3.6-27B
 genauso, 2.4T/Max sind extern. Together und DeepInfra sind live
-durchgefallen. Der Chutes-Key liegt; die Balance war **0 $** (HTTP 402),
+durchgefallen; Together liefert live gemessen (03.11.2026, §2b) **genau 5**
+Alternativen pro Position und bleibt damit unter der Anforderung von §1,
+DeepInfra 1–2. Der Chutes-Key liegt; die Balance war **0 $** (HTTP 402),
 ist inzwischen aber aufgeladen. **Wichtig:** Qwen3.8-27B lief im korrekten
 100-Satz-Lauf **99/100** (Completions und Chat), 98/99 beim ersten Versuch;
 der Rest war NaN/502. Frühere 1/10-Serien waren lastabhängig. Ursache ist
@@ -39,12 +41,14 @@ bis MTP deaktiviert oder vLLM auf #53520 gehoben ist.** Kimi ist stabil
 
 | Anbieter | Modell | Ergebnis | Exit |
 |---|---|---|---:|
-| Together | `Qwen/Qwen3.5-9B` | Prompt-Logprobs da, aber nur **1** Top-Eintrag | 1 |
-| Together | `openai/gpt-oss-120b` | **HTTP 422** Unprocessable Entity | 3 |
+| Together | `Qwen/Qwen3.5-9B` | Prompt-Logprobs da, aber nur **1** Top-Eintrag (gesendet: `logprobs: 20`, laut Support 3.11. ungültig) | 1 |
+| Together | `openai/gpt-oss-120b` | **HTTP 422** Unprocessable Entity (= der heute bestätigte Validierungsfehler für `logprobs > 5`) | 3 |
 | Together | `Qwen/Qwen3.8-*` | **HTTP 403** (früherer Test) | 3 |
 | DeepInfra | `Qwen/Qwen3.5-9B` | `top_logprobs` nur **2** Einträge | 1 |
 | DeepInfra | `Qwen/Qwen3.8-Flash` | keine Logprobs | 1 |
 | Chutes | Qwen3.8/3.5 | Doku: `prompt_logprobs` 0–20; Key liegt; Balance war 0 → 402, inzwischen aufgeladen | 3 |
+| Together | `Qwen/Qwen3.5-9B` | 03.11. mit `logprobs: 5`: **200**, 5/5 Alternativen, alle nutzbaren Prompt-Positionen (§2b) | 0 mit `--min-top 5` |
+| Together | `openai/gpt-oss-120b` | 03.11. mit `logprobs: 5`: **200**, 5/5 — die 422 vom 29.10. war die Breite | 0 mit `--min-top 5` |
 
 **Chutes-Live-Test 29.10.2026:** Der Key ist vorhanden
 (`C:\Users\saenta\chutesai.key`), aber das Konto hatte zum Testzeitpunkt **0,0 $** Guthaben (inzwischen aufgeladen).
@@ -57,6 +61,162 @@ läuft bei Chutes keine Inferenz**, auch nicht auf den 0-$-Modellen.
 Chutes-Katalog (ohne Key abrufbar, `GET /v1/models`): Qwen3.8-27B-TEE,
 Qwen3.5-397B-A17B-TEE und Qwen3.6-27B-TEE sind live, `owned_by: vllm`,
 `allow_logprobs: true`, TEE. Qwen3.8-27B hatte **60 aktive Instanzen**.
+
+## 2b. Together-Antwort des Supports (03.11.2026) — Cap bei 5 Alternativen
+
+Was Together zusagt: Prompt-Top-k-Logprobs funktionieren heute auf bezahlten
+Serverless-Modellen über `/v1/completions` mit `echo: true`, `logprobs: 5`,
+`max_tokens: 1`. Die Verteilung steht in `choices[0].logprobs`
+(`tokens`, `token_logprobs`, `top_logprobs`), ein Eintrag pro Prompt-Token
+(das erste ohne), danach der eine generierte Token. Zwei Grenzen:
+
+1. **Maximal 5 Alternativen pro Position.** Werte > 5 sind ein
+   Validierungsfehler; die API-Referenz mit 0–20 ist falsch (Support räumt
+   das ein).
+2. `/v1/chat/completions` liefert pro Prompt-Position **nur die eine
+   Top-Alternative** (und zusätzlich die Chat-Template-Tokens) — für
+   Soft-Targets also unbrauchbar, nur `/v1/completions` zählt.
+
+**Was das an den Messungen vom 29.10. erklärt.** Beide Probes haben
+`logprobs: 20` gesendet (`tools/together_echo_probe.py`,
+`tools/together_token_test.py`) — ein Wert, den Together ablehnt. GPT-OSS-120B
+→ **422** war dieser Validierungsfehler; die frühere Schlussfolgerung
+„Prompt-Logprobs kaputt“ war damit nie belegt.
+
+**Live nachgemessen 03.11.2026** (`tools/together_echo_probe.py`, frischer
+Key; 20 deutsche Sätze über die Probe, Masse/Recall über ein Wegwerfskript
+mit 233 Prompt-Positionen):
+
+| Test | Ergebnis |
+|---|---|
+| `Qwen/Qwen3.5-9B`, `logprobs: 5`, `echo: true` | **200**, Verteilung da: 6 von 6 nutzbaren Prompt-Positionen mit Logprob, `top_logprobs` **5 / 5** (min/median) → Probe `PASS` mit `--min-top 5` |
+| `openai/gpt-oss-120b`, gleicher Request | **200**, ebenfalls **5 / 5** — die 422 vom 29.10. war die Breite, nicht das Modell |
+| `logprobs: 20` (wie am 29.10.) | **HTTP 400** `logprobs: Validation error: range [{"max": 5, "value": 20, "min": 0}]` |
+| Masse in den 5 Alternativen | Mittel **0,755** (min 0,184, max 1,000) — bei top-24-Zeilen sind es **0,906** |
+| Recall des echten Tokens (Token-Ebene, 233 Positionen) | top-1 **0,489**, top-5 **0,760** |
+| `logprobs`-Spanne Rang 1…5 | im Mittel **3,55 nats** |
+| Reihenfolge der `top_logprobs` | **unsortiert** (nur 11 von 233 Positionen kamen absteigend, zwischen zwei gleichen Requests wechselt sie) → Rang kommt aus dem Logprob, nie aus der Position |
+| Prompt-Logprobs vs. Generierung | für 6 Präfixe identisch: `token_logprobs` des generierten Tokens = Top-Eintrag = erzwungene Echo-Zeile (Δ 0,00) → die Prompt-Verteilung ist die echte Modellverteilung |
+| `/v1/chat/completions` | kein Prompt-Logprob-Feld in der OpenAI-Shape; nur Output-Top-5 der generierten Tokens |
+
+Damit ist der Support-Anspruch **bestätigt**: completions + `echo` + `logprobs: 5`
+liefert echte Prompt-Top-5, und der alte Ein-Eintrag-Befund war ein Artefakt
+der ungültigen Breite.
+
+**Reicht mehrfaches Wiederholen nicht?** Nein — gemessen:
+
+- **Identischer Request:** dasselbe Ergebnis. Auch `temperature` 0 vs. 1,2,
+  `n: 3`, `seed: 42` und `top_p: 0,5` ändern die Prompt-Logprobs **nicht**
+  (alle 5 Läufe bit-gleich; nur die Reihenfolge gleichwahrender Einträge
+  wechselt) — sie entstehen im Prefill, nicht im Sampler.
+- **`logit_bias`-Runden** wären der mathematisch richtige Hebel (Top-5 sperren
+  → Ränge 6–10; der Renormierungsfaktor ist die bekannte Masse der gesperrten
+  Kandidaten, also exakt invertierbar). Together wendet ihn aber **nicht auf
+  Prompt-Positionen** an: mit `−100` auf **151 000 von ~152 000** Token-Ids
+  bleiben die Prompt-Logprobs bit-identisch (`-3.154554`, `-5.3268757`, …),
+  während der Logprob des generierten Tokens im selben Response von
+  `−0,998` auf `−0,236` springt — der Bias greift also erst in der
+  Generierung.
+- **Token-Ids fehlen zusätzlich:** `return_tokens_as_token_ids: true` wird
+  akzeptiert, liefert aber weiter Strings; `/v1/tokenize` und
+  `/v1/models/{model}/tokenize` sind 404 (HTML). Ohne passenden lokalen
+  Qwen-Tokenizer gibt es also keine Keys für `logit_bias`.
+- **Erzwungene Fortsetzung** funktioniert und ist exakt: `prompt = Präfix +
+  Kandidat` liefert `p(Kandidat | Präfix)` in `token_logprobs` (Wegwerftest:
+  `p(" früh" | …) = −0,9984`, drei Wege identisch). Damit lässt sich jeder
+  **benannte** Kandidat exakt bewerten — aber Ränge 6+ lassen sich so nicht
+  *enumerieren*, weil man die Kandidaten vorher kennen muss.
+
+Selbst wenn all das ginge, wären es **5 Requests pro Satz** (5 × Input-Tokens
+= 1,8–6,8 $ pro 150k und 5 × Laufzeit) für genau die Breite, die Chutes in
+einem Request liefert.
+
+**Warum es trotzdem nicht reicht.** 5 < 10. §1 verlangt ≥10, ideal 16–24;
+das Rezept trainiert `topk=24`. An den vorhandenen Top-24-Zielen gemessen
+(`artifacts/out/audit_soft.json`, `audit_signal.json`, 2M-Zeilen):
+
+| Größe | Wert |
+|---|---|
+| Kandidaten pro Zeile | Mittel **16,79**, p10 = 8 |
+| Zeilen mit ≤5 Kandidaten | **5,19 %** (≤3: 2,54 %) |
+| Trefferquote des echten nächsten Worts (Wort-Ebene) | top-1 **20,6 %**, top-8 **48,2 %**, top-24 **81,7 %** |
+| Masse in den Zeilen | **0,906** im Mittel (5 breit: 0,755) |
+
+Ein 5-weiter Lehrer drückt also **jede** Zeile auf das Niveau der heutigen
+Ausnahmefälle (≤5 Kandidaten) und verliert gemessen rund **15 Prozentpunkte**
+der Lehrer-Masse pro Zeile. Dazu kommt, dass ≤3-Kandidaten-Zeilen heute
+**wie eine 24-Kandidaten-Zeile** gewichtet werden — genau der Defekt, den
+`plans/teacher-free-plan.md` §1 reparieren will; ein 5-weiter Lehrer würde
+ihn auf alle Zeilen ausdehnen. Und Together hat weiterhin **kein Base-Qwen**
+im Serverless-Katalog (die Modelle sind post-trained), also den falschen
+Verteilungstyp für eine Destillation.
+
+**Verdikt:** Request-Form bestätigt brauchbar, Anbieter nicht. Together ist
+damit in derselben Klasse wie Fireworks/OpenAI/Novita („nur mit `topk<=5`
+denkbar, nicht empfohlen“) und ersetzt weder Chutes (20) noch Nebius noch
+die GPU. Nützlich bleibt es als billigster 5-weitiger Test (0,36–1,35 $ pro
+150k), falls je eine `topk<=5`-Schülervariante untersucht wird. Die Probes
+sind darauf eingestellt: `--top-n 5` (Together-Maximum) und `--min-top 10`
+(Projektanforderung, damit ein korrektes 5-weites Ergebnis ehrlich `FAIL`
+meldet); `--min-top 5` zeigt die Obergrenze als `PASS`. Die Variante
+„5 Alternativen + echtes Token, per Array-Batch gesammelt“ steht in §2c.
+
+## 2c. Ist Together als Lehrer trotzdem nutzbar? (5 Alternativen + echtes Token)
+
+Der entscheidende Unterschied zu DeepInfra & Co.: `echo` bewertet **jedes**
+Prompt-Token. Damit ist `p(echtes Token | Präfix)` für **100 % der Positionen**
+exakt bekannt — auch wenn das echte Token nicht unter den Top-5 ist. Die
+vorhandenen top-24-Ziele decken das echte Wort nur zu **81,7 %**.
+
+Gemessen (20 Sätze, 216 Positionen, Satz für Satz):
+
+| Größe | Wert |
+|---|---|
+| Masse in den Top-5 | **0,6214** (langer Kontext: 0,755) |
+| echtes Token unter den Top-5 | 0,611 |
+| `p(echtes Token)`, exakt | **0,2631** im Mittel, 100 % Abdeckung |
+| Masse Top-5 + echtes Token (6 Slots) | **0,6249** — der Zusatz bringt fast keine Masse (außerhalb der Top-5 ist `p(true)` nur 0,0092) |
+| unmodellierter Rest | **0,375** (bei top-24: 0,094) |
+
+Durchsatz und Kosten (`prompt` als **Array**, gemessen):
+
+| Batch | Antwort | Zeit | Sätze/s |
+|---:|---:|---:|---:|
+| 1 | 1 choice | 0,19 s | 5 |
+| 20 | 20 | 0,25 s | 80 |
+| 80 | 80 | 0,44 s | 181 |
+| 200 | 200 | 0,77 s | 261 |
+| 1000 | 1000 | 2,01 s | **498** |
+
+Das sind **~5 Minuten für 150k Sätze** (2M ≈ 1 h) und **0,31 $** bzw. **4,08 $**
+Input-Kosten bei Qwen3.5-9B — gegen 12 h lokale 4B-Base und ~4,8 Tage bei
+Chutes. Ausrichtung geprüft: `choices[i].index == i`, und
+`choices[i].logprobs.tokens` sind genau die Tokens des i-ten Prompts
+(30er-Batch: 0 Abweichungen). Rate-Limit-Header schickt Together keine mit.
+
+**Was dafür am Ziel geändert werden muss:**
+
+- Zielarray **6 Slots**: die 5 Alternativen + das echte Token (falls nicht
+  enthalten), pro Zeile **nicht** renormalisiert, plus `covered_mass` als
+  Spalte. Der Leser kann variable Breite schon (`share_le5` 5,19 % der
+  heutigen Zeilen).
+- KD-Gewicht pro Zeile = `covered_mass`. Heute werden ≤3-Kandidaten-Zeilen wie
+  24er gewichtet (Defekt aus `plans/teacher-free-plan.md` §1); bei 5 Breite
+  wird das der Regelfall.
+- Rest (0,375) entweder ignorieren (wie heute, dann aber 4× so groß) oder als
+  „other“-Slot mit Unigram-Masse füllen — die V8-Reparatur greift bereits.
+- Ungelöst bleiben: 15,3 % Piece-Zeilen (top-24-Recall dort **0,0**, bei 5
+  Breite schlechter), 9,4 % leere Zeilen, und der Lehrer ist **post-trained**
+  (kein Base-Qwen im Katalog).
+
+**Verdikt:** prinzipiell nutzbar — aber als *eine* von zwei Optionen, nicht als
+Ersatz per Dekret. Ob 0,62 gegen 0,91 Masse den Schüler schlechter macht,
+beantwortet nur ein A/B: 100k Sätze sammeln (~5 min, 0,21 $), Schüler 3 000
+Steps auf `slice100k` (≈38–45 min lokal), Gate wie in
+`plans/student-quality-plan.md` (Screen 0,05 nats, Confirm 0,02). Kosten des
+A/B: **unter 1 h Rechenzeit, unter 1 €**. Bis dahin bleibt die lokale
+4B-Base der Referenzlehrer, Chutes (20 breit) das Ziel, sobald der MTP-Bug
+(#53520) draußen ist.
 
 ## 3. Anbieter-Matrix
 
@@ -72,7 +232,7 @@ Qwen3.5-397B-A17B-TEE und Qwen3.6-27B-TEE sind live, `owned_by: vllm`,
 | **Hugging Face TGI** | `details.prefill` | **nur tatsächliches Token?** | beliebig | L4/GPU | Top-k für Prompt unklar |
 | Fireworks / OpenAI / Novita | `echo` | **5** | Qwen/Llama/GPT | – | zu sparse |
 | Groq / Cerebras / Vertex | – | 5 / kein Prompt | – | – | fällt aus |
-| Together | dokumentiert | 20 | Qwen/GPT-OSS | – | **live FAIL** |
+| Together | ja auf `/v1/completions` (`echo`) | **5 (harte Grenze)** | Qwen/GPT-OSS | 0,36–1,35 $/150k | 5 breit → für top-24 untauglich; als „5 + echtes Token“-Ziel A/B-würdig (§2c) |
 | DeepInfra | `echo` | 1–2 | Qwen/GPT-OSS | – | **live FAIL** |
 
 **Nebius:** Der Completion-Endpunkt hat `extra_body` als freies Feld; das ist
