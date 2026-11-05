@@ -1,0 +1,36 @@
+{
+ "models": [
+  "Qwen/Qwen3.5-9B",
+  "openai/gpt-oss-120b"
+ ],
+ "sentences": 40,
+ "vocab": 232,
+ "dropped_sentences": 0,
+ "rows": 304,
+ "single": {
+  "Qwen/Qwen3.5-9B": {
+   "mean_mass": 0.18275754793044016,
+   "word_nll": 6.517288824090701
+  },
+  "openai/gpt-oss-120b": {
+   "mean_mass": 0.18545734218058016,
+   "word_nll": 7.398671441372936
+  }
+ },
+ "blend": {
+  "0.0": 7.398671441372936,
+  "0.2": 6.713088476258048,
+  "0.4": 6.548678792422076,
+  "0.5": 6.500895801854807,
+  "0.6": 6.468370575927425,
+  "0.8": 6.444989861045129,
+  "1.0": 6.517288824090701
+ },
+ "overlap": 0.8651315789473685,
+ "union_mass_max": 0.27226052807305096,
+ "gain_rows": 0.11842105263157894,
+ "jaccard": 0.5920093795093795,
+ "mass_gain": 0.0868031858924708,
+ "pi_best": 0.8,
+ "note": "two teachers merged at WORD level (different tokenizers are fine). Vocab here is a 232-type stand-in built from the sentences, so the absolute masses are low; the deltas are what matters. blend = pi*pA+(1-pi)*pB, union_mass_max = per word max(pA,pB) = the headroom a fill rule can use."
+}

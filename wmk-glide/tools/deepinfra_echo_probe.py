@@ -111,8 +111,12 @@ def inspect(payload, prompt=PROMPT, prompt_tokens=None, min_top=10):
     checked_logs = logs[1:limit]
     present = sum(1 for x in checked_logs if x is not None)
     need = max(0, limit - 1)
+    # Count a *missing* entry as zero alternatives. The old version only
+    # looked at the entries that were present, so a body with no top sets at
+    # all skipped the width gate entirely (audit finding, 2026-11-03).
     top_counts = []
-    for t in tops[1:limit]:
+    for i in range(1, limit):
+        t = tops[i] if i < len(tops) else None
         if isinstance(t, dict):
             top_counts.append(len(t))
         elif isinstance(t, (list, tuple)):
@@ -132,12 +136,12 @@ def inspect(payload, prompt=PROMPT, prompt_tokens=None, min_top=10):
     elif present < need:
         verdict = "PARTIAL"
         reason = f"{present}/{need} usable prompt positions have a logprob"
-    elif top_min < min_top:
+    elif top_min < max(1, min_top):
         verdict = "FAIL"
         reason = (
             f"prompt logprobs exist, but top_logprobs are too sparse: "
             f"{top_min} entries minimum, {top_med} median per position "
-            f"(need >= {min_top}); only the chosen token is exposed"
+            f"(need >= {max(1, min_top)}); only the chosen token is exposed"
         )
     else:
         verdict = "PASS"

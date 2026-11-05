@@ -1,0 +1,67 @@
+{
+ "sentences_file": "/home/paseo/.paseo/worktrees/3qqpox6m/swift-zebra/wmk-glide/artifacts/out/ab_sentences.tsv",
+ "sentences": 200,
+ "word_types": 400,
+ "models": {
+  "zai-org/GLM-5.2": {
+   "sentences": 200,
+   "words": 400,
+   "ok": true,
+   "positions": 3273,
+   "missing_logprobs": 0,
+   "misaligned": 0,
+   "mean_nll": 4.326837183843118,
+   "top1_argmax": 0.3577757409104797,
+   "width_mean": 5.482737549648641,
+   "width_min": 4,
+   "mass_mean": 0.6383340933025141,
+   "by_class": {
+    "chat": {
+     "rows": 983,
+     "mean_nll": 4.897200576532246,
+     "top1_argmax": 0.31637843336724314
+    },
+    "news": {
+     "rows": 2290,
+     "mean_nll": 4.082004338859094,
+     "top1_argmax": 0.37554585152838427
+    }
+   },
+   "word_rate": 0.5775,
+   "tokens_per_word": 1.72,
+   "seconds": 10.1,
+   "prompt_tokens": 4161,
+   "cost_usd": 0.00125
+  },
+  "Qwen/Qwen3.5-9B": {
+   "sentences": 200,
+   "words": 400,
+   "ok": true,
+   "positions": 3042,
+   "missing_logprobs": 0,
+   "misaligned": 0,
+   "mean_nll": 4.526545720243557,
+   "top1_argmax": 0.2955292570677186,
+   "width_mean": 5.541420118343195,
+   "width_min": 5,
+   "mass_mean": 0.5443770376986723,
+   "by_class": {
+    "chat": {
+     "rows": 920,
+     "mean_nll": 4.595758491231162,
+     "top1_argmax": 0.27717391304347827
+    },
+    "news": {
+     "rows": 2122,
+     "mean_nll": 4.496538298326217,
+     "top1_argmax": 0.30348727615457116
+    }
+   },
+   "word_rate": 0.635,
+   "tokens_per_word": 1.5625,
+   "seconds": 6.7,
+   "prompt_tokens": 3867,
+   "cost_usd": 0.00066
+  }
+ }
+}

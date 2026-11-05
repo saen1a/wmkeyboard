@@ -199,8 +199,10 @@ stehen in [`wmlm-training-plan.md`](wmlm-training-plan.md). Lehrer-Kandidaten
 (27.10.): Kolibri 1 tokenisiert **62,9 %** ganze Wörter, ist aber
 post-trained und braucht 156 GB; Soofi S Base ist deutsch-first, aber
 gated; Qwen3.8-Flash ist 180B/post-trained. **DeepInfra ist als Lehrer
-gemessen untauglich** (`top_logprobs` nur 1–2 Einträge); **Together
-funktioniert wieder** (Probe + Token-Test bereit). **Nebius Token Factory**
+gemessen untauglich** (`top_logprobs` nur 1–2 Einträge);
+**Together liefert prompt-Logprobs, aber live gemessen genau 5 Alternativen**
+(03.11.2026) → für das top-24-Rezept untauglich; Probes sind auf den Cap
+eingestellt. **Nebius Token Factory**
 hat `echo` + `logprobs` und 1 $ Startguthaben; Probe liegt bereit, Live-Test
 offen. **Entscheidung 27.10.:
 Phase 1 lokal** (150k-Lehrer-Lauf in 30×5k-Chunks, ~3,2 Sätze/s, ~13 h, `wmlm-teacher.service`, `vmIdleTimeout=-1`); **Scaleway erst

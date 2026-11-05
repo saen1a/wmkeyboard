@@ -1,0 +1,42 @@
+{
+ "1m2": {
+  "rows": 12956013,
+  "empty": 0.0938,
+  "candidates": {
+   "mean": 16.79,
+   "p10": 8,
+   "share_le3": 0.0254,
+   "share_le5": 0.0519
+  },
+  "actual_is_piece": 0.153,
+  "accuracy": {
+   "all_top1": 0.2059,
+   "all_top24": 0.8167,
+   "plain_top1": 0.2431,
+   "plain_top24": 0.9642,
+   "piece_top24": 0.0
+  },
+  "mass_on_actual_mean": 0.1533,
+  "mass_on_actual_when_hit": 0.1877
+ },
+ "2m": {
+  "rows": 21378590,
+  "empty": 0.0938,
+  "candidates": {
+   "mean": 16.79,
+   "p10": 8,
+   "share_le3": 0.0254,
+   "share_le5": 0.0519
+  },
+  "actual_is_piece": 0.153,
+  "accuracy": {
+   "all_top1": 0.2061,
+   "all_top24": 0.8167,
+   "plain_top1": 0.2433,
+   "plain_top24": 0.9643,
+   "piece_top24": 0.0
+  },
+  "mass_on_actual_mean": 0.1534,
+  "mass_on_actual_when_hit": 0.1878
+ }
+}

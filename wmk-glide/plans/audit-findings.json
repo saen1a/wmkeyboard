@@ -1,0 +1,158 @@
+{
+  "audit": "round 1",
+  "date": "2026-10-31",
+  "repo": "G:\\C0ding\\git\\wmkeyboard-wmlm",
+  "branch": "wmlm-de-research",
+  "auditor": "independent read-only general agent (adversarial), adjudicated by the main agent",
+  "scope": [
+    "tools/wmlm/train.py",
+    "tools/wmlm/soft_mask.py",
+    "tools/wmlm/slice_data.py",
+    "tools/wmlm/paired_eval.py",
+    "tools/wmlm/tests/*",
+    "wmk-glide/experiments/glide_lm_blend_eval.rs",
+    "native/wm-engine/examples/typing_eval.rs",
+    "native/wm-engine/examples/glide_lm_blend_eval.rs",
+    "wmk-glide/cloud/local/*",
+    "wmk-glide/plans/teacher-free-plan.md",
+    "wmk-glide/plans/research-notes.md"
+  ],
+  "findings": [
+    {
+      "id": 1,
+      "severity": "high",
+      "confidence": 0.97,
+      "file": "tools/wmlm/soft_mask.py:291,350-352",
+      "problem": "PIECE/LE3/EMPTY counts sum the bit VALUES (2 and 4) instead of counting rows, so masks.json and the I3 assertion are 2x/4x too large; every real run assert-fails.",
+      "status": "fixed",
+      "fix": "count with ((flags & BIT) != 0).sum(); verified on real data: PIECE 0.1517, LE3 0.0230, EMPTY 0.0938 of 21 378 590 rows."
+    },
+    {
+      "id": 2,
+      "severity": "high",
+      "confidence": 0.96,
+      "file": "wmk-glide/plans/teacher-free-plan.md:113 (old §2.3)",
+      "problem": "The plan's row->token formula (t0+4+r) is wrong: soft rows are per WORD, tokens are per PIECE. Measured: that formula yields 34.1 % piece targets, the word-aware grouping yields 15.3 % (= audit_signal.json), and 54.4 % of rows are placed at the wrong logits position by train.py.",
+      "status": "fixed",
+      "fix": "word-aware grouping (join ## continuations); target = first token of the word, pos = first token index - 1; new --emit-align / distill_align= in train.py. Plan §2.3 and §3 rewritten; V9 added."
+    },
+    {
+      "id": 3,
+      "severity": "high",
+      "confidence": 0.95,
+      "file": "tools/wmlm/paired_eval.py:153",
+      "problem": "The chi-square STATISTIC was printed and stored as p_chi2, so consumers read 0.017 as a p-value when the p-value is 0.895.",
+      "status": "fixed",
+      "fix": "report chi2_stat and p_chi2_cc = erfc(sqrt(stat/2)) (df=1); covered by test_chi2_with_cc_is_a_probability."
+    },
+    {
+      "id": 4,
+      "severity": "high",
+      "confidence": 0.93,
+      "file": "tools/wmlm/paired_eval.py:100",
+      "problem": "Values outside {0,1} exit 2, but typing_eval.rs writes -1 for metrics a mode does not compute, so typing dumps were unprocessable.",
+      "status": "fixed",
+      "fix": "drop negative values per metric, report dropped/n, exit 2 only if <2 rows remain; tested."
+    },
+    {
+      "id": 5,
+      "severity": "medium",
+      "confidence": 0.90,
+      "file": "tools/wmlm/slice_data.py:67-78",
+      "problem": "rows=N sampled min(target_sentences, n) sentences once, so short sentences could fall below N.",
+      "status": "fixed",
+      "fix": "draw in rounds over not-yet-picked indices until cumulative rows >= N; N > total exits non-zero; test_slice_data.py."
+    },
+    {
+      "id": 6,
+      "severity": "medium",
+      "confidence": 0.85,
+      "file": "tools/wmlm/train.py:319-320",
+      "problem": "The CE gate assigned tgt[b,j] in a Python loop over ~10k elements per step (with a GPU sync per assignment), which would have destroyed throughput.",
+      "status": "fixed",
+      "fix": "single tgt.masked_fill_(blocked_tensor, PAD)."
+    },
+    {
+      "id": 7,
+      "severity": "medium",
+      "confidence": 0.85,
+      "file": "tools/wmlm/soft_mask.py:372",
+      "problem": "fill/unigram defaulted to a hard-coded de_unigram.npz that §2.2 never produces.",
+      "status": "fixed",
+      "fix": "default is <soft_stem>.unigram.npz next to the soft file; --unigram overrides."
+    },
+    {
+      "id": 8,
+      "severity": "medium",
+      "confidence": 0.90,
+      "file": "wmk-glide/plans/teacher-free-plan.md:113",
+      "problem": "Auditor could not reproduce plain_top24 = 0.9643 (got 0.6365).",
+      "status": "rejected",
+      "evidence": "Recomputed on 3000 sentences with the word-aware target: 0.8727 over ALL rows; over FILLED rows 0.8727/0.9061 = 0.9634 ~= 0.9643. The auditor included the 9.4 % empty rows. The plan now states the denominator explicitly."
+    },
+    {
+      "id": 9,
+      "severity": "medium",
+      "confidence": 0.92,
+      "file": "wmk-glide/plans/teacher-free-plan.md:33",
+      "problem": "share_le3 0.0254 (audit_signal.json) vs 0.0230 recomputed.",
+      "status": "accepted-with-note",
+      "evidence": "Recomputed 491 321 / 21 378 590 = 0.02298 over all rows with (probs>0).sum() <= 3. audit_signal.json (0.0254) is a different cut/denominator and is treated as stale; the plan quotes the recomputed value and the definition."
+    },
+    {
+      "id": 10,
+      "severity": "low",
+      "confidence": 0.78,
+      "file": "tools/wmlm/train.py:309-311",
+      "problem": "Offset sentinel 0 is ambiguous with soft row 0.",
+      "status": "fixed",
+      "fix": "-1 sentinel; all gates require offset >= 0."
+    },
+    {
+      "id": 11,
+      "severity": "low",
+      "confidence": 0.88,
+      "file": "tools/wmlm/tests/test_soft_mask.py:11",
+      "problem": "Test and build asserted different PIECE windows.",
+      "status": "fixed",
+      "fix": "single word-aware expectation [0.145,0.165]; real smoke recomputes target/pos independently."
+    },
+    {
+      "id": 12,
+      "severity": "low",
+      "confidence": 0.80,
+      "file": "tools/wmlm/train.py:285",
+      "problem": "torch.rand().item() syncs every step.",
+      "status": "rejected",
+      "evidence": "Pre-existing in HEAD, not a regression; changing it would break the bit-equality contract and is out of scope."
+    },
+    {
+      "id": 13,
+      "severity": "low",
+      "confidence": 0.85,
+      "file": "wmk-glide/plans/teacher-free-plan.md:226",
+      "problem": "The R4 bit-equality test relies on git plumbing that misbehaves with Windows-style worktree paths.",
+      "status": "accepted-with-note",
+      "evidence": "The test resolves the worktree .git pointer and reads HEAD blobs via cat-file; it passes. Documented in the results doc as WSL-only."
+    }
+  ],
+  "new_findings_from_verification": [
+    {
+      "id": 14,
+      "severity": "high",
+      "confidence": 0.99,
+      "problem": "train.py's Soft.batch() places soft row r at logits position 3+r, but rows are per word while positions are per token. Measured on 3000 sentences: 54.4 % of rows land on the wrong position, 72.1 % of sentences are affected, and every KD target after the first piece-spelled word is shifted.",
+      "status": "fixed",
+      "fix": "distill_align= (opt-in) scatters each row at its word-aware position; default path bit-identical (tested)."
+    },
+    {
+      "id": 15,
+      "severity": "medium",
+      "confidence": 0.95,
+      "problem": "No test covered finding 1 (flag counts vs bits), so the suite stayed green while masks.json was wrong.",
+      "status": "fixed",
+      "fix": "test_soft_mask.InvariantsBitwise.test_counts_match_flags compares masks.json counts with the npz flags row counts."
+    }
+  ],
+  "verdict": "NO_OPEN_HIGH_CONFIDENCE_FINDINGS after fixes; all high findings fixed, 2 rejected with evidence, 2 accepted as documented limitations."
+}

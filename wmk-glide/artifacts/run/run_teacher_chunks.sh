@@ -19,6 +19,7 @@ CHUNK_MASS=${CHUNK_MASS:-0.85}
 MIN_MASS=${MIN_MASS:-0.85}
 LOG=${LOG:-out/teacher_150k.log}
 FINAL=${FINAL:-out/de_soft_150k.npz}
+PREFIX=${PREFIX:-soft_150k}
 
 cd "$ROOT"
 export LD_LIBRARY_PATH=${LD_LIBRARY_PATH:-/opt/rocm-7.2.1/lib}
@@ -35,7 +36,7 @@ flock -n 9 || { echo "another teacher run holds /tmp/wmlm-teacher.lock"; exit 1;
 
 files=()
 for i in $(seq 0 $((CHUNKS - 1))); do
-  f="out/soft_150k_$i.npz"
+  f="out/${PREFIX}_$i.npz"
   files+=("$f")
   if [ -f "$f" ]; then
     if "$PY" tools/wmlm/check_soft.py "$f" --vocab-size "$VOCAB" \

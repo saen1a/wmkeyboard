@@ -1,0 +1,18 @@
+[Unit]
+Description=WMLM German teacher pass (1.2M = 1M + 200k chat, chunked)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/root/wmlm-de
+ExecStart=/bin/bash /root/wmlm-de/run_teacher_1m2.sh
+Restart=on-failure
+RestartSec=30
+TimeoutStopSec=30
+# Keep the journal small; the script appends to out/teacher_1m2.log itself.
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

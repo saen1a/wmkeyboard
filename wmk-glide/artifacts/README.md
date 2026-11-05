@@ -21,6 +21,10 @@ files are intentionally **not** tracked; see `.gitignore`.
 | `data/de_swipes.jsonl` | 19 MB | FUTO German glide pool (evaluation only) |
 | `data/german.json` | 5,7 KB | German keyboard layout for the harness |
 | `corpora/de_all.tsv` | 152 MB | Tatoeba DE + Leipzig News 2023, one sentence per line |
+| `corpora/de_1m_200k_chat.tsv` | 101 MB | 1.2M rows, 640k chat / 560k news (53.3/46.7), SHA256 `882cdd31…` |
+| `corpora/de_2m_mix.tsv` | 168 MB | 2.0M rows, 1,066k chat / 934k news (53.3/46.7), SHA256 `a3b7cd04…`; manifest + `.sha256` beside it |
+| `corpora/opensubtitles_de_v2018.txt.gz` | 476 MB | OPUS OpenSubtitles DE mono, chat top-up for the 2M mix (CC BY-NC-style; see `cloud/scaleway/README.md`) |
+| `out/de_lm_2m/` | 181 MB | `prep.py` on the 2M mix: 1,980,000 train sentences / 40.56M tokens, 20k heldout, vocab 24,576 |
 
 `MANIFEST.sha256` contains the hashes of the model and the large `.npz`/`.pt`
 files. `de_swipes.jsonl` comes from FUTO and is evaluation data; do not use it
@@ -56,3 +60,7 @@ python3 tools/wmlm/export.py out/de_run/best.pt out/de_lm_full/vocab.txt \
 The multi-token distill patch is `wmk-glide/patches/0005-distill-multitoken.patch`.
 `wmk-glide/tools/check_soft.py` validates a soft-target file;
 `wmk-glide/tools/merge_soft.py` stitches chunked runs.
+
+
+
+

@@ -1,0 +1,30 @@
+#cloud-config
+# Minimal, secret-free cloud-init for Scaleway Ubuntu Noble GPU OS 13
+# (H100-1-80G, fr-par-2). NVIDIA driver/CUDA are preinstalled.
+# Do NOT put HF tokens, SSH keys, or model data here: user-data is visible
+# to the instance metadata service and often in the provider console.
+package_update: true
+packages:
+  - tmux
+  - htop
+  - git
+  - curl
+  - rsync
+  - python3-venv
+  - python3-pip
+
+write_files:
+  - path: /etc/profile.d/wmlm.sh
+    permissions: "0644"
+    content: |
+      export HF_HOME=/scratch/hf-cache
+      export WMLM_DATA=/data
+      export HF_HUB_ENABLE_HF_TRANSFER=1
+      export TOKENIZERS_PARALLELISM=false
+
+runcmd:
+  - mkdir -p /scratch/hf-cache /data/out /data/corpus
+  - df -h /scratch /data || true
+  # Do not auto-format a block device here; mount the provider's scratch
+  # volume manually after checking `lsblk` and the provider docs.
+  - echo "cloud-init done; install vLLM interactively or use a vLLM image"

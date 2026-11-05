@@ -1,0 +1,187 @@
+{
+  "plan": "student-quality-plan.md",
+  "created": "2026-10-31",
+  "principle": "a gate may only be entered when its predecessor is passed; a failed gate retires its hypothesis",
+  "thresholds": {
+    "screen_nats": 0.05,
+    "confirm_nats": 0.02,
+    "glide_non_inferiority_pp": -0.5,
+    "heldout_eval_se_nats": 0.014,
+    "glide_items": 2588,
+    "typing_items_target": 2000
+  },
+  "gates": [
+    {
+      "id": "G0",
+      "title": "measurement baseline",
+      "state": "passed",
+      "entry": [],
+      "machine": "cpu",
+      "wall_hours": 1,
+      "eur": 0,
+      "artifacts": [
+        "artifacts/out/eval_dumps/glide_<model>.tsv",
+        "artifacts/out/eval_dumps/typing_<model>.tsv",
+        "artifacts/out/eval_dumps/paired_g0.json"
+      ],
+      "exit": [
+        "2M Glide dump reproduces 0.7848 / 0.8485 exactly",
+        "dump row count == harness n for every model",
+        "typing dropped == 0 with the -1 convention",
+        "2M vs 150k ~ 0 and 2M vs 1.2M ~ +0.5 pp in the paired table"
+      ],
+      "abort": "harness build differs from the released one"
+    },
+    {
+      "id": "G1",
+      "title": "alignment screen V1 vs V9",
+      "state": "passed",
+      "entry": ["G0"],
+      "machine": "local_gpu",
+      "wall_hours": 1.5,
+      "eur": 0,
+      "config": {
+        "data": "de_lm_2m_slice100k",
+        "steps": 3000,
+        "batch": 256,
+        "seed": 0,
+        "v9_flag": "distill_align=masks.align.npz"
+      },
+      "exit": ["loss_V9 < loss_V1 - 0.05 nats at step 3000", "no NaN", "device cuda"],
+      "abort": "either run below 0.8 steps/s",
+      "on_fail": "V9 retires, G2 skipped, G3 runs against V1"
+    },
+    {
+      "id": "G2",
+      "title": "alignment confirm 2M @30k",
+      "state": "passed",
+      "entry": ["G1"],
+      "machine": "local_gpu",
+      "wall_hours": 12.6,
+      "eur": 0.8,
+      "config": {"data": "de_lm_2m", "steps": 30000, "batch": 256, "seed": 0},
+      "exit": [
+        "loss_V9 < loss_V1 - 0.02 nats",
+        "Glide blend_top1 delta >= -0.5 pp (non-inferiority)"
+      ],
+      "abort": "two GPU-nights total; no re-runs with changed hyperparameters",
+      "on_fail": "V1 stays reference; V9 documented as negative"
+    },
+    {
+      "id": "G3",
+      "title": "repair screens V2/V3/V8",
+      "state": "failed",
+      "entry": ["G2"],
+      "machine": "local_gpu",
+      "wall_hours": 2.2,
+      "eur": 0.15,
+      "config": {
+        "base": "G2 winner",
+        "data": "de_lm_2m_slice100k",
+        "steps": 3000,
+        "variants": {
+          "V2": "distill_mask=masks.keep.kd.npz",
+          "V3": "V2 + distill_weight=masks.masks.npz",
+          "V8": "V2 + distill=soft_filled.npz"
+        }
+      },
+      "exit": ["promote every variant with delta <= -0.02 nats"],
+      "abort": "mask raises loss by > 0.05 nats -> V2/V3/V8 retire together",
+      "on_fail": "documented negative; G4 skipped for that variant"
+    },
+    {
+      "id": "G4",
+      "title": "repair confirm",
+      "state": "blocked",
+      "entry": ["G3"],
+      "machine": "local_gpu",
+      "wall_hours": 6.3,
+      "eur": 0.5,
+      "exit": ["delta <= -0.02 nats vs G2 winner at 30k", "Glide CI lower >= -0.5 pp"],
+      "on_fail": "drop repair, keep G2 winner"
+    },
+    {
+      "id": "G5",
+      "title": "alpha screen (0.3)",
+      "state": "blocked",
+      "entry": ["G4"],
+      "machine": "local_gpu",
+      "wall_hours": 7.0,
+      "eur": 0.6,
+      "exit": ["screen delta <= -0.02 nats", "confirm delta <= -0.02 nats"],
+      "on_fail": "alpha stays 0.5"
+    },
+    {
+      "id": "G6",
+      "title": "budget sweep + checkpoint averaging",
+      "state": "blocked",
+      "entry": ["G4"],
+      "machine": "local_gpu",
+      "wall_hours": 25.2,
+      "eur": 2.0,
+      "exit": [
+        "pick lowest heldout loss whose curve did not rise in two consecutive evals",
+        "average of last three evals not worse than best member"
+      ],
+      "abort": "stop at the first leg beating the previous by < 0.01 nats (plateau)",
+      "on_fail": "previous recipe remains shippable"
+    },
+    {
+      "id": "G7",
+      "title": "export + final paired eval",
+      "state": "failed",
+      "entry": ["G6"],
+      "machine": "cpu",
+      "wall_hours": 1,
+      "eur": 0,
+      "exit": [
+        "candidate vs 2M Glide CI lower > 0",
+        "OR heldout ppl better by >= 0.1 with Glide CI lower >= -0.5 pp"
+      ],
+      "rule": "never ship on a single marginal p; the rule is the CI",
+      "artifacts": ["artifacts/out/eval_dumps/paired_g7.json", "plans/ship-candidate.md"]
+    },
+    {
+      "id": "G8",
+      "title": "optional local contract test (9B, 100k)",
+      "state": "blocked",
+      "entry": ["G7"],
+      "machine": "local_gpu",
+      "wall_hours": 11,
+      "eur": 0,
+      "exit": ["new target contract beats current by >= 0.05 nats at equal steps"],
+      "purpose": "cheap falsification before any H100 booking"
+    }
+  ],
+  "cloud": {
+    "prices_eur_per_hour_fr_par_2": {
+      "L4-1-24G": 0.7875,
+      "L4-2-24G": 1.575,
+      "L40S-1-48G": 1.46988,
+      "L40S-2-48G": 2.93982,
+      "H100-1-80G": 2.8665,
+      "H100-2-80G": 5.733,
+      "H100-SXM-2-80G": 6.6198,
+      "H100-SXM-4-80G": 12.771,
+      "H100-SXM-8-80G": 25.3308,
+      "B300-SXM-8-288G": 60.0,
+      "RENDER-S": 1.221
+    },
+    "source": "scw instance server-type list zone=fr-par-2 (live, 2026-10-31)",
+    "best_value": {
+      "student_training": "local 9060 XT; if cloud then L4-1-24G (~2.6-3.3 EUR per 30k run)",
+      "screens": "local; if cloud then L4-1-24G (~0.33 EUR per screen)",
+      "teacher_pass_2m": "L40S-1-48G (~15 EUR, 10 h) ahead of H100-1-80G (~17 EUR, 5.8 h)"
+    },
+    "render": {
+      "instance": "RENDER-S = 1x Tesla P100 16 GB, hourly billing, 1.221 EUR/h",
+      "teacher": "impossible (< 28 GB FP8 weights)",
+      "student": "possible but worst value: Pascal, no bf16/FP8, no Flash-Attention, 55 % above L4, hourly granularity",
+      "verdict": "not usable"
+    },
+    "managed_inference_endpoint": {
+      "product": "Generative APIs - Dedicated Deployment (H100 3.40, L40S 1.72, L4 0.93 EUR/h)",
+      "verdict": "not usable for distillation: needs per-position top-k log-probs over our own 24576-token vocab, which a sampling API does not expose"
+    }
+  }
+}

@@ -1,0 +1,48 @@
+{
+  "prompts": 200,
+  "batches": 7,
+  "prompt_tokens": 3463,
+  "seconds": 1.676,
+  "prompts_per_s": 119.36,
+  "prompt_tokens_per_s": 2066.8,
+  "batch_ms_mean": 237.0,
+  "batch_ms_p50": 214.2,
+  "tokens_per_prompt": 17.3,
+  "plausibility": {
+    "positions": 3263,
+    "missing_actual_token": 0,
+    "nonfinite_logprobs": 0,
+    "mean_nll": 4.2765,
+    "top1_share": 0.3245,
+    "topk_width_mean": 24.39
+  },
+  "model": "Qwen/Qwen3.8-27B",
+  "teacher": {
+    "model": "Qwen/Qwen3.8-27B",
+    "quantization": null,
+    "speculative": null,
+    "max_model_len": 4096,
+    "device": "NVIDIA H100 PCIe",
+    "torch": "2.13.0+cu130",
+    "vllm": "0.32.0"
+  },
+  "load_seconds": 57.3,
+  "measure_seconds_wall": 2.2,
+  "batch": 32,
+  "prompt_logprobs": 24,
+  "gate": {
+    "min": 35.0,
+    "target": 100.0,
+    "passed": true
+  },
+  "projection_1_2m": {
+    "hours": 2.79,
+    "eur": 8.01
+  },
+  "projection_2m": {
+    "hours": 4.65,
+    "eur": 13.34
+  },
+  "plausible": true,
+  "dataset": "2m"
+}

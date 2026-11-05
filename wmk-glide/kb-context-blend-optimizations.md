@@ -20,12 +20,15 @@ Evidenz, die nicht in ein GitHub-Issue passt.
   **+0,11** top-1 / **+0,24** top-4 (150k) und **+0,07** / **+0,24**
   (Komposita), bei doppeltem Decode/Score-Aufwand. Adaptive Verbreiterung ist
   die sinnvolle Form.
-- Die Start-Piece-Abdeckung ist eine stille Grenze: **20,5 %** der gültigen
-  150k-Wörter und **19,6 %** der 591k-Komposita sind mit dem aktuellen
-  `pieces_of` nicht spellbar, weil am Wortanfang nur ganze Wörter als Pieces
-  existieren (`gib`: kein `g`/`gi`-Wortstück, aber `##g`/`##i`/`##b`). Ein
-  Continuation-Fallback deckt 99,99 % ab, brachte auf FUTO aber keinen
-  Top-1/Top-4-Gewinn; die saubere Lösung ist ein Alphabet-Seed im Vokabular.
+- **Korrektur 2026-11-02 (auditiert):** Die früheren **20,5 % / 19,6 %**
+  „nicht spellbar“ sind **veraltet**. Der aktuelle `Pieces.build` seedet
+  einzelne Buchstaben als Start-Pieces; `gib` ist `▁g` + `##ib` und
+  `lm_probe` liefert einen finiten Score. Die 20,5 % sind die Menge, die
+  **ohne** Single-Letter-Starts unspellbar wäre. Aktuell real: **3** Wörter
+  `None` (griechische Lookalikes) und **2,45 % / 10,2 %** Typen mit **>6
+  Pieces** (0,084 % / 0,145 % Tokenmasse). Entfernen ist neutral bis
+  −0,04 pp; nicht empfohlen. Details und Ablation:
+  [`kb-student-architecture-de.md`](kb-student-architecture-de.md) §1.1.
 
 ## 1. Ist-Stand im Code
 
@@ -95,23 +98,41 @@ ist die Führer-Variante der sichere erste Schritt; Top-4 nur mit
 Score-Schwelle (z. B. nur OOV-Kandidaten innerhalb von 3 Nats um den Führer).
 Alle Kandidaten pro Tastendruck zu spellen ist zu teuer.
 
-### 2.4 Start-Piece-Abdeckung
+### 2.4 Start-Piece-Abdeckung — korrigiert 2026-11-02
 
 Greedy-Longest-Match wie `pieces_of` (max. 5 Zeichen pro Stück, max. 6
-Stücke), nur alphabetische Wörter mit ≥ 2 Zeichen:
+Stücke), nur alphabetische Wörter mit ≥ 2 Zeichen, **aktuelle** Vocab
+(`de_lm_2m/vocab.txt`, `Pieces.build` in `tools/wmlm/common.py:74-87`):
 
-| Liste | gültige Wörter | im Vokabular | per Pieces spellbar | > 6 Stücke | nicht spellbar |
-|---|---:|---:|---:|---:|---:|
-| `de_150k` | 145.395 | 20.045 (13,8 %) | 95.577 (65,7 %) | 2.260 (1,6 %) | **29.773 (20,5 %)** |
-| `de_150k_comp3` | 583.154 | 21.182 (3,6 %) | 447.784 (76,8 %) | 35.962 (6,2 %) | **114.188 (19,6 %)** |
+| Liste | gültige Wörter | im Vokabular | `pieces_of` = `None` | > 6 Stücke | aktuell unspielbar | Tokenmasse unspielbar |
+|---|---:|---:|---:|---:|---:|---:|
+| `de_150k` | 145.395 | 20.045 | **3** | 3.565 | **3.568 (2,45 %)** | **0,084 %** |
+| `de_150k_comp3` | 583.154 | 21.182 | **3** | 59.398 | **59.401 (10,19 %)** | **0,145 %** |
 
-Ursache: `pieces_of` nimmt am Wortanfang nur `start_pieces` (ganze Wörter).
-`gib` ist nicht im Vokabular, `g`/`gi` sind keine Startstücke, also `None` —
-obwohl `##g`, `##i`, `##b` existieren. Ein Prototyp mit
-Continuation-Start-Fallback (`##g` am Anfang) macht 99,99 % spellbar, änderte
-auf FUTO aber weder top-1 noch top-4. Die saubere Lösung ist, einzelne
-Buchstaben (a–z, äöüß) beim `prep.py`-Lauf als Startstücke zu seeden; das
-kostet ~30 Vokabel-Slots und ist Teil des geplanten 32k-Laufs.
+Die frühere Tabelle (95.577/447.784 „spellbar“, 29.773/114.188 „nicht
+spellbar“) hat **Single-Letter-Start-Pieces ausgeschlossen**. Differenz:
+29.770 bzw. 114.185 — genau diese Wörter; plus die 3 echten `None`-Wörter
+(`comρuter`, `κind`, `κreatur`). `Pieces.build` seedet aber alle Buchstaben
+(`chosen_s = set(letters)`, `common.py:80`), und `lm_probe` bestätigt
+`gib` = `▁g` + `##ib`.
+
+**Ablation (read-only, gleicher Harness):**
+
+| Liste | Blend top-1/top-4 | nach Entfernen der >6-Piece-Wörter | Δ |
+|---|---:|---:|---:|
+| `de_150k` | 77,28 / 83,46 | 77,28 / 83,46 | **0,00 pp** |
+| `de_150k_comp3` | 78,48 / 84,85 | 78,44 / 84,81 | **−0,04 pp** |
+
+Die 4 verlorenen Comp3-Ziele: `universitätsklinikum`,
+`originalschauplätzen`, `beamtenlaufbahn`, `befehlsgemäß`. Im
+Typing-Heldout sind 318/238.033 bzw. 619/238.033 Token betroffen
+(0,13 %/0,26 %). Typing base (500 Fälle, fast): top-1/top-3 unverändert
+58,40/77,80, aber „new words rewritten“ **0,2400 → 0,2900 (100)** —
+entfernte Wörter werden OOV und eher autokorrigiert. **Nicht entfernen.** Der reale Fix ist die Engine-Grenze
+`MAX_WORD_PIECES=6` (`lm.rs:60`) — z. B. 8 — oder bessere/längere Pieces;
+das ist ein kleiner Produkt-Hebel (max. +0,15 pp aus 4 Glide-Zielen), kein
+Daten-Pruning. Details:
+[`kb-student-architecture-de.md`](kb-student-architecture-de.md) §1.1.
 
 ## 3. Priorität für Upstream
 
@@ -120,7 +141,7 @@ kostet ~30 Vokabel-Slots und ist Teil des geplanten 32k-Laufs.
 | **P1** | Typing-Führer per Pieces scoren, erste finite Referenz | +0,20 top-1, +0,20 top-3, suggest 2.540 → 2.847 us | klein; gleiche Semantik wie Glide |
 | **P1** | Glide-Pool adaptiv auf 16 bei Unsicherheit | +0,11/+0,24 (150k), +0,07/+0,24 (Komposita) | mittel; Decode-Kosten, Latenz messen |
 | **P1** | Blend-Gewicht/-Cap in `GlideLanguageProfiles` | Deutsch 0,5/5,0; global gesetzt | klein; verhindert Sprachregression |
-| **P2** | Start-Piece-Abdeckung (Alphabet-Seed) | 20 % unspellbar; Fallback ohne FUTO-Gewinn | Vokabular/Retrain, 32k-Lauf |
+| **P2** | Start-Piece-Abdeckung | **korrigiert:** Alphabet-Seed ist bereits da; real nur >6-Piece-Wörter (2,45 %/10,2 % Typen, 0,084/0,145 % Token); Entfernen neutral/−0,04 pp | `MAX_WORD_PIECES` 6→8 testen; kein 32k-Lauf allein dafür |
 | **P2** | Compound-aware Scoring (Join/Piece-Summe) | 441k-Liste +1,55; Join-Oracle 4,56 % | groß; eigener Entwurf |
 | **P3** | Confidence-Gate, ungescorte Penalty, Latenz-Cache | geplant, nicht gemessen | Experiment |
 

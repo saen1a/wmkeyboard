@@ -1,0 +1,98 @@
+{
+ "models": [
+  "Qwen/Qwen3.5-9B",
+  "zai-org/GLM-5.2"
+ ],
+ "sentences": 100,
+ "vocab": 632,
+ "dropped_sentences": 0,
+ "rows": 1081,
+ "single": {
+  "Qwen/Qwen3.5-9B": {
+   "mean_mass": 0.20744347118792306,
+   "word_nll": 6.96670200474152
+  },
+  "zai-org/GLM-5.2": {
+   "mean_mass": 0.2556967082145713,
+   "word_nll": 6.768161302259668
+  }
+ },
+ "blend": {
+  "0.0": 6.768161302259668,
+  "0.2": 6.203541553294534,
+  "0.4": 6.157436201442125,
+  "0.5": 6.166961268333276,
+  "0.6": 6.195062742427081,
+  "0.8": 6.323493567961844,
+  "1.0": 6.96670200474152
+ },
+ "overlap": 0.8973172987974098,
+ "union_mass_max": 0.34066104455480395,
+ "gain_rows": 0.16558741905642924,
+ "jaccard": 0.5138492835740542,
+ "mass_gain": 0.08496433634023265,
+ "pi_best": 0.4,
+ "by_class": {
+  "chat": {
+   "rows": 399,
+   "word_nll": {
+    "Qwen/Qwen3.5-9B": 6.4724596638035665,
+    "zai-org/GLM-5.2": 6.742296208169564
+   },
+   "blend_best": 5.819877389473942,
+   "pi_best": 0.5,
+   "union_mass_max": 0.32825045235769185,
+   "mass_gain": 0.0819073423441602
+  },
+  "news": {
+   "rows": 682,
+   "word_nll": {
+    "Qwen/Qwen3.5-9B": 7.23806607484512,
+    "zai-org/GLM-5.2": 6.78236254854015
+   },
+   "blend_best": 6.341131074043216,
+   "pi_best": 0.4,
+   "union_mass_max": 0.34792178691059206,
+   "mass_gain": 0.08675281229981135
+  }
+ },
+ "note": "Qwen3.5-9B + GLM-5.2 merged at WORD level, 50 chat + 50 news sentences (1081 word rows), vocab = 232-type stand-in from the sentences. Absolute NLL is high because of the small vocabulary; the per-class deltas and the mass comparison are the result.",
+ "throughput": {
+  "Qwen/Qwen3.5-9B": {
+   "batch_1000_sentences_per_s": 533,
+   "arrays": true
+  },
+  "zai-org/GLM-5.2": {
+   "batch_1000_sentences_per_s": 196,
+   "arrays": true,
+   "by_batch": {
+    "32": 79.5,
+    "128": 128.1,
+    "256": 172.4,
+    "1000": 195.6
+   }
+  }
+ },
+ "token_nll_per_class": {
+  "Qwen/Qwen3.8-27B-FP8 (existing GPU)": {
+   "chat": 5.278,
+   "news": 4.616,
+   "mean": 4.947
+  },
+  "Qwen/Qwen3.5-9B-Base (local)": {
+   "chat": 5.244,
+   "news": 4.816,
+   "mean": 5.03
+  },
+  "Qwen/Qwen3.5-9B (API)": {
+   "chat": 4.596,
+   "news": 4.497,
+   "mean": 4.546
+  },
+  "zai-org/GLM-5.2 (API)": {
+   "chat": 4.897,
+   "news": 4.082,
+   "mean": 4.49
+  }
+ }
+}
