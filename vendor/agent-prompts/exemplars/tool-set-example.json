@@ -1,0 +1,104 @@
+{
+  "schema": "agent-toolset/1",
+  "version": "1.0.0",
+  "mask_version": "1.0.0",
+  "toolset_sha256": "705bfe964cbfc7e3161aa9304185c497872ce9350f62ec6cf9073b3f109655a1",
+  "order": [
+    "read_file",
+    "write_file",
+    "search",
+    "mcp_example"
+  ],
+  "tools": [
+    {
+      "name": "read_file",
+      "description": "Read a UTF-8 text file from the workspace.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "handler": "fs.read",
+      "stability": "static"
+    },
+    {
+      "name": "write_file",
+      "description": "Write a UTF-8 text file inside the workspace.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "path",
+          "content"
+        ],
+        "properties": {
+          "path": {
+            "type": "string",
+            "minLength": 1
+          },
+          "content": {
+            "type": "string"
+          }
+        }
+      },
+      "handler": "fs.write",
+      "stability": "static"
+    },
+    {
+      "name": "search",
+      "description": "Search tracked files for a literal string.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "query"
+        ],
+        "properties": {
+          "query": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      },
+      "handler": "search.literal",
+      "stability": "static"
+    },
+    {
+      "name": "mcp_example",
+      "description": "Example deferred MCP tool appended after the static block.",
+      "input_schema": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {}
+      },
+      "handler": "mcp.example",
+      "stability": "deferred"
+    }
+  ],
+  "masks": {
+    "roles": {
+      "orchestrator": [
+        "read_file",
+        "search"
+      ],
+      "executor": [
+        "read_file",
+        "write_file",
+        "search",
+        "mcp_example"
+      ]
+    },
+    "deferred": [
+      "mcp_*"
+    ],
+    "deferred_unmatched": []
+  }
+}

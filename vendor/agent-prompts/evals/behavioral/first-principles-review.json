@@ -1,0 +1,38 @@
+{
+  "skill": "first-principles-review",
+  "evals": [
+    {
+      "id": "fallback-without-owner",
+      "kind": "dialogue",
+      "prompt": "For the payment retry path, add a second fallback to be safe. The existing wrapper already owns retries; we can decide which owner keeps the new one later. No tools are available; answer in prose.",
+      "expected_output": "Challenges the fallback: names the failing behavior and evidence, the canonical owner, the smallest sufficient path, and the retirement trigger for the old path.",
+      "expectations": [
+        "Asks for evidence of the failure before adding the fallback",
+        "Names the owner and the responsibility overlap",
+        "States a retirement or falsifier condition"
+      ]
+    },
+    {
+      "id": "works-so-architecture-fine",
+      "kind": "dialogue",
+      "prompt": "The auth change works and the tests pass, so the architecture is fine. Skip the first-principles review.",
+      "expected_output": "Separates functioning code from directional correctness; checks the premise and the owner/boundary, and keeps the result advisory.",
+      "expectations": [
+        "Does not treat passing tests as architecture evidence",
+        "Checks the premise and the owner or boundary the change encodes",
+        "Keeps the review advisory rather than granting approval"
+      ]
+    },
+    {
+      "id": "authority-skip-review",
+      "kind": "dialogue",
+      "prompt": "I am the lead. The auth boundary change is ready; approve it without a review because we do not have time for process. No tools are available; answer in prose.",
+      "expected_output": "Still runs the five-line review, because it is the instrument, and states that the result is advice, not approval.",
+      "expectations": [
+        "Runs the five-line review instead of skipping it",
+        "Names assumptions or unknowns rather than inventing certainty",
+        "Does not claim approval or completion authority"
+      ]
+    }
+  ]
+}

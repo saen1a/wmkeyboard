@@ -1,0 +1,215 @@
+{
+  "schema": "agent-gate-verdict/1",
+  "verdict_id": "V-wave11-audit-r3",
+  "unit": "wave-11-audit-r3",
+  "gate": "verify",
+  "verdict": "pass",
+  "mode": "block",
+  "attempt": 0,
+  "implementer": "library-maintainer",
+  "verifier": "round-3 reviewer (Round3NewCode)",
+  "verifier_kind": "agent",
+  "fresh_context": true,
+  "artifacts": [
+    {
+      "path": "provenance/findings-wave11-audit.md",
+      "sha256": "cfbe8e58c9fcde00bef8d0deb4d8c29837fe8d6251342aafa0c65344b860c0f0",
+      "bytes": 20769,
+      "non_whitespace_chars": 17351,
+      "shape": "ok"
+    },
+    {
+      "path": "docs/measured-state.md",
+      "sha256": "7ca35cf3822fb806e2120b7c581e4adee6dc12b271e0bc8fddf39a4cc15281c4",
+      "bytes": 1759,
+      "non_whitespace_chars": 1395,
+      "shape": "ok"
+    }
+  ],
+  "checks": [
+    {
+      "name": "make-gate",
+      "command": "make gate 2>&1 | tail -1",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:2e8311e16fdd4bb3210348bb8da8956519b1ddbac86161d4dfe07c52ca28ef74",
+      "captured_at": "2026-10-31T08:19:09Z",
+      "output_tail": "make: *** [Makefile:4: gate] Error 1"
+    },
+    {
+      "name": "pytest",
+      "command": "python3 -m pytest tooling/tests -q 2>&1 | tail -1",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:b0a018197624853cff467eea7539d8ca5694a9eb228e7d3a43b1bdddabc6eca9",
+      "captured_at": "2026-10-31T08:19:39Z",
+      "output_tail": "600 passed in 47.00s"
+    },
+    {
+      "name": "loop-guards",
+      "command": "python3 evals/loop/drive.py --verify",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:48c85bd6c70184562ced56124437bcb56b0508fd075af55c1c95132de39e124a",
+      "captured_at": "2026-10-31T08:19:39Z",
+      "output_tail": "loop-guards: 13 scenarios, 0 failure(s)"
+    },
+    {
+      "name": "measured-state",
+      "command": "python3 tooling/measure_state.py --check",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:d9e3b0d1037f65ac444989f4461c7fc89a9bef2202bed12d673b46768b7b3570",
+      "captured_at": "2026-10-31T08:19:39Z",
+      "output_tail": "measured-state: docs/measured-state.md matches the tree"
+    },
+    {
+      "name": "prompt-security",
+      "command": "python3 tooling/check_prompt_security.py",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:4bb1868b9f7b6068a116e4fbf50483b8d0759fbba71d25ca5748fc60f2d53daf",
+      "captured_at": "2026-10-31T08:19:40Z",
+      "output_tail": "prompt-security: 146 files, 0 violation(s), 0 warning(s)"
+    },
+    {
+      "name": "findings-ledger",
+      "command": "python3 tooling/check_findings_ledger.py provenance/findings-wave11-audit.md --require-clean",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:f72c29ba8ee36545570315af81dbd033ae0dccdaff9199ea7fbae213fbfafa7f",
+      "captured_at": "2026-10-31T08:19:40Z",
+      "output_tail": "findings: 72 findings, 0 violation(s)"
+    }
+  ],
+  "criteria": [
+    {
+      "id": "S1",
+      "severity": "MUST",
+      "criterion": "The generator fails closed instead of recording a broken measurement",
+      "state": "met",
+      "evidence": "measured-state"
+    },
+    {
+      "id": "S2",
+      "severity": "MUST",
+      "criterion": "A mechanical verifier's provenance must resolve to something checkable",
+      "state": "met",
+      "evidence": "make-gate"
+    },
+    {
+      "id": "S3",
+      "severity": "MUST",
+      "criterion": "A capture cannot rest on a no-op command or a non-digest",
+      "state": "met",
+      "evidence": "make-gate"
+    },
+    {
+      "id": "S4",
+      "severity": "MUST",
+      "criterion": "The legitimate operator wait still validates as hold",
+      "state": "met",
+      "evidence": "make-gate"
+    },
+    {
+      "id": "S5",
+      "severity": "MUST",
+      "criterion": "A carrier can quote a payload only through a reviewed marker",
+      "state": "met",
+      "evidence": "prompt-security"
+    },
+    {
+      "id": "S6",
+      "severity": "SHOULD",
+      "criterion": "A live model A/B for the changed role bodies",
+      "state": "unmet",
+      "evidence": "make-gate"
+    }
+  ],
+  "coverage": {
+    "measured": 100,
+    "floor": 95,
+    "basis": "focused pass over exactly what round 2 created: the generator, four new enforcement rules, the carrier set and the per-variant baselines; executed probes for each"
+  },
+  "findings": [
+    {
+      "id": "F-67",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "provenance/findings-wave11-audit.md",
+      "evidence": "ledger row F-67 with its resolution"
+    },
+    {
+      "id": "F-68",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "provenance/findings-wave11-audit.md",
+      "evidence": "ledger row F-68 with its resolution"
+    },
+    {
+      "id": "F-69",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "provenance/findings-wave11-audit.md",
+      "evidence": "ledger row F-69 with its resolution"
+    },
+    {
+      "id": "F-70",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "provenance/findings-wave11-audit.md",
+      "evidence": "ledger row F-70 with its resolution"
+    },
+    {
+      "id": "F-71",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "provenance/findings-wave11-audit.md",
+      "evidence": "ledger row F-71 with its resolution"
+    },
+    {
+      "id": "F-72",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "provenance/findings-wave11-audit.md",
+      "evidence": "ledger row F-72 with its resolution"
+    }
+  ],
+  "degraded": [],
+  "claims": [
+    {
+      "claim": "The generator cannot record a failed or empty measurement",
+      "evidence": [
+        "measured-state",
+        "provenance/findings-wave11-audit.md"
+      ]
+    },
+    {
+      "claim": "A self-authored check can no longer pass as a mechanical verifier",
+      "evidence": [
+        "make-gate",
+        "provenance/findings-wave11-audit.md"
+      ]
+    },
+    {
+      "claim": "The round-2 hold and carrier rules keep their legitimate cases",
+      "evidence": [
+        "pytest",
+        "prompt-security"
+      ]
+    },
+    {
+      "claim": "No behavioural efficacy claim is made: S6 is recorded unmet",
+      "evidence": [
+        "S6"
+      ]
+    }
+  ],
+  "notes": "Round 3 was a narrow pass, not a fourth full audit: it audited only what round 2 introduced, because that code had no independent reader. PRIOR ATTEMPT 0 FAILED: the generator recorded a broken pytest run and a mis-indented catalog, provenance did not resolve, a capture could be a no-op, hold rejected the operator wait, and the documentation frame accepted ambiguous verbs.\nCHANGED: fail-closed measurement, YAML parsing, resolvable provenance, digest format plus no-op rejection, typed hold_reason, narrow documentation frame with a reviewed payload marker."
+}

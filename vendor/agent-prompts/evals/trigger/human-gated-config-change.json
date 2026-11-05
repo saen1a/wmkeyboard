@@ -1,0 +1,31 @@
+{
+  "skill": "human-gated-config-change",
+  "positive": [
+    {
+      "prompt": "Change the wording of my system prompt and show me the preview before it goes live.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Update the policy so only the on-call engineer may ask for a production deploy, then show me the diff.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Edit the delivery section of our agent settings, but do not save it until I approve.",
+      "top_k": 3
+    },
+    {
+      "prompt": "I need to change a revision of the stored configuration and preview it against the default first.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Make sure the agent never runs git reset --hard or force push without asking me first.",
+      "owner": "git-guardrails"
+    },
+    {
+      "prompt": "Generate customer-friendly release notes for this version from the commit history.",
+      "owner": "changelog-generator"
+    }
+  ]
+}

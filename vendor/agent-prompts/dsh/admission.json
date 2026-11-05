@@ -1,0 +1,40 @@
+{
+  "schema": "agent-admission/1",
+  "runtime": "dsh",
+  "runtime_version": "unknown (inactive in this cycle)",
+  "checked": "2026-10-31",
+  "required_features": [
+    "tool_allowlist",
+    "subagent_dispatch",
+    "loop_gate"
+  ],
+  "admission": "refused",
+  "capabilities": {
+    "tool_allowlist": {
+      "support": "unknown",
+      "attempted": "dsh templates are parameterized archetypes under dsh/presets and dsh/commands; no deployed runtime was exercised on 2026-10-31"
+    },
+    "subagent_dispatch": {
+      "support": "unknown",
+      "attempted": "no dsh preset in this repository declares a dispatch topology; the deployed stack owns it"
+    },
+    "shell_tool": {
+      "support": "unknown",
+      "attempted": "the deployed stack grants tools, not this library; no wire inventory exists here"
+    },
+    "mcp_resources": {
+      "support": "unknown",
+      "attempted": "not exercised; the dsh stack is inactive in this cycle (operator, 2026-10-27)"
+    },
+    "loop_gate": {
+      "support": "unknown",
+      "attempted": "no dsh runtime was exercised in this cycle (inactive); the presets carry the doctrine text but no tool allowlist and no pre-dispatch check could be probed"
+    }
+  },
+  "refusals": [
+    "tool_allowlist: unknown, no wire payload could be dumped from an inactive runtime",
+    "subagent_dispatch: unknown, dispatch is owned by the deployed stack",
+    "loop_gate: unknown on an inactive runtime (checked 2026-11-03); the projection refuses to claim the plan-review gate is enforced"
+  ],
+  "notes": "A refused record is the honest state: dsh was not deployed in this cycle, so every capability is unknown rather than assumed. Re-verify when the runtime returns in November (PLAN.md deferred items) by dumping the outbound tools array per TS-01 and recording the result here."
+}

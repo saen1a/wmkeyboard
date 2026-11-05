@@ -1,0 +1,117 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "agent model-surface registry",
+  "description": "Every model-visible asset is a registered surface with a token budget and a resolvable rule citation. Shape only; budgets, coverage and citation integrity are enforced by tooling/check_model_surface.py. Mechanism table M8 of docs/knowledge-base/superagent-prototype-2026-11.md.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "version",
+    "surfaces",
+    "rule_families"
+  ],
+  "properties": {
+    "schema": {
+      "const": "agent-model-surface/1"
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+$"
+    },
+    "surfaces": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "glob",
+          "kind",
+          "budget_tokens",
+          "measured_max_tokens",
+          "rationale"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "pattern": "^[a-z][a-z0-9-]{0,63}$"
+          },
+          "glob": {
+            "type": "string",
+            "minLength": 3,
+            "pattern": "^(?!/)(?!.*\\.\\.)[A-Za-z0-9._*?/\\[\\]-]+$"
+          },
+          "kind": {
+            "enum": [
+              "role",
+              "task",
+              "workspace",
+              "fragment",
+              "skill",
+              "command",
+              "adapter",
+              "preset"
+            ]
+          },
+          "budget_tokens": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "measured_max_tokens": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "rationale": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    },
+    "rule_families": {
+      "type": "object",
+      "minProperties": 1,
+      "propertyNames": {
+        "pattern": "^[A-Z]{2}$"
+      },
+      "additionalProperties": {
+        "type": "string",
+        "pattern": "^standards/[A-Za-z0-9._/-]+\\.md$"
+      }
+    },
+    "allow_unresolved": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "citation",
+          "path",
+          "reason",
+          "review_by"
+        ],
+        "properties": {
+          "citation": {
+            "type": "string",
+            "pattern": "^[A-Z]{2}-[0-9]{2}(\\.[0-9]+)?$"
+          },
+          "path": {
+            "type": "string",
+            "minLength": 1,
+            "pattern": "^(?!/)"
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 10
+          },
+          "review_by": {
+            "type": "string",
+            "format": "date",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+          }
+        }
+      }
+    }
+  }
+}

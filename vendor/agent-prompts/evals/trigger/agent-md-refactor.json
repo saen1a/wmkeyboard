@@ -1,0 +1,27 @@
+{
+  "skill": "agent-md-refactor",
+  "positive": [
+    {
+      "prompt": "My AGENTS.md is bloated and monolithic - refactor it using progressive disclosure and split the instructions into linked documentation files.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Split this overgrown CLAUDE.md into a lean root file plus categorized child docs, following progressive disclosure principles.",
+      "top_k": 3
+    },
+    {
+      "prompt": "The project's agent instruction file has turned into one huge document; restructure it so the essentials stay at the root and everything else is linked from there.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Compress my long personal notes and todos into terse caveman shorthand so they use fewer tokens.",
+      "owner": "caveman-compress"
+    },
+    {
+      "prompt": "I want to create a reusable skill for our team and need help structuring the SKILL.md with the right frontmatter and bundled scripts.",
+      "owner": "skill-creator"
+    }
+  ]
+}

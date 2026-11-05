@@ -1,0 +1,9 @@
+{
+  "role": "rev-track-duplication",
+  "prompt": "Find duplicated retry logic in `client.py` and `worker.py`. Do not edit. Name the duplicate owner and the consolidation.",
+  "expectations": [
+    "Identifies the duplicated behavior",
+    "Names the two files or symbols",
+    "Proposes one owner"
+  ]
+}

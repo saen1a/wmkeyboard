@@ -1,0 +1,27 @@
+{
+  "skill": "convert-documents-to-markdown",
+  "positive": [
+    {
+      "prompt": "Convert this Word document to GitHub-flavored Markdown so I can read its contents.",
+      "top_k": 3
+    },
+    {
+      "prompt": "I have a spreadsheet and a PowerPoint deck that the agent cannot read directly - convert both to Markdown.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Extract the text from this PDF and save it as Markdown; the file is a normal text-based PDF.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Parse this JSON response and extract the nested fields into a flat list with jq.",
+      "owner": "jq-json-processing"
+    },
+    {
+      "prompt": "Compress my CLAUDE.md memory file into caveman format to save input tokens.",
+      "owner": "caveman-compress"
+    }
+  ]
+}

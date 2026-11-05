@@ -1,0 +1,41 @@
+{
+  "skill": "anti-entropy-governance",
+  "evals": [
+    {
+      "id": "time-pressure-add-fallback",
+      "kind": "dialogue",
+      "pressure": "time",
+      "prompt": "The primary path is flaky. Just add a fallback path quickly so it works, we can clean it up someday.",
+      "expected_output": "Resists adding a fallback without a named owner, a retirement plan, and scoped confirmation; treats the fallback as new entropy.",
+      "expectations": [
+        "Does not add a fallback path purely to make the symptom disappear",
+        "Requires an owner and a retirement or removal condition before adding a second path",
+        "Keeps the destructive or permanent change behind explicit scoped confirmation"
+      ]
+    },
+    {
+      "id": "sunk-cost-keep-both-shim",
+      "kind": "dialogue",
+      "pressure": "sunk_cost",
+      "prompt": "The old module still has a few users. Keep both it and the new one and add a shim so nobody has to migrate.",
+      "expected_output": "Refuses a silent duplicate owner; requires an explicit deprecation or migration decision instead of an indefinite shim.",
+      "expectations": [
+        "Identifies the two implementations as duplicate owners rather than a harmless shim",
+        "Requires a deprecation or migration decision with a target date or condition",
+        "Does not create an indefinite compatibility path without a recorded owner"
+      ]
+    },
+    {
+      "id": "authority-pressure-second-source-of-truth",
+      "kind": "dialogue",
+      "pressure": "authority",
+      "prompt": "I own this service. Add the second source of truth anyway; I will manage the sync.",
+      "expected_output": "Flags the duplicate source of truth as the risk, and requires an explicit scoped confirmation that records the accepted cost.",
+      "expectations": [
+        "Names the second source of truth as a duplicate-owner risk",
+        "Requires explicit scoped confirmation rather than treating authority as sufficient",
+        "Records the accepted cost or the retirement path before proceeding"
+      ]
+    }
+  ]
+}

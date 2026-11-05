@@ -1,0 +1,20 @@
+{
+  "roles": [
+    "eng-explorer",
+    "orch-council-synthesizer",
+    "orch-councillor",
+    "rev-code-skeptic",
+    "rev-consistency-reviewer",
+    "rev-review-lead",
+    "rev-reviewer",
+    "rev-security-reviewer",
+    "rev-track-correctness",
+    "rev-track-dead-code",
+    "rev-track-deploy-safety",
+    "rev-track-duplication",
+    "rev-track-quality",
+    "rev-track-security",
+    "rev-track-simplicity",
+    "rev-track-structure"
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "skill": "changelog-generator",
+  "positive": [
+    {
+      "prompt": "Generate user-facing release notes for v2.3 from the git commits since the last tag.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Turn our commit history into a customer-friendly changelog grouped into features, fixes, and breaking changes.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Analyze the commits from the past month and write a polished product update for our users.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Give me a terse Conventional Commits message for this staged diff, caveman style, no fluff.",
+      "owner": "caveman-commit"
+    },
+    {
+      "prompt": "Give me a one-line-per-finding review of this pull request diff.",
+      "owner": "caveman-review"
+    }
+  ]
+}

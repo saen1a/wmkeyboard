@@ -1,0 +1,27 @@
+{
+  "skill": "caveman",
+  "positive": [
+    {
+      "prompt": "Talk like caveman from now on and keep answers terse to save output tokens.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Use caveman mode for the rest of this session so replies are ultra compressed but stay technically exact.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Be brief and drop the filler; switch to the caveman intensity level to cut token usage.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Write me a conventional commit message for this staged diff in 50 characters or less.",
+      "owner": "caveman-commit"
+    },
+    {
+      "prompt": "Give me a one-line-per-finding code review of this pull request diff.",
+      "owner": "caveman-review"
+    }
+  ]
+}

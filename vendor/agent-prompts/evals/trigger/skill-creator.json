@@ -1,0 +1,27 @@
+{
+  "skill": "skill-creator",
+  "positive": [
+    {
+      "prompt": "Help me create a new skill that packages a workflow and bundled scripts for my team.",
+      "top_k": 3
+    },
+    {
+      "prompt": "I want to author a skill with a SKILL.md, frontmatter, and reference files - guide me through the structure.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Update an existing skill to add progressive disclosure and better frontmatter.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Refactor my bloated developer instruction file into a lean root with linked child sections following progressive disclosure.",
+      "owner": "agent-md-refactor"
+    },
+    {
+      "prompt": "Build an MCP server in Python that wraps our JSON REST API for external clients.",
+      "owner": "mcp-builder"
+    }
+  ]
+}

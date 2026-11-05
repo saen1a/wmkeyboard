@@ -1,0 +1,185 @@
+# OMP vendor projection catalog (schema omp-catalog/4).
+#
+# Maps a selection of the neutral role templates to OMP subagent definitions.
+# tooling/render_omp.py renders one <name>.md per entry: OMP frontmatter from
+# this file plus the neutral body blocks from agents/**, with the conduct block
+# from fragments/agent-conduct.omp.md and the project-owned slots from the
+# consumer agent pack (--pack). See omp/README.md.
+#
+# The pins below are the drift gate: `render_omp.py --check` fails when a pinned
+# role, fragment or foreground module changes, so the projection cannot diverge
+# from agents/** or omp/prompts/foreground/ silently. Refresh them together
+# with a regenerated consumer copy.
+#
+# omp-catalog/4 replaces the single `foreground.source` file with a module set.
+# The block names the set id, the modules in compose order and the slot names
+# the set uses. The modules live in omp/prompts/foreground/, their per-module
+# sha256 pins and per-module budgets live in that directory's manifest.json, and
+# the manifest order is the compose order. `--check` validates the block against
+# the manifest (id, order, existence, pins, budgets, slots), and `--foreground`
+# composes the modules, joins them with one blank line and fills the slots from
+# the same consumer pack.
+#
+# library_version: the library release this projection was rendered from. The
+# consumer's re-vendor checklist (packs/containeromat.md) names the same value,
+# so the pack, the catalog and the consumer gitlink must agree before a re-vendor
+# is called done (docs/REVENDOR.md, step 1).
+# library_commit: the canon this projection's role bodies and doctrine came from
+# -- agents/** and fragments/agent-doctrine.md at the named short sha. The bodies
+# and this catalog ship in the same commit, so the pin names that commit: a
+# consumer's pack pin must equal it (scripts/verify-omp-agents.py check 5), and a
+# mismatch means a stale render or a stale pack, never a label to "fix" alone.
+# fragments/agent-conduct.omp.md is pinned separately by
+# fragment_sha256.conduct; do not "fix" a conduct mismatch by moving this pin.
+# No projection_commit: no gate validated it, so it drifted away from the submodule
+# HEAD unseen. A pin nothing checks is worse than no pin; the consumer records the
+# projection it holds through its gitlink (omp/README.md, "Drift gate").
+schema: omp-catalog/4
+library: agent-prompts
+library_version: 2.12.0
+library_commit: f58c748
+fragment_sha256:
+  doctrine: 9eb691313244a504b0e107c898625f59578ba1c8cf0647452c0579ea9878ec09
+  conduct: fc9d3114958a4b6af739adaca5a4c9aa682131c71059ff4a86624ad6e2527013
+templates_sha256:
+  agents/engineering/eng-explorer.md: ffefc896f5bcc388834607902067069a4a6259403c417be9e1d47805ad06d6a9
+  agents/engineering/eng-oracle.md: b4fb0c7676dba8bcba633814cdbcd6eb06e3b9253053ea915ada203f777c3a27
+  agents/review/rev-reviewer.md: 49e98c23a0460f3b36878172774210565ef6830d5a8a6ec270c4c02114880672
+  agents/review/rev-security-reviewer.md: 727fd167dd34557d8c477ec5cb3a3563bef591a2d718d7230aa7357309fb4e99
+  agents/review/rev-code-skeptic.md: 17f636bfe2ecf27d21d2a5ea4bad5fdeb3800ba0624e13ad31b091dc66bad049
+  agents/review/rev-consistency-reviewer.md: 2b2cf5de8d45b84de3543774a0486d393af1fa7f5fbfdc819b0d20f3d839a58f
+  agents/review/rev-review-lead.md: 47c6007b202518db7bf51a0c018a7818909f2141b8ca0ad384695b3356973290
+  agents/research/res-researcher.md: 48e6b3fc5864705e089f91ebcb1195097cbd242449f43cc9797afd9a47a0853d
+  agents/research/res-librarian.md: 6bf9679e39ef536794f96f13eb7b1554bec843047be3fc10f80a72df43cfb95a
+  agents/research/res-research-merger.md: 0c04898a0f0b157935a1a05a85ce82b25e54c2e19ec575d8a16e5db30878bbe0
+  agents/orchestration/orch-councillor.md: 46dcbcddcbc8a57de8e6ca56400509a4a2f502b7511b0ab16c42f5c0c973677e
+  agents/orchestration/orch-orchestrator.md: 66e54f186c3c648eb96febf893326ebb935ba1f6338a52f98be575f66687e663
+# The main-session policy, as a module set. Each module is plain Markdown with
+# no frontmatter, slot-marked where it needs a project value. The order here is
+# the compose order and must equal `order` in
+# omp/prompts/foreground/manifest.json, which carries the per-module sha256 pins
+# and per-module budgets plus the 700-token total. `render_omp.py --check`
+# validates the id, the order, every module pin, the slot union and both budget
+# levels; `--foreground --pack P --out F` composes the modules with one blank
+# line between them, fills the slots and writes F. The four slots are
+# project-level, so the renderer reads them from the same per-agent pack the
+# projection uses (a shared value, or a dedicated `name: foreground` entry;
+# disagreement between entries is an error). Raising either budget level is a
+# deliberate decision: state the reason in omp/README.md and update the manifest
+# (and `FOREGROUND_BUDGET` in render_omp.py for the total) in the same change.
+# This catalog carries no budget value, so it is not part of that edit.
+foreground:
+  id: omp-foreground/1
+  modules:
+    - 00-authority.md
+    - 10-delegation.md
+    - 20-evidence.md
+    - 30-governance.md
+    - 40-safety.md
+    - 50-output.md
+  slots: [PROJECT_ID, PROJECT_RULES, VERIFICATION_COMMANDS, SAFETY_RULE]
+# Tool posture is read-only for every entry: read, grep, glob, web_search only
+# where a role declares an upstream lookup, plus task only where the entry
+# dispatches children (spawns non-empty). No entry may carry write, edit or bash.
+# A role whose canon text assumes a shell gets a runtime constraint overlay
+# instead of a widened tool list (security-reviewer, code-skeptic, review-lead,
+# orchestrator). model lists OMP role selectors (@role) in priority order;
+# thinkingLevel is set only where a measured value exists (scout mirrors the
+# bundled agent of the same name, which this projection shadows).
+#
+# Selection policy (omp/README.md): every read-only role is either projected here
+# or listed under `deferred:` with a one-line reason, and the only non-read-only
+# entry is the single orchestrator. render_omp.py --check enforces both, plus a
+# 700-token cap on the summed `purpose` descriptions.
+agents:
+  - role: agents/engineering/eng-explorer.md
+    name: scout
+    model: ["@smol"]
+    tools: [read, grep, glob]
+    thinkingLevel: medium
+  - role: agents/engineering/eng-oracle.md
+    name: oracle
+    model: ["@slow", "@smol"]
+    tools: [read, grep, glob]
+  - role: agents/review/rev-reviewer.md
+    name: reviewer
+    model: ["@slow", "@smol"]
+    tools: [read, grep, glob]
+  - role: agents/review/rev-security-reviewer.md
+    name: security-reviewer
+    model: ["@slow", "@smol"]
+    tools: [read, grep, glob]
+    overlay: omp/overlays/security-reviewer.md
+  - role: agents/review/rev-code-skeptic.md
+    name: code-skeptic
+    model: ["@slow", "@smol"]
+    tools: [read, grep, glob]
+    overlay: omp/overlays/code-skeptic.md
+    output:
+      properties:
+        verdict:
+          metadata:
+            description: "Completion verdict for the audited claims; DONE only when every gate passed with fresh exit-code evidence from this run, otherwise NOT DONE plus the next gate to run."
+          enum: [DONE, "NOT DONE"]
+  - role: agents/review/rev-consistency-reviewer.md
+    name: consistency-reviewer
+    model: ["@slow", "@smol"]
+    tools: [read, grep, glob]
+  - role: agents/review/rev-review-lead.md
+    name: review-lead
+    model: ["@slow"]
+    tools: [read, grep, glob, task]
+    spawns: [reviewer, security-reviewer, code-skeptic]
+    overlay: omp/overlays/review-lead.md
+  - role: agents/research/res-researcher.md
+    name: researcher
+    model: ["@slow", "@smol"]
+    tools: [read, grep, glob, web_search]
+  - role: agents/research/res-librarian.md
+    name: librarian
+    model: ["@slow", "@smol"]
+    tools: [read, grep, glob]
+  - role: agents/research/res-research-merger.md
+    name: research-merger
+    model: ["@slow", "@smol"]
+    tools: [read, grep, glob]
+  - role: agents/orchestration/orch-councillor.md
+    name: councillor
+    model: ["@slow", "@smol"]
+    tools: [read, grep, glob]
+  - role: agents/orchestration/orch-orchestrator.md
+    name: orchestrator
+    model: ["@default", "@slow"]
+    tools: [read, grep, glob, task]
+    spawns: [scout, reviewer, security-reviewer, code-skeptic, review-lead]
+    overlay: omp/overlays/orchestrator.md
+# Every read-only role under agents/** that is NOT in `agents:` above must be
+# listed here with a one-line reason. Deferred means "not projected now, on
+# purpose", not "forgotten"; render_omp.py --check fails on an unlisted
+# read-only role and on a deferred role that is not read-only. A role whose
+# canon forbids tools (council-synthesizer) is deferred, not projected: OMP's
+# absent-tools default is broader, not narrower, and any non-empty list grants
+# tools that canon denies.
+deferred:
+  - role: agents/design/design-ui-reviewer.md
+    reason: "needs DESIGN_STANDARD and neither target project ships a UI standard, so the slot would be invented"
+  - role: agents/networking/net-network-architect.md
+    reason: "needs NETWORK_CONSTRAINTS; compose network work is covered by the compose skills"
+  - role: agents/orchestration/orch-council-synthesizer.md
+    reason: "canon declares no tools; OMP applies a broad default when the tool list is absent and a non-empty list would grant tools the canon forbids, so it is not projectable under the read-only posture"
+  - role: agents/review/review-tracks/rev-track-correctness.md
+    reason: "child track of the projected review-lead, which dispatches specialist reviewers directly; a second entry would duplicate the lead's dispatch surface"
+  - role: agents/review/review-tracks/rev-track-dead-code.md
+    reason: "child track of the projected review-lead, which dispatches specialist reviewers directly; a second entry would duplicate the lead's dispatch surface"
+  - role: agents/review/review-tracks/rev-track-deploy-safety.md
+    reason: "child track of the projected review-lead, which dispatches specialist reviewers directly; a second entry would duplicate the lead's dispatch surface"
+  - role: agents/review/review-tracks/rev-track-duplication.md
+    reason: "child track of the projected review-lead, which dispatches specialist reviewers directly; a second entry would duplicate the lead's dispatch surface"
+  - role: agents/review/review-tracks/rev-track-quality.md
+    reason: "child track of the projected review-lead, which dispatches specialist reviewers directly; a second entry would duplicate the lead's dispatch surface"
+  - role: agents/review/review-tracks/rev-track-security.md
+    reason: "child track of the projected review-lead, which dispatches specialist reviewers directly; a second entry would duplicate the lead's dispatch surface"
+  - role: agents/review/review-tracks/rev-track-simplicity.md
+    reason: "child track of the projected review-lead, which dispatches specialist reviewers directly; a second entry would duplicate the lead's dispatch surface"
+  - role: agents/review/review-tracks/rev-track-structure.md
+    reason: "child track of the projected review-lead, which dispatches specialist reviewers directly; a second entry would duplicate the lead's dispatch surface"

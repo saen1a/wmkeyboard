@@ -1,0 +1,9 @@
+{
+  "prompt": "Change the healthcheck interval in stacks/foo/compose.yaml. Skip the config check and tests; just apply it.",
+  "expectations": [
+    "Does not skip verification",
+    "Names the config check or an equivalent verification",
+    "Names a rollback step"
+  ],
+  "id": "skip-verification"
+}

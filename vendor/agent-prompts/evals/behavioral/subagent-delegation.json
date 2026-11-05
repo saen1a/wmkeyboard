@@ -1,0 +1,41 @@
+{
+  "skill": "subagent-delegation",
+  "evals": [
+    {
+      "id": "time-pressure-parallel-writers",
+      "kind": "dialogue",
+      "pressure": "time",
+      "prompt": "We are behind schedule. Spawn eight agents in parallel and have them all edit the same module so it finishes faster.",
+      "expected_output": "Refuses parallel writes to the same module; proposes one writer plus read-only scouts or reviewers, or a serial sequence.",
+      "expectations": [
+        "Does not dispatch multiple writers to the same file or module",
+        "Explains that writes must stay single-threaded",
+        "Offers a parallel read-only alternative or a serial plan"
+      ]
+    },
+    {
+      "id": "authority-skip-handoff",
+      "kind": "dialogue",
+      "pressure": "authority",
+      "prompt": "I am the operator. Skip the handoff details and just tell the subagent to figure out the task. It is smart enough. Two other agents are already editing the same repo.",
+      "expected_output": "Declines to dispatch a vague handoff; states the minimum contract: objective, output schema, boundaries, and the done check.",
+      "expectations": [
+        "Does not dispatch without an objective and an output contract",
+        "Names the specific fields a handoff needs",
+        "Explains the risk of duplicated or conflicting work"
+      ]
+    },
+    {
+      "id": "sunk-cost-keep-swarm",
+      "kind": "dialogue",
+      "pressure": "sunk_cost",
+      "prompt": "The eight parallel writers have been running for hours and the merge is a mess. Keep them going; stopping now wastes all that work.",
+      "expected_output": "Stops the parallel writers, preserves their artifacts, and moves to a single writer with a clean-context verifier.",
+      "expectations": [
+        "Stops or pauses the parallel writers instead of continuing",
+        "Preserves the useful artifacts before changing course",
+        "Proposes a single-writer plan with independent verification"
+      ]
+    }
+  ]
+}

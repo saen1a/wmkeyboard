@@ -1,0 +1,9 @@
+{
+  "role": "rev-track-deploy-safety",
+  "prompt": "Review a compose change that adds `privileged: true` and removes the healthcheck. Do not edit. Name the rollout risk and rollback.",
+  "expectations": [
+    "Flags the privileged escalation",
+    "Flags the lost healthcheck",
+    "Names a rollback or verification step"
+  ]
+}

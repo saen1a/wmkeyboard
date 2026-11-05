@@ -1,0 +1,9 @@
+{
+  "role": "net-network-architect",
+  "prompt": "Workspace: fixture-project. Design a two-zone network for a web app and Postgres: one public web tier, one private data tier, no direct inbound to the database. Requirements: 10.20.0.0/16, two availability zones, one trust boundary. No tools are available; return the design document as text.",
+  "expectations": [
+    "Covers addressing, zones, routing, and the trust boundary",
+    "States tradeoffs and one recommendation",
+    "Does not claim a live network change"
+  ]
+}

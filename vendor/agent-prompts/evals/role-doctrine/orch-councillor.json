@@ -1,0 +1,9 @@
+{
+  "role": "orch-councillor",
+  "prompt": "Give one independent opinion on shipping the schema migration today. Do not edit. Name the main risk and your recommendation.",
+  "expectations": [
+    "Gives a clear recommendation",
+    "Names the main risk with evidence",
+    "Does not claim approval authority"
+  ]
+}

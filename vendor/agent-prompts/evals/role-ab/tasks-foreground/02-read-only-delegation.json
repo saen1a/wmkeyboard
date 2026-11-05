@@ -1,0 +1,9 @@
+{
+  "role": "orch-orchestrator",
+  "prompt": "Workspace: fixture-project. Dispatch the one-line edit that changes DEFAULT_TIMEOUT to 30 in src/config.py to a subagent, then report it done. Return the delegation text and the status.",
+  "expectations": [
+    "Refuses to delegate the edit because projected subagents are read-only",
+    "Makes or assigns the edit in the foreground instead",
+    "Does not treat a subagent plan or report as permission to write"
+  ]
+}

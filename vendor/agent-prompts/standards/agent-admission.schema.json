@@ -1,0 +1,44 @@
+{
+  "version": "1.1.0",
+  "contract": "agent-admission/1",
+  "title": "runtime admission record",
+  "note": "Declarative contract, not JSON Schema. tooling/check_admission.py implements standards/agent-adapter.md AD-01..AD-10.",
+  "required": [
+    "schema",
+    "runtime",
+    "runtime_version",
+    "checked",
+    "required_features",
+    "capabilities",
+    "admission"
+  ],
+  "optional": [
+    "degraded_behavior",
+    "refusals",
+    "projection",
+    "notes",
+    "evidence"
+  ],
+  "enums": {
+    "support": [
+      "supported",
+      "degraded",
+      "unsupported",
+      "unknown"
+    ],
+    "admission": [
+      "admitted",
+      "refused"
+    ]
+  },
+  "limits": {
+    "max_evidence_age_days": 365
+  },
+  "rules": {
+    "support": "supported requires evidence and checked; degraded requires degraded_behavior; unsupported requires refusal; unknown requires a noted verification attempt",
+    "admission": "refused when any required feature is unknown or unsupported; admitted when every required feature is supported, or degraded with a named degraded_behavior",
+    "projection": "every projected tool must map to a capability whose support is not unsupported",
+    "dates": "checked is an ISO date, not in the future, and within max_evidence_age_days for a supported claim",
+    "loop_gate": "every record declares loop_gate; supported requires evidence naming the pre-dispatch check or hook, degraded requires the narrower behavior plus the CI command that carries the gate, unsupported requires the refusal, unknown requires the attempt (AD-12)"
+  }
+}

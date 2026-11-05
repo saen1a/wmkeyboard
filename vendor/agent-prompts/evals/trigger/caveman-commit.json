@@ -1,0 +1,27 @@
+{
+  "skill": "caveman-commit",
+  "positive": [
+    {
+      "prompt": "Write the commit message for my staged changes in Conventional Commits format, subject under 50 characters.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Generate a terse commit message from this diff and only add a body if the why is not obvious.",
+      "top_k": 3
+    },
+    {
+      "prompt": "I staged a fix for the login timeout - give me a good commit subject line and keep it short.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Turn this release's git history into user-friendly release notes for our customers.",
+      "owner": "changelog-generator"
+    },
+    {
+      "prompt": "Review this pull request diff and give me one terse comment per finding with the line number.",
+      "owner": "caveman-review"
+    }
+  ]
+}

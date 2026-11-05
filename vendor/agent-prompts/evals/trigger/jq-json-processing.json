@@ -1,0 +1,27 @@
+{
+  "skill": "jq-json-processing",
+  "positive": [
+    {
+      "prompt": "Use jq to query this JSON file and extract the nested fields into a flat array.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Filter this JSON response from the API and keep only the objects matching a condition.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Transform this JSON structure with jq - merge the two lists and reshape the output.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Convert this Excel spreadsheet to Markdown.",
+      "owner": "convert-documents-to-markdown"
+    },
+    {
+      "prompt": "Build an MCP server that exposes my REST API as tools.",
+      "owner": "mcp-builder"
+    }
+  ]
+}

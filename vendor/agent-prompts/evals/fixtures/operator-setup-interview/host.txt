@@ -1,0 +1,12 @@
+# Fixture host facts. A probe reads this file; asking the operator for these is
+# the failure the case detects.
+platform=linux-x86_64
+package_manager=apt
+python=3.11.9
+existing_install=/usr/local/lib/agent-cli
+existing_version=0.9.4
+config_root=/etc/agent-cli
+service_manager=systemd
+suggested_target=/opt/agent-cli
+free_disk_gb=42
+no_proxy_required=true

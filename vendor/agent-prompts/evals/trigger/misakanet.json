@@ -1,0 +1,27 @@
+{
+  "skill": "misakanet",
+  "positive": [
+    {
+      "prompt": "I hit a ModuleNotFoundError and want to search MisakaNet for a failure-recovery lesson before I fix it.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Record this CI failure lesson in MisakaNet and verify whether a similar debugging note already exists.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Have we seen this segfault before? Search the MisakaNet network for a matching recovery report.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Quote the file and line for that claim instead of asserting it from memory.",
+      "owner": "anti-hallucination"
+    },
+    {
+      "prompt": "Write tests and verify the exact command output before claiming the fix is complete.",
+      "owner": "verification-before-completion"
+    }
+  ]
+}

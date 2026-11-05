@@ -1,0 +1,27 @@
+{
+  "skill": "anti-entropy-governance",
+  "positive": [
+    {
+      "prompt": "We are retiring the old authentication path and want to delete the legacy code plus its duplicate owner without leaving dangling references behind.",
+      "top_k": 3
+    },
+    {
+      "prompt": "There are two competing implementations of the same module; collapse the duplicate owner, remove the fallback, and confirm nothing still depends on the retired path.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Before we remove this deprecated subsystem and its compatibility shim, walk the source-of-truth boundary and tell me the safe retirement path.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Run a quick first-principles review of this architecture decision because it feels more complicated than it needs to be.",
+      "owner": "first-principles-review"
+    },
+    {
+      "prompt": "Refactor my bloated AGENTS.md into linked files using progressive disclosure.",
+      "owner": "agent-md-refactor"
+    }
+  ]
+}

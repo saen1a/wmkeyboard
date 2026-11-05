@@ -1,0 +1,27 @@
+{
+  "skill": "caveman-help",
+  "positive": [
+    {
+      "prompt": "What caveman commands and modes are available? Show me the quick reference card.",
+      "top_k": 3
+    },
+    {
+      "prompt": "How do I use caveman - list the intensity levels and the switch commands.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Give me the caveman help card with all modes and related skills.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Compress my memory file into caveman format to save tokens.",
+      "owner": "caveman-compress"
+    },
+    {
+      "prompt": "Talk like caveman for every reply and compress the output to cut tokens.",
+      "owner": "caveman"
+    }
+  ]
+}

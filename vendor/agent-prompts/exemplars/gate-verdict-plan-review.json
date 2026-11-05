@@ -1,0 +1,96 @@
+{
+  "schema": "agent-gate-verdict/1",
+  "verdict_id": "V-1",
+  "unit": "U1",
+  "gate": "plan-review",
+  "verdict": "pass",
+  "mode": "block",
+  "attempt": 1,
+  "implementer": "orchestration-orchestrator",
+  "verifier": "review-consistency-reviewer",
+  "verifier_kind": "agent",
+  "fresh_context": true,
+  "artifacts": [
+    {
+      "path": "docs/handbook/specs/recovery-rename.md",
+      "sha256": "3c1f0a9d8e7b6c5d4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e9d8c7b6a5f4e3d2c1b",
+      "bytes": 3120,
+      "non_whitespace_chars": 2544,
+      "shape": "ok"
+    }
+  ],
+  "checks": [],
+  "criteria": [
+    {
+      "id": "goal",
+      "severity": "MUST",
+      "criterion": "One decidable goal statement with no open question, plus the scope boundaries",
+      "state": "met",
+      "evidence": "docs/handbook/specs/recovery-rename.md"
+    },
+    {
+      "id": "request-coverage",
+      "severity": "MUST",
+      "criterion": "Every request item maps to one unit, and every unit traces back to a request item",
+      "state": "met",
+      "evidence": "docs/handbook/specs/recovery-rename.md"
+    },
+    {
+      "id": "acceptance",
+      "severity": "MUST",
+      "criterion": "Each unit carries at least one checkable MUST or SHOULD criterion taken from the request",
+      "state": "met",
+      "evidence": "docs/handbook/specs/recovery-rename.md"
+    },
+    {
+      "id": "verification",
+      "severity": "MUST",
+      "criterion": "Every MUST criterion names a check that exists today and was not authored in this attempt",
+      "state": "met",
+      "evidence": "docs/handbook/specs/recovery-rename.md"
+    },
+    {
+      "id": "ownership-order",
+      "severity": "MUST",
+      "criterion": "One writer per shared surface, units ordered by dependency, operator-gated steps named",
+      "state": "met",
+      "evidence": "docs/handbook/specs/recovery-rename.md"
+    },
+    {
+      "id": "risk-halt",
+      "severity": "MUST",
+      "criterion": "Unsafe, blocked or unresolvable items named with the HALT path and the operator question",
+      "state": "met",
+      "evidence": "docs/handbook/specs/recovery-rename.md"
+    }
+  ],
+  "coverage": {
+    "measured": 100,
+    "floor": 95,
+    "basis": "all 6 spec sections and the request's 3 acceptance items were read; no section was skipped"
+  },
+  "findings": [
+    {
+      "id": "F-3",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "docs/handbook/specs/recovery-rename.md:22",
+      "evidence": "round 0 named the missing alias acceptance item; the round-1 spec adds it, so it is not open"
+    }
+  ],
+  "degraded": [],
+  "claims": [
+    {
+      "claim": "The spec is decidable and every request item has a unit",
+      "evidence": [
+        "goal",
+        "request-coverage"
+      ]
+    },
+    {
+      "claim": "The spec is reviewed before any code exists",
+      "evidence": "docs/handbook/specs/recovery-rename.md"
+    }
+  ],
+  "notes": "PRIOR ROUND 0 FAILED: acceptance - the alias requirement had no criterion.\nCHANGED: the spec adds A3 with the alias check and renames unit U2."
+}

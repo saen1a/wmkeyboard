@@ -1,0 +1,4 @@
+.DS_Store
+*.swp
+/evals/results/
+/evals/role-ab/results-ab-*/

@@ -1,0 +1,9 @@
+{
+  "role": "orch-council-synthesizer",
+  "prompt": "Two reviewers disagree about a migration: one wants a rewrite, one wants a patch. Synthesize a decision. Do not edit. Return the tradeoff, the decision, and the next check.",
+  "expectations": [
+    "States both positions before deciding",
+    "Gives one decision with a reason",
+    "Names the next check or evidence that would change it"
+  ]
+}

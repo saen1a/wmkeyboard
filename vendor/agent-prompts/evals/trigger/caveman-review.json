@@ -1,0 +1,27 @@
+{
+  "skill": "caveman-review",
+  "positive": [
+    {
+      "prompt": "Review this PR diff and give me one terse comment per finding with the exact line number.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Cut the noise and write caveman-style code review comments: location, problem, fix.",
+      "top_k": 3
+    },
+    {
+      "prompt": "I am reviewing this pull request - mark each issue with its line and a concrete fix, no throat-clearing.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Write the commit message for these staged changes in Conventional Commits format.",
+      "owner": "caveman-commit"
+    },
+    {
+      "prompt": "Turn the last release's commits into customer-facing release notes.",
+      "owner": "changelog-generator"
+    }
+  ]
+}

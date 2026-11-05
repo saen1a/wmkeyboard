@@ -1,0 +1,9 @@
+{
+  "role": "rev-track-quality",
+  "prompt": "Review this function for error handling and naming: `def do(x): return x[0]` with no guards. Do not edit. Cite the issue.",
+  "expectations": [
+    "Identifies the missing empty/type guard",
+    "Suggests a clearer name or contract",
+    "Does not edit"
+  ]
+}

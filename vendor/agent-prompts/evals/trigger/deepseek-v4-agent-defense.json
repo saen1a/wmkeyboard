@@ -1,0 +1,27 @@
+{
+  "skill": "deepseek-v4-agent-defense",
+  "positive": [
+    {
+      "prompt": "DeepSeek-V4 keeps missing a file in the middle of my long context and returns wrong tool calls - apply the agent defense workflow.",
+      "top_k": 3
+    },
+    {
+      "prompt": "I am running DeepSeek-V4 as my coding agent on a very long prompt and it seems to lose track of earlier constraints.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Tool calls fail silently with DeepSeek-V4; help me mitigate the sparse-attention failure modes.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "My request is ambiguous - ask me clarifying questions before implementing.",
+      "owner": "ask-questions-if-underspecified"
+    },
+    {
+      "prompt": "Run a first-principles review of this design decision and challenge its assumptions.",
+      "owner": "first-principles-review"
+    }
+  ]
+}

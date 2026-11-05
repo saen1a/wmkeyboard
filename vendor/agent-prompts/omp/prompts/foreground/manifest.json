@@ -1,0 +1,39 @@
+{
+  "schema": "omp-foreground-set/1",
+  "id": "omp-foreground/1",
+  "order": [
+    "00-authority.md",
+    "10-delegation.md",
+    "20-evidence.md",
+    "30-governance.md",
+    "40-safety.md",
+    "50-output.md"
+  ],
+  "budget_tokens": 726,
+  "modules": {
+    "00-authority.md": {
+      "sha256": "3b0bfea4a589350d4887336b2cc6247fc373e61ed218f31ee5a1582fdb89c42b",
+      "budget_tokens": 90
+    },
+    "10-delegation.md": {
+      "sha256": "a105abc5b77c2f697264072d3649bf7e873b01c88b175393b2b68f85f67a5bcd",
+      "budget_tokens": 170
+    },
+    "20-evidence.md": {
+      "sha256": "ba962cdb7f19ec7f4cb9c93304ccd411bf7c3cfbb6f64d9bfe8de0bdbbdf4dd8",
+      "budget_tokens": 110
+    },
+    "30-governance.md": {
+      "sha256": "d162520e589568b30f644fab2980e6ee35ca2aba806b98bc3034467534a00bb4",
+      "budget_tokens": 235
+    },
+    "40-safety.md": {
+      "sha256": "2c37f151556368ba02aa0b9c12091f117ae1223a60fa8e3ddd7e94f79a4cd3e6",
+      "budget_tokens": 100
+    },
+    "50-output.md": {
+      "sha256": "66f4ec15f72770e26d49a520d066b34cd725a08026a950817347f22a210fd117",
+      "budget_tokens": 80
+    }
+  }
+}

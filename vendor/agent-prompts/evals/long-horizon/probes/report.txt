@@ -1,0 +1,8 @@
+probe 1: stale view (one evidence cell edited, view still valid)
+  run_state.py check         exit 0 (expected 0: the edited view is internally valid)
+  check_run_journal --state  exit 1 (expected 1: stale view reported)
+  detail: stale view: evals/long-horizon/probes/tampered-state.md hashes to 767d4311ead88c05c5142b7f30fc4df83a6a0a347ed9c3be6d026efe5b36b368, but the last checkpoint (seq 13) recorded caee12f982ab622140c8edf9029fae48956031e9f8873ddd85b9352a6647d601; rewrite the view from the journal
+probe 2: an action_started with no receipt before a checkpoint
+  check_run_journal.py       exit 0, 1 WARN (expected 0 and 1)
+  detail: WARN action_id a-02 started at seq 3 has no receipt; resolve the side effect before replaying
+VERDICT OK

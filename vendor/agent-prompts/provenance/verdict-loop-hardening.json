@@ -1,0 +1,238 @@
+{
+  "schema": "agent-gate-verdict/1",
+  "verdict_id": "V-loop-hardening",
+  "unit": "loop-hardening",
+  "gate": "verify",
+  "verdict": "pass",
+  "mode": "block",
+  "attempt": 1,
+  "implementer": "library-maintainer",
+  "verifier": "library-gate-battery",
+  "verifier_kind": "mechanical",
+  "fresh_context": true,
+  "artifacts": [
+    {
+      "path": "provenance/plan-loop-hardening-2026-11.md",
+      "sha256": "873e24f942757d0e8be4d7743fbe397216365e1b86bedb2b47b375103b60e4ac",
+      "bytes": 5889,
+      "non_whitespace_chars": 4948,
+      "shape": "ok"
+    },
+    {
+      "path": "docs/PLAN-SPEC.md",
+      "sha256": "38c2b2b5bd1d55590a5d97c5192f33fcf6e8957033cef46b153e64bdff12bcdf",
+      "bytes": 3282,
+      "non_whitespace_chars": 2733,
+      "shape": "ok"
+    },
+    {
+      "path": "provenance/findings-loop-hardening.md",
+      "sha256": "fac561aed2c423f47e1069d2bb2734236d8cbb4f0090d75cde7b72867c399f91",
+      "bytes": 4781,
+      "non_whitespace_chars": 3945,
+      "shape": "ok"
+    }
+  ],
+  "checks": [
+    {
+      "name": "pytest-new-gates",
+      "command": "/usr/bin/python3 -m pytest tooling/tests/test_check_plan_spec.py tooling/tests/test_check_loop_gate.py tooling/tests/test_check_workflow_loop.py tooling/tests/test_check_admission.py -q",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:f4bb534c60cbe528d13e1857276a8fc312dd61cb7ec234b514a79dbbe5cf31dc",
+      "captured_at": "2026-11-03T00:00:00Z"
+    },
+    {
+      "name": "check-plan-spec",
+      "command": "/usr/bin/python3 tooling/check_plan_spec.py provenance/plan-loop-hardening-2026-11.md exemplars/plan-spec-example.md",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:43ec9580feff5fe2a5c9c593b0f3338391b4d8ce1d7abe360df68013b8496d0b",
+      "captured_at": "2026-11-03T00:00:00Z"
+    },
+    {
+      "name": "check-loop-gate",
+      "command": "/usr/bin/python3 tooling/check_loop_gate.py --ledger provenance/ledger-*.md --verdict provenance/verdict-*.json --grandfather plan-review-gate",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:19c3b1bc4f0f903d0200ef50d3cd3df4ba75787230fccc5c2d2419abb44897de",
+      "captured_at": "2026-11-03T00:00:00Z"
+    },
+    {
+      "name": "check-workflow-loop",
+      "command": "/usr/bin/python3 tooling/check_workflow_loop.py",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:07a3ed818983158d3b231af5b3ff576170edef195b6c7f505a16f631db9bd992",
+      "captured_at": "2026-11-03T00:00:00Z"
+    },
+    {
+      "name": "check-admission",
+      "command": "/usr/bin/python3 tooling/check_admission.py omp/admission.json",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:4b5428a664e453903af144eaabc4e1070ce378a7b11b4bc48d8cabc148b449c6",
+      "captured_at": "2026-11-03T00:00:00Z"
+    }
+  ],
+  "criteria": [
+    {
+      "id": "U1",
+      "severity": "MUST",
+      "criterion": "check_plan_spec reports the six checks, refuses a missing or escaping check, and exits nonzero on failure",
+      "state": "met",
+      "evidence": "pytest-new-gates"
+    },
+    {
+      "id": "U2",
+      "severity": "MUST",
+      "criterion": "check_loop_gate refuses Implement without a clean plan-review, non-contiguous rounds, Push without verify, a stale spec, and an unparseable date; grandfathering is explicit",
+      "state": "met",
+      "evidence": "pytest-new-gates"
+    },
+    {
+      "id": "U3",
+      "severity": "MUST",
+      "criterion": "every task command carries exactly one Doctrine line and the composed OMP policy states the gate once",
+      "state": "met",
+      "evidence": "check-workflow-loop"
+    },
+    {
+      "id": "U4",
+      "severity": "MUST",
+      "criterion": "an admission record declares loop_gate and a supported/degraded claim names a check that exists",
+      "state": "met",
+      "evidence": "check-admission"
+    },
+    {
+      "id": "U5",
+      "severity": "MUST",
+      "criterion": "gate script, pack, runbook, projection READMEs and measured state name both commands and carry the refresh",
+      "state": "met",
+      "evidence": "check-loop-gate"
+    },
+    {
+      "id": "U6",
+      "severity": "MUST",
+      "criterion": "the unit has a clean plan-review round sequence, a findings ledger, and one WL-08 row naming this spec",
+      "state": "met",
+      "evidence": "check-loop-gate"
+    }
+  ],
+  "coverage": {
+    "measured": 100,
+    "floor": 95,
+    "basis": "six units implemented; every finding F-7..F-17 from the two independent reviews is fixed and covered by a test in pytest-new-gates; the two loop gates run on the unit's own artifacts"
+  },
+  "findings": [
+    {
+      "id": "F-7",
+      "severity": "high",
+      "state": "fixed",
+      "file_line": "tooling line 48",
+      "evidence": "F-7 Push without a verify record passed; fixed and covered by a test at verify attempt 1"
+    },
+    {
+      "id": "F-8",
+      "severity": "high",
+      "state": "fixed",
+      "file_line": "tooling line 98",
+      "evidence": "F-8 an exemption token waived the plan review; fixed and covered by a test at verify attempt 1"
+    },
+    {
+      "id": "F-9",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "tooling line 158",
+      "evidence": "F-9 the effective date was a string compare; fixed and covered by a test at verify attempt 1"
+    },
+    {
+      "id": "F-10",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "tooling line 94",
+      "evidence": "F-10 plan evidence matched by bare unit id; fixed and covered by a test at verify attempt 1"
+    },
+    {
+      "id": "F-11",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "tooling line 217",
+      "evidence": "F-11 a missing check file passed as pending; fixed and covered by a test at verify attempt 1"
+    },
+    {
+      "id": "F-12",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "tooling line 152",
+      "evidence": "F-12 an empty Owner column passed; fixed and covered by a test at verify attempt 1"
+    },
+    {
+      "id": "F-13",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "tooling line 216",
+      "evidence": "F-13 AD-12 accepted evidence with no check; fixed and covered by a test at verify attempt 1"
+    },
+    {
+      "id": "F-14",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "tooling line 124",
+      "evidence": "F-14 an escaping check path passed; fixed and covered by a test at verify attempt 1"
+    },
+    {
+      "id": "F-15",
+      "severity": "low",
+      "state": "fixed",
+      "file_line": "tooling line 239",
+      "evidence": "F-15 a second Doctrine line passed; fixed and covered by a test at verify attempt 1"
+    },
+    {
+      "id": "F-16",
+      "severity": "low",
+      "state": "fixed",
+      "file_line": "tooling line 279",
+      "evidence": "F-16 a bare mention satisfied the gate statement; fixed and covered by a test at verify attempt 1"
+    },
+    {
+      "id": "F-17",
+      "severity": "low",
+      "state": "fixed",
+      "file_line": "tooling line 194",
+      "evidence": "F-17 a MUST: TBD criterion passed; fixed and covered by a test at verify attempt 1"
+    }
+  ],
+  "degraded": [],
+  "claims": [
+    {
+      "claim": "Both loop gates run and refuse the states the spec names",
+      "evidence": [
+        "pytest-new-gates",
+        "check-loop-gate"
+      ]
+    },
+    {
+      "claim": "Every adapter surface this library ships names the gate",
+      "evidence": [
+        "check-workflow-loop"
+      ]
+    },
+    {
+      "claim": "No vendor claims enforcement without a check",
+      "evidence": [
+        "check-admission"
+      ]
+    }
+  ],
+  "notes": "PRIOR ATTEMPT 0 FAILED: two independent reviews found 2 high and 6 medium holes -- Push without a verify record, an exemption token that waived the plan review, an unparsed effective date, unbound plan evidence, a fail-open spec check, and a substring admission test.\nCHANGED: the loop gate lost the exemption branch and gained explicit grandfathering, ISO dates, spec binding and hash freshness; the spec gate refuses missing or escaping checks and empty owners; AD-12 requires a check that exists; every fix carries a test (17 findings closed).",
+  "verification_provenance": {
+    "defined_by": "tooling/gate.sh",
+    "authored_in_this_attempt": false
+  }
+}

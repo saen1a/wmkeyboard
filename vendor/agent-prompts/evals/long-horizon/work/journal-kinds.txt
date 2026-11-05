@@ -1,0 +1,8 @@
+action_result
+action_started
+action_withheld
+checkpoint
+done
+note
+start
+stop

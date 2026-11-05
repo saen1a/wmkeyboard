@@ -1,0 +1,27 @@
+{
+  "skill": "mcp-builder",
+  "positive": [
+    {
+      "prompt": "Build an MCP server in Python that exposes our internal REST API as tools an LLM can call.",
+      "top_k": 3
+    },
+    {
+      "prompt": "I want to create a Model Context Protocol server in TypeScript using the MCP SDK.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Design the tools for a new MCP server that integrates our ticketing service.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Create a new skill for our team with a SKILL.md and bundled scripts.",
+      "owner": "skill-creator"
+    },
+    {
+      "prompt": "Parse this JSON with jq and extract the nested fields.",
+      "owner": "jq-json-processing"
+    }
+  ]
+}

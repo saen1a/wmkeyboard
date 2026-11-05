@@ -1,0 +1,33 @@
+schema: skill-pack/1
+project: wmkeyboard
+library_commit: 801c3f7424ecc96956f9fe88a3ca78bd44595711
+library_skills:
+  - general/agent-md-refactor
+  - general/cache-aware-assembly
+  - general/changelog-generator
+  - general/git-guardrails
+  - general/grilling
+  - general/human-gated-config-change
+  - general/jq-json-processing
+  - general/long-horizon-run
+  - general/mcp-builder
+  - general/operator-setup-interview
+  - general/skill-creator
+  - general/subagent-delegation
+  - general/untrusted-content-handling
+  - shared/anti-entropy-governance
+  - shared/anti-hallucination
+  - shared/anti-sycophancy
+  - shared/ask-questions-if-underspecified
+  - shared/convert-documents-to-markdown
+  - shared/deepseek-v4-agent-defense
+  - shared/first-principles-review
+  - shared/verification-before-completion
+project_skills:
+  - wmk-architecture
+  - wmk-build
+  - wmk-docs
+  - wmk-glide-eval
+  - wmk-languages
+  - wmk-native-engine
+  - wmk-release

@@ -1,0 +1,11 @@
+== session B (pid 3891097) ==
+cold start: the only inputs are evals/long-horizon/run-state.md and evals/long-horizon/events.jsonl
+step 1: workspace /workspace/agent-prompts, run id lh-contract-exercise
+step 2: replayed the journal: 5 events, 2 checkpoints
+replay: 5 events, 2 checkpoints
+replay: committed U1 at Verify (gate pass)
+replay: next_action = Resume in a new session and execute U2
+view:   checkpoint 2, units_done 1/3
+view:   next_action = Resume in a new session and execute U2
+hash:   view 9915aee07e6b..., last checkpoint seq 5 records 9915aee07e6b...
+AGREE

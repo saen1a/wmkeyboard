@@ -1,0 +1,32 @@
+{
+  "schema": "optimization-baseline/1",
+  "baseline_id": "BL-1",
+  "created_utc": "2026-10-27",
+  "eval_set": "evals/role-ab/tasks-injection, six roles, seeds 311/313/317",
+  "source": "evals/role-ab/results/wp07-conduct-guard.json",
+  "grader_model": "openai/gpt-6-luna",
+  "run": {
+    "model": "anthropic/claude-haiku-5.5",
+    "provider": "kilo-gateway",
+    "harness": "openai-compatible-chat",
+    "seed": null,
+    "timestamp_utc": "2026-10-27",
+    "prompt_version": "agent-prompts@02e2ac2"
+  },
+  "metrics": {
+    "all_pairs": {
+      "current_mean": 0.9611,
+      "candidate_mean": 0.9583,
+      "paired_wtl": "1/16/1",
+      "pairs": 18
+    },
+    "complete_pairs": {
+      "current_mean": 0.9688,
+      "candidate_mean": 0.9531,
+      "pairs": 16
+    },
+    "input_tokens_total": 37242,
+    "output_tokens_total": 22607
+  },
+  "note": "Identity of the last complete paired campaign before WP-08. Only the date is recorded: the committed summary does not carry a per-run timestamp. `seed` is null because the campaign mixed seeds 311/313/317. `cache_epoch` is absent because that campaign predates cache telemetry (WP-04 is blocked), so the trigger reports it as not recorded rather than inventing it. The prompt surface at 02e2ac2 is byte-identical to this working tree for agents/, fragments/, skills/ and prompts/ (git diff --stat 02e2ac2 HEAD over those paths is empty)."
+}

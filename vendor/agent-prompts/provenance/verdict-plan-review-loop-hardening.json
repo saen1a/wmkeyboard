@@ -1,0 +1,135 @@
+{
+  "schema": "agent-gate-verdict/1",
+  "verdict_id": "PR-loop-hardening-r1",
+  "unit": "loop-hardening",
+  "gate": "plan-review",
+  "verdict": "pass",
+  "mode": "block",
+  "attempt": 1,
+  "implementer": "library-maintainer",
+  "verifier": "wl-15-checklist",
+  "verifier_kind": "mechanical",
+  "fresh_context": true,
+  "artifacts": [
+    {
+      "path": "provenance/plan-loop-hardening-2026-11.md",
+      "sha256": "2c86ed36aa568d3dbf636cac573f3aa7c16f6c673aa030d874dd25953f2428b5",
+      "bytes": 5852,
+      "non_whitespace_chars": 4917,
+      "shape": "ok"
+    }
+  ],
+  "checks": [],
+  "criteria": [
+    {
+      "id": "goal",
+      "severity": "MUST",
+      "criterion": "One decidable goal with the scope boundaries stated",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "request-coverage",
+      "severity": "MUST",
+      "criterion": "Every request item maps to a unit and every unit traces back",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "acceptance",
+      "severity": "MUST",
+      "criterion": "Every unit carries a checkable MUST/SHOULD criterion taken from the request",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "verification",
+      "severity": "MUST",
+      "criterion": "Every MUST criterion names a runnable check; a check the unit creates is declared as its artifact, never assumed to exist",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "ownership-order",
+      "severity": "MUST",
+      "criterion": "One writer per surface and units ordered by dependency",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "risk-halt",
+      "severity": "MUST",
+      "criterion": "Unsafe or unresolvable items name the HALT path and the operator question",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    }
+  ],
+  "coverage": {
+    "measured": 100,
+    "floor": 95,
+    "basis": "all 7 sections and all 6 unit rows re-read against the five round-0 findings; each finding's resolution was checked in the table it touched"
+  },
+  "findings": [
+    {
+      "id": "F-1",
+      "severity": "high",
+      "state": "fixed",
+      "file_line": "provenance/plan-loop-hardening-2026-11.md:56",
+      "evidence": "round 1: U2 takes a list and orders rounds by attempt, contiguous from 0"
+    },
+    {
+      "id": "F-2",
+      "severity": "high",
+      "state": "fixed",
+      "file_line": "provenance/plan-loop-hardening-2026-11.md:58",
+      "evidence": "round 1: the verification cell names the runner and declares the test module as a unit artifact"
+    },
+    {
+      "id": "F-3",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "provenance/plan-loop-hardening-2026-11.md:57",
+      "evidence": "round 1: the composed foreground set must state the gate exactly once"
+    },
+    {
+      "id": "F-4",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "provenance/plan-loop-hardening-2026-11.md:59",
+      "evidence": "round 1: U5 carries the measured-state and pin refresh as MUST"
+    },
+    {
+      "id": "F-5",
+      "severity": "low",
+      "state": "fixed",
+      "file_line": "provenance/plan-loop-hardening-2026-11.md:55",
+      "evidence": "round 1: the effective-date default and the --since override are named in U2"
+    }
+  ],
+  "degraded": [],
+  "claims": [
+    {
+      "claim": "The spec is decidable and every request item has a unit",
+      "evidence": [
+        "goal",
+        "request-coverage"
+      ]
+    },
+    {
+      "claim": "No high or medium plan finding remains open",
+      "evidence": [
+        "F-1",
+        "F-2"
+      ]
+    },
+    {
+      "claim": "The unit may enter Implement",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    }
+  ],
+  "notes": "PRIOR ROUND 0 FAILED: verification and acceptance - the ordering gate had no round rule and the plan-review check could not exist at review time.\nCHANGED: U1 emits verdict-shaped criteria, U2 takes a verdict list and defines round order plus the effective date, U3 checks the composed foreground set instead of every module, U5 adds the measured-state refresh.",
+  "verification_provenance": {
+    "defined_by": "standards/workflow-loop.md",
+    "authored_in_this_attempt": false
+  }
+}

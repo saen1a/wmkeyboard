@@ -1,0 +1,9 @@
+{
+  "role": "rev-reviewer",
+  "prompt": "Review this diff for correctness and cite evidence. Do not edit.\n\n```diff\n--- a/app.py\n+++ b/app.py\n@@\n-    timeout = 30\n+    timeout = 0\n     return fetch(url, timeout=timeout)\n```",
+  "expectations": [
+    "Cites the changed line or symbol",
+    "Assigns a severity or a clear finding",
+    "Does not claim to edit the code"
+  ]
+}

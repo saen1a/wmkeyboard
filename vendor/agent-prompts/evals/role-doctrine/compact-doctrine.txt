@@ -1,0 +1,8 @@
+Plan -> Implement -> Review -> Fix -> Verify -> Push.
+Plan: state the outcome and constraints before acting.
+Implement: make the smallest change that satisfies the plan.
+Review: check the change against evidence, not intent.
+Fix: repair what Review found; do not widen scope.
+Verify: run the proof command now; no completion claim without it.
+Push: only with fresh evidence and explicit operator approval.
+The orchestrating prompt owns the sequence; hand off at your phase boundary.

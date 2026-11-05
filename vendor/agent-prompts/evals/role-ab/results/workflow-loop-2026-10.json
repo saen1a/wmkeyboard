@@ -1,0 +1,542 @@
+{
+  "schema": "role-ab-summary/3",
+  "experiment": "workflow-loop-2026-10",
+  "protocol": {
+    "seeds": [
+      7,
+      11,
+      23
+    ],
+    "max_tokens": 16384,
+    "temperature": 0,
+    "executor_model": "deepseek-flash",
+    "grader_model": "deepseek-v4-pro",
+    "harness": "openai-compatible-chat",
+    "doctrine_version": "1.2.0",
+    "current_arm": "doctrine 1.2.0 loop (pre-remediation; final tree is 1.3.0)",
+    "candidate_arm": "doctrine 1.1.0 linear (pinned at evals/role-ab/arms/linear-v1.1)",
+    "excluded_roles": {
+      "ops-format-normalizer": "text-only A/B not comparable; the task relies on commit/format tooling; text-only runs were 0.33/0.33 and the tool-enabled harness is 1.0/1.0"
+    },
+    "raw_results": [
+      "evals/results/loop-ab2-7",
+      "evals/results/loop-ab2-11",
+      "evals/results/loop-ab2-23"
+    ],
+    "note": "A/B predates the 1.3.0 state-machine and Push-gate fixes; rerun before treating it as final proof. The A-arm body was an uncommitted working tree and is not exactly recoverable; hashes are identifiers, not a reproducibility proof."
+  },
+  "arm_hashes": {
+    "eng-api-developer": {
+      "current": {
+        "sha256": "8f8b955f8bdf6b8da5c92d50f6eab955e447f58ac7e3d8a7402ccac4dd19edfe",
+        "chars": 4961
+      },
+      "candidate": {
+        "sha256": "1a3307c8a149c5c0ccabdfb3cc23d4b1d3d4b5cdc24e1caa03112aee3b5446ca",
+        "chars": 4966
+      }
+    },
+    "eng-backend-developer": {
+      "current": {
+        "sha256": "05e61818a12db6f0ab74ae17bbfeec114e1480864bda6dee1998b1127c0e84b8",
+        "chars": 4974
+      },
+      "candidate": {
+        "sha256": "ed0dcf5b7746c8b8128d6e533ca407752f413cf49c5e2fb7d8777d2031a16be9",
+        "chars": 4979
+      }
+    },
+    "eng-database-developer": {
+      "current": {
+        "sha256": "d882ec3453e61f65cc9c7a34e55d5ded59b0b999a0e0ce3598c680f8fa2da050",
+        "chars": 4982
+      },
+      "candidate": {
+        "sha256": "4ab5d911430f8813ccfc1c83a07726a12f280a25dd41ef761d1ba1afd7e8e830",
+        "chars": 4987
+      }
+    },
+    "eng-frontend-developer": {
+      "current": {
+        "sha256": "82d3f036b10d7fe6663962b8af8f5c444db411f4f9d9cb9f0c1718b0f8d336f7",
+        "chars": 5086
+      },
+      "candidate": {
+        "sha256": "9dc62c940840c04883986348369fd89c6488167d92adc6bb02e1012532d2aa6a",
+        "chars": 5038
+      }
+    },
+    "eng-test-author": {
+      "current": {
+        "sha256": "c39a656ca4a555675dbd61d6093661ec689a6971366780e792036b0762656aa6",
+        "chars": 4903
+      },
+      "candidate": {
+        "sha256": "30654b1ddf46fdf3ff32d6f8c0c176c00b348f6ae6c001b92e8a7292028d101c",
+        "chars": 4908
+      }
+    },
+    "net-network-architect": {
+      "current": {
+        "sha256": "12e65d1ea0e55db87f16be97b0e368671f2279f572bbb288c4941e53433fd5d3",
+        "chars": 5014
+      },
+      "candidate": {
+        "sha256": "ca88478f1f85a2aa88f7a5f028635524b523da05945994e286bd1b64bb705c49",
+        "chars": 5011
+      }
+    },
+    "ops-ci-implementer": {
+      "current": {
+        "sha256": "87c61df74ec354733d70c42500f1c7e5e1d9841d8d739894dbc3d6f068a0daf3",
+        "chars": 4768
+      },
+      "candidate": {
+        "sha256": "64b896e885e5af705bca21c48f4bfb6977ec588efd6e35a4373711757bbe3803",
+        "chars": 4765
+      }
+    },
+    "ops-executor": {
+      "current": {
+        "sha256": "1eb69d223f4a9a25f6bc40116371d256ea696073ce969c3bb2e6ab31b3db3bd7",
+        "chars": 4710
+      },
+      "candidate": {
+        "sha256": "348d6131f1f9cecea243b2a7953e4a010c06586ab96c27924651d8654e2e203c",
+        "chars": 4641
+      }
+    },
+    "orch-orchestrator": {
+      "current": {
+        "sha256": "c21bf092d013a23bbe89ed9964d6431ffe6427776f7ca9dd7a006d37e21e20d2",
+        "chars": 5285
+      },
+      "candidate": {
+        "sha256": "2516b625ac786976b88daba4277a36b442023e697f7919cb35eb486bdfa68b61",
+        "chars": 5340
+      }
+    },
+    "rev-code-skeptic": {
+      "current": {
+        "sha256": "e6f85d0f9b1d1f57f34de56efdbf40f8f47f6f2a6857da3beb67e2de88a63977",
+        "chars": 4741
+      },
+      "candidate": {
+        "sha256": "b160bec1d9efc743b3ea622f577139d89335991bf6317cbee6bea3f9057f7205",
+        "chars": 4738
+      }
+    },
+    "rev-review-lead": {
+      "current": {
+        "sha256": "29552854c0a5ee3344409d38c7f73e02f1dbecaacb2136d4129b2a2afe2a787e",
+        "chars": 5062
+      },
+      "candidate": {
+        "sha256": "dfd91bb95addbcd1704ac4fc8f76a6f2f0a2e3a6d1be3f02c4701b8987e40390",
+        "chars": 5064
+      }
+    },
+    "rev-reviewer": {
+      "current": {
+        "sha256": "ad5adb3394ce3ccf78001dd565cc82817e55d9fef3836dea5a273534a97899df",
+        "chars": 4315
+      },
+      "candidate": {
+        "sha256": "0a10faa166b57f1036289f0876ca8fb9b52102998f006455ef8f9185cd6363b2",
+        "chars": 4317
+      }
+    }
+  },
+  "per_role": {
+    "eng-api-developer": {
+      "current": {
+        "mean": 0.8889,
+        "passed": 2,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "7": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "11": {
+        "current": 0.6667,
+        "candidate": 1.0,
+        "delta": -0.3333,
+        "truncated": false
+      },
+      "23": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "eng-backend-developer": {
+      "current": {
+        "mean": 0.89,
+        "passed": 2,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 0.7789,
+        "passed": 1,
+        "runs": 3
+      },
+      "7": {
+        "current": 0.67,
+        "candidate": 0.67,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "11": {
+        "current": 1.0,
+        "candidate": 0.6667,
+        "delta": 0.3333,
+        "truncated": false
+      },
+      "23": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "eng-database-developer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "7": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "11": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "23": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "eng-frontend-developer": {
+      "current": {
+        "mean": 0.8889,
+        "passed": 2,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 0.8889,
+        "passed": 2,
+        "runs": 3
+      },
+      "7": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "11": {
+        "current": 0.6667,
+        "candidate": 1.0,
+        "delta": -0.3333,
+        "truncated": false
+      },
+      "23": {
+        "current": 1.0,
+        "candidate": 0.6667,
+        "delta": 0.3333,
+        "truncated": false
+      }
+    },
+    "eng-test-author": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 0.7778,
+        "passed": 1,
+        "runs": 3
+      },
+      "7": {
+        "current": 1.0,
+        "candidate": 0.6667,
+        "delta": 0.3333,
+        "truncated": false
+      },
+      "11": {
+        "current": 1.0,
+        "candidate": 0.6667,
+        "delta": 0.3333,
+        "truncated": false
+      },
+      "23": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "net-network-architect": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "7": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "11": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": true
+      },
+      "23": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "ops-ci-implementer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "7": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "11": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "23": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "ops-executor": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "7": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "11": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "23": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "orch-orchestrator": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "7": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "11": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "23": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "rev-code-skeptic": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "7": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "11": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "23": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "rev-review-lead": {
+      "current": {
+        "mean": 0.7778,
+        "passed": 1,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 0.89,
+        "passed": 2,
+        "runs": 3
+      },
+      "7": {
+        "current": 0.6667,
+        "candidate": 1.0,
+        "delta": -0.3333,
+        "truncated": false
+      },
+      "11": {
+        "current": 1.0,
+        "candidate": 0.67,
+        "delta": 0.33,
+        "truncated": false
+      },
+      "23": {
+        "current": 0.6667,
+        "candidate": 1.0,
+        "delta": -0.3333,
+        "truncated": false
+      }
+    },
+    "rev-reviewer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "7": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "11": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "23": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    }
+  },
+  "truncated_pairs": [
+    {
+      "role": "net-network-architect",
+      "seed": 11
+    }
+  ],
+  "overall_all": {
+    "current_mean": 0.9538,
+    "candidate_mean": 0.9446,
+    "delta": 0.0092,
+    "wins": 5,
+    "ties": 27,
+    "losses": 4,
+    "pairs": 36
+  },
+  "overall_complete": {
+    "current_mean": 0.9525,
+    "candidate_mean": 0.9431,
+    "delta": 0.0094,
+    "wins": 5,
+    "ties": 26,
+    "losses": 4,
+    "pairs": 35
+  },
+  "post_run_changes": {
+    "measured_doctrine_version": "1.3.0",
+    "doctrine_changed_at": "31952d9",
+    "current_doctrine_version": "1.3.1",
+    "note": "Exploratory result; measured the pre-1.3.1 body and is not evidence for the current body."
+  }
+}

@@ -1,0 +1,138 @@
+{
+  "schema": "agent-admission/1",
+  "runtime": "omp",
+  "runtime_version": "18.1.14",
+  "checked": "2026-10-31",
+  "required_features": [
+    "tool_allowlist",
+    "subagent_dispatch",
+    "loop_gate"
+  ],
+  "admission": "admitted",
+  "capabilities": {
+    "read": {
+      "support": "supported",
+      "evidence": "omp/README.md tool posture; tooling/render_omp.py --check",
+      "checked": "2026-10-31"
+    },
+    "grep": {
+      "support": "supported",
+      "evidence": "omp/README.md tool posture; tooling/render_omp.py --check",
+      "checked": "2026-10-31"
+    },
+    "glob": {
+      "support": "supported",
+      "evidence": "omp/README.md tool posture; tooling/render_omp.py --check",
+      "checked": "2026-10-31"
+    },
+    "tool_allowlist": {
+      "support": "supported",
+      "evidence": "tooling/render_omp.py rejects write, edit and bash on every entry; omp/catalog.yaml carries one explicit tools list per agent",
+      "checked": "2026-10-31"
+    },
+    "subagent_dispatch": {
+      "support": "degraded",
+      "degraded_behavior": "the task tool is projected only on the orchestrator and review-lead entries; every other entry is read-only and cannot dispatch",
+      "checked": "2026-10-31"
+    },
+    "shell_tool": {
+      "support": "unsupported",
+      "refusal": "no entry may carry bash or write; a role whose canon assumes a shell gets an overlay that states the constraint instead of a widened tool list",
+      "checked": "2026-10-31"
+    },
+    "mcp_resources": {
+      "support": "unknown",
+      "attempted": "no MCP resource or tool is projected in omp/catalog.yaml; not exercised on 2026-10-31"
+    },
+    "host_inferred_spawn": {
+      "support": "unsupported",
+      "refusal": "activation is explicit; the task tool is omitted from leaf entries so the host cannot infer a spawn",
+      "checked": "2026-10-31"
+    },
+    "web_search": {
+      "support": "supported",
+      "evidence": "omp/catalog.yaml projects web_search onto the researcher entry only; tooling/render_omp.py --check enforces the per-entry list",
+      "checked": "2026-10-31"
+    },
+    "task": {
+      "support": "degraded",
+      "degraded_behavior": "the task tool is projected onto the orchestrator and review-lead entries only; every other entry cannot dispatch",
+      "checked": "2026-10-31"
+    },
+    "loop_gate": {
+      "support": "degraded",
+      "degraded_behavior": "the runtime has no pre-dispatch hook: the orchestrator can pass a spec to a task child without a verdict check. The gate is carried by the project's CI step `python3 tooling/check_loop_gate.py` over the WL-08 ledger and the plan-review verdict records, and by `check_plan_spec.py` before a spec is dispatched",
+      "checked": "2026-11-03"
+    }
+  },
+  "refusals": [
+    "shell_tool: unsupported, no entry may require a shell",
+    "host_inferred_spawn: unsupported, leaves carry no task tool"
+  ],
+  "projection": {
+    "scout": [
+      "read",
+      "grep",
+      "glob"
+    ],
+    "oracle": [
+      "read",
+      "grep",
+      "glob"
+    ],
+    "reviewer": [
+      "read",
+      "grep",
+      "glob"
+    ],
+    "security-reviewer": [
+      "read",
+      "grep",
+      "glob"
+    ],
+    "code-skeptic": [
+      "read",
+      "grep",
+      "glob"
+    ],
+    "consistency-reviewer": [
+      "read",
+      "grep",
+      "glob"
+    ],
+    "review-lead": [
+      "read",
+      "grep",
+      "glob",
+      "task"
+    ],
+    "researcher": [
+      "read",
+      "grep",
+      "glob",
+      "web_search"
+    ],
+    "librarian": [
+      "read",
+      "grep",
+      "glob"
+    ],
+    "research-merger": [
+      "read",
+      "grep",
+      "glob"
+    ],
+    "councillor": [
+      "read",
+      "grep",
+      "glob"
+    ],
+    "orchestrator": [
+      "read",
+      "grep",
+      "glob",
+      "task"
+    ]
+  },
+  "notes": "Admission covers the projected tool posture and the dispatch topology only. Prompt fidelity, cache behavior and model quality are not admission claims; they are measured separately (AS-08, MC-02). AD-12: loop_gate is degraded, not supported -- no runtime hook exists; the repo gate is the enforcement point."
+}

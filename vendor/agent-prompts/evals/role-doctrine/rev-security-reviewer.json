@@ -1,0 +1,9 @@
+{
+  "role": "rev-security-reviewer",
+  "prompt": "Review this auth check for a bypass: `if user.role == 'admin' or token: allow()`. Cite severity and the fix. Do not edit.",
+  "expectations": [
+    "Identifies the token-truthiness bypass",
+    "Assigns a severity",
+    "Proposes a concrete fix"
+  ]
+}

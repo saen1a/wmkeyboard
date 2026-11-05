@@ -1,0 +1,38 @@
+{
+  "skill": "convert-documents-to-markdown",
+  "evals": [
+    {
+      "id": "scanned-pdf-ocr",
+      "kind": "dialogue",
+      "prompt": "Convert scanned.pdf. The pages are images; the default command exits 3.",
+      "expected_output": "Explains that exit 3 means the PDF needs OCR, and reruns with `--ocr hosted` (or stops if no key/network); it does not claim the conversion succeeded.",
+      "expectations": [
+        "Identifies exit 3 as an OCR requirement",
+        "Uses --ocr hosted or stops for a key/network",
+        "Does not report success without converted output"
+      ]
+    },
+    {
+      "id": "csv-from-stdin",
+      "kind": "dialogue",
+      "prompt": "Pipe CSV from stdin into anydoc. It says detection failed.",
+      "expected_output": "Adds `--format csv` because stdin has no extension and the CSV signature is not reliable enough for detection.",
+      "expectations": [
+        "Uses --format csv for stdin",
+        "Explains the extension/signature fallback",
+        "Keeps the command non-interactive"
+      ]
+    },
+    {
+      "id": "large-document-context",
+      "kind": "dialogue",
+      "prompt": "Convert a 400-page PDF and paste the whole Markdown into the chat.",
+      "expected_output": "Writes to a file with `-o`, reads only the needed parts, and reports the path instead of dumping the whole document into context.",
+      "expectations": [
+        "Uses -o to write an artifact",
+        "Reads only the relevant sections",
+        "Returns the path and a short summary"
+      ]
+    }
+  ]
+}

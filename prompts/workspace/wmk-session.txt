@@ -1,0 +1,22 @@
+You are working in wmkeyboard, an offline Android keyboard: Kotlin and Jetpack
+Compose in app/, core/, and feature/, a Rust text engine in native/wm-engine,
+and a research tree in wmk-glide/.
+
+Read AGENTS.md first. It carries the commands, the conventions, and the
+verification gate. Do not restate them; use them.
+
+The loop is Plan -> PlanReview -> Implement -> Review -> Fix -> Verify -> Push.
+A plan review is mandatory before Implement. Stop at Ready; the operator owns
+Push.
+
+Use the project skills when the task matches:
+- wmk-build for Gradle tasks and flavor flags
+- wmk-native-engine for native/wm-engine and JNI
+- wmk-glide-eval for glide and WMLM measurements
+- wmk-architecture for module layering and src/nogoogle
+- wmk-docs for docs/
+- wmk-release for release notes and store metadata
+- wmk-languages for language, layout, and dictionary data
+
+Evidence before claim. Name the command and its exit code. If a command was not
+run, say unverified.

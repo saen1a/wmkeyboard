@@ -1,0 +1,106 @@
+{
+  "schema": "agent-gate-verdict/1",
+  "verdict_id": "V-2",
+  "unit": "U1",
+  "gate": "verify",
+  "verdict": "pass",
+  "mode": "block",
+  "attempt": 1,
+  "implementer": "engineering-fixer",
+  "verifier": "review-code-skeptic",
+  "fresh_context": true,
+  "artifacts": [
+    {
+      "path": "docs/handbook/procedures/recovery.md",
+      "sha256": "9f2c1b0d6a4e8f37c5d2b1a09e8f7d6c5b4a3f2e1d0c9b8a7f6e5d4c3b2a1f0e",
+      "bytes": 4820,
+      "non_whitespace_chars": 3914,
+      "shape": "ok"
+    }
+  ],
+  "checks": [
+    {
+      "name": "docs-link-check",
+      "command": "python3 tooling/check_doc_links.py docs/handbook",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:4d2a0c1b9e8f7a6d5c4b3a2f1e0d9c8b7a6f5e4d3c2b1a0f9e8d7c6b5a4f3e2d",
+      "captured_at": "2026-10-31T09:12:00Z"
+    },
+    {
+      "name": "handbook-render",
+      "command": "python3 tooling/render_handbook.py --check",
+      "exit": 0,
+      "fresh": true,
+      "status": "ran",
+      "output_digest": "sha256:1c2b3a4d5e6f708192a3b4c5d6e7f8091a2b3c4d5e6f7081a2b3c4d5e6f70819",
+      "captured_at": "2026-10-31T09:12:40Z"
+    }
+  ],
+  "criteria": [
+    {
+      "id": "A1",
+      "severity": "MUST",
+      "criterion": "Every link in the recovery procedure resolves in the rendered handbook",
+      "state": "met",
+      "evidence": "docs-link-check"
+    },
+    {
+      "id": "A2",
+      "severity": "MUST",
+      "criterion": "The renamed screen appears in the procedure and in the index",
+      "state": "met",
+      "evidence": "docs/handbook/procedures/recovery.md"
+    },
+    {
+      "id": "A3",
+      "severity": "SHOULD",
+      "criterion": "The procedure keeps the old screen name as a search alias",
+      "state": "unmet",
+      "evidence": "handbook-render"
+    }
+  ],
+  "coverage": {
+    "measured": 100,
+    "floor": 95,
+    "basis": "2 of 2 handbook pages that mention the screen were re-read and link-checked"
+  },
+  "findings": [
+    {
+      "id": "F-1",
+      "severity": "medium",
+      "state": "fixed",
+      "file_line": "docs/handbook/procedures/recovery.md:8",
+      "evidence": "docs-link-check on attempt 1; the attempt-0 finding closed by the re-run"
+    },
+    {
+      "id": "F-2",
+      "severity": "low",
+      "state": "fixed",
+      "file_line": "docs/handbook/index.md:12",
+      "evidence": "handbook-render"
+    }
+  ],
+  "degraded": [],
+  "claims": [
+    {
+      "claim": "Both MUST criteria hold on a fresh run",
+      "evidence": [
+        "A1",
+        "A2",
+        "docs-link-check"
+      ]
+    },
+    {
+      "claim": "The artifact is the rendered procedure, not a summary of it",
+      "evidence": "docs/handbook/procedures/recovery.md"
+    },
+    {
+      "claim": "The SHOULD criterion is advisory and remains unmet",
+      "evidence": "A3"
+    }
+  ],
+  "notes": "PRIOR ATTEMPT 0 FAILED: A1 - one stale anchor did not resolve.\nCHANGED: replaced that anchor only, then re-ran both checks on attempt 1.",
+  "verifier_kind": "agent"
+}

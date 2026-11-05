@@ -1,0 +1,8 @@
+# Agent pack text is LF so the vendor tree hash and the byte-exact skill
+# copies survive a checkout on any platform.
+vendor/agent-prompts/** text eol=lf
+.kilo/agents/** text eol=lf
+.kilo/skills/** text eol=lf
+packs/wmkeyboard/rendered/** text eol=lf
+packs/wmkeyboard/*.yaml text eol=lf
+packs/wmkeyboard/*.json text eol=lf

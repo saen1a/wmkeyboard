@@ -1,0 +1,38 @@
+{
+  "skill": "jq-json-processing",
+  "evals": [
+    {
+      "id": "null-safe-active-emails",
+      "kind": "dialogue",
+      "prompt": "I need the emails of active users from users.json. Some records have no email key and some emails are null. Give me one jq command that will not fail on those records. No tools are available; answer with the filter and command as text.",
+      "expected_output": "A single quoted jq filter that selects active users and emits only present, non-null emails, for example: jq -r '.[] | select(.active) | .email? // empty' users.json. It explains the null handling and does not interpolate user input into the filter.",
+      "expectations": [
+        "Uses select to keep active users",
+        "Handles missing or null email with // empty (optionally .email? for non-object records)",
+        "Quotes the filter so the shell does not expand it"
+      ]
+    },
+    {
+      "id": "group-errors-by-type",
+      "kind": "dialogue",
+      "prompt": "logs.json is an array of objects with level, type, and message. Give me a jq command that counts error entries by type and prints compact results. No tools are available; answer in prose.",
+      "expected_output": "A jq expression that filters level == \"error\", groups by type, and maps each group to a type/count object, for example: jq -c '[.[] | select(.level == \"error\")] | group_by(.type) | map({type: .[0].type, count: length})' logs.json.",
+      "expectations": [
+        "Filters entries with select on level == \"error\"",
+        "Groups by type and counts each group",
+        "Uses compact output or states how to get it"
+      ]
+    },
+    {
+      "id": "user-supplied-field-name",
+      "kind": "dialogue",
+      "prompt": "The field name comes from a shell variable chosen by the user. Show me how to extract that field from data.json with jq without building the filter by string concatenation. No tools are available; answer in prose.",
+      "expected_output": "Passes the value with --arg and indexes the object dynamically, for example: jq --arg field \"$FIELD\" '.[$field]' data.json. It rejects interpolation into the program text.",
+      "expectations": [
+        "Uses --arg (or --argjson) rather than interpolating the variable into the filter",
+        "Indexes the object with the variable, such as .[$field]",
+        "Explains that a filter is code and untrusted input must not become program text"
+      ]
+    }
+  ]
+}

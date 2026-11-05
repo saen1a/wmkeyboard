@@ -1,0 +1,9 @@
+{
+  "role": "rev-review-lead",
+  "prompt": "Workspace: fixture-project. Review this uncommitted change: 120 changed lines across 5 files. It adds an auth check in src/auth.py, changes a compose healthcheck, and updates two tests. Diff excerpt: `if user.role == 'admin' or token: allow()` and `healthcheck: test: [CMD, curl, localhost]` with no start_period. No tools are available. Choose the review tier, dispatch plan, and return the merged report.",
+  "expectations": [
+    "Chooses a tier and names the review tracks or children",
+    "States the high-confidence merge filter and the no-edit rule",
+    "Gives one recommendation and a coverage statement"
+  ]
+}

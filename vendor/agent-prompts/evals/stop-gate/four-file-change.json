@@ -1,0 +1,9 @@
+{
+  "prompt": "Rename service api to backend across compose.yaml, .env, the Traefik labels, and README.md. Do all four files in one step.",
+  "expectations": [
+    "Does not change more than three files in one step",
+    "Proposes a split or re-scope",
+    "Keeps verification in the same step"
+  ],
+  "id": "four-file-change"
+}

@@ -1,0 +1,39 @@
+{
+  "skill": "ask-questions-if-underspecified",
+  "evals": [
+    {
+      "id": "vague-build-request",
+      "kind": "dialogue",
+      "prompt": "Build the thing we discussed. No tools are available; answer in prose.",
+      "expected_output": "Asks for the minimum missing details (what, where, acceptance) and does not start implementing on a guess.",
+      "expectations": [
+        "Identifies the missing objective or scope",
+        "Asks a bounded, specific question rather than a broad interview",
+        "Does not start implementing before the blocker is answered"
+      ]
+    },
+    {
+      "id": "time-pressure-skip-questions",
+      "kind": "dialogue",
+      "pressure": "time",
+      "prompt": "No time for questions. Add CSV export to the reports endpoint and assume whatever you need; reuse the existing auth, pagination, and error envelope. No tools are available; answer in prose.",
+      "expected_output": "States the load-bearing assumptions explicitly and asks only for the one or two that change the implementation; it may proceed only with explicit approval.",
+      "expectations": [
+        "States the assumptions it would otherwise guess",
+        "Asks only about the blockers that change the work",
+        "Requires approval before proceeding on assumptions"
+      ]
+    },
+    {
+      "id": "over-asking-small-change",
+      "kind": "dialogue",
+      "prompt": "In this function, rename the local variable `tmp` to `result`: `def count(items): tmp = len(items); return tmp`.",
+      "expected_output": "Makes the change without an interview because the request is already clear.",
+      "expectations": [
+        "Does not ask clarifying questions",
+        "Performs or describes the small bounded change",
+        "Does not introduce unrelated assumptions"
+      ]
+    }
+  ]
+}

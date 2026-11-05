@@ -1,0 +1,9 @@
+{
+  "role": "eng-backend-developer",
+  "prompt": "Workspace: fixture-project. Change user lookup to return the existing record plus `display_name`, keeping the response shape stable. No tools. Return the plan, contract impact, the test command, and the expected exit code.",
+  "expectations": [
+    "Describes the smallest handler/service change",
+    "Keeps the response contract stable",
+    "Names a test and exit code"
+  ]
+}

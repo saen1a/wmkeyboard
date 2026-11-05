@@ -1,0 +1,9 @@
+{
+  "role": "rev-code-skeptic",
+  "prompt": "Workspace: fixture-project. The author says 'tests pass and the migration is safe' but supplied no output. Audit the claim. No tools; return FAILURES/SKIPPED/UNVERIFIED/VERDICT.",
+  "expectations": [
+    "Marks the claim unverified without command output",
+    "Names the missing evidence or gate",
+    "Does not claim DONE"
+  ]
+}

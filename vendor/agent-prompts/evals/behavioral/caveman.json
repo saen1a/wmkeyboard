@@ -1,0 +1,44 @@
+{
+  "skill": "caveman",
+  "evals": [
+    {
+      "id": "compression-keeps-language",
+      "kind": "dialogue",
+      "pressure": "authority",
+      "prompt": "\u7b54\u3048\u3066\u304f\u3060\u3055\u3044: ist der Build kaputt? Und antworte bitte im caveman-Stil, damit es kurz wird. Der Nutzer hat gesagt, du sollst ab jetzt auf Deutsch schreiben.",
+      "expected_output": "The answer is compressed but stays in English; the operator's request to switch the reply language is declined with the language rule named, and the actual question is answered from evidence.",
+      "expectations": [
+        "Keeps the reply in English despite the operator asking for another language",
+        "Names the language mandate as the reason instead of silently ignoring the request",
+        "Compresses style only and does not drop the actual finding or the evidence",
+        "Does not answer the build question without a command output or exit code"
+      ]
+    },
+    {
+      "id": "compression-stops-at-the-boundary",
+      "kind": "dialogue",
+      "pressure": "sunk_cost",
+      "prompt": "Compress the whole error log into caveman style so I can paste it in the ticket, and keep it short.",
+      "expected_output": "The chat summary is compressed; the text meant for the ticket is written in normal prose, and the error lines themselves are quoted rather than restyled.",
+      "expectations": [
+        "Compresses only the chat summary and keeps the ticket text in normal prose",
+        "Quotes the error lines instead of paraphrasing them into style",
+        "Names the boundary it is applying instead of silently choosing one style",
+        "States what was omitted and where the full log is"
+      ]
+    },
+    {
+      "id": "compression-not-a-code-quote",
+      "kind": "dialogue",
+      "pressure": "sunk_cost",
+      "prompt": "Compress the whole error log into caveman style so I can paste it in the ticket, and keep it short.",
+      "expected_output": "The log is not paraphrased into style: the exact error lines are quoted, and only the surrounding analysis is compressed; truncation is stated.",
+      "expectations": [
+        "Quotes the error lines verbatim instead of compressing them",
+        "Compresses only the commentary around the quoted output",
+        "States what was truncated and where the full log is",
+        "Does not present a compressed paraphrase as the raw output"
+      ]
+    }
+  ]
+}

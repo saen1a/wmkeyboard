@@ -1,0 +1,9 @@
+{
+  "role": "rev-consistency-reviewer",
+  "prompt": "Check consistency between `api/users.py` and `api/admin.py`: both claim to own user deletion. List the inconsistency and the owner question. Do not edit.",
+  "expectations": [
+    "Names the duplicate owner or behavior",
+    "Cites both files or symbols",
+    "Asks which owner should remain"
+  ]
+}

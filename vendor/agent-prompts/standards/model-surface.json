@@ -1,0 +1,95 @@
+{
+  "schema": "agent-model-surface/1",
+  "version": "1.1.0",
+  "surfaces": [
+    {
+      "id": "role-templates",
+      "glob": "agents/**/*.md",
+      "kind": "role",
+      "budget_tokens": 1395,
+      "measured_max_tokens": 1353,
+      "rationale": "AP-01 primary/orchestrator tier (<=15 elements, <=1100 token target); the budget is a hard cap set 42 tokens above the measured max, so regrowth is caught; AP-01's element budget stays the hard rule and its token target stays advisory, so passing this cap is not AP-01 compliance."
+    },
+    {
+      "id": "task-prompts",
+      "glob": "prompts/tasks/*.md",
+      "kind": "task",
+      "budget_tokens": 1480,
+      "measured_max_tokens": 1427,
+      "rationale": "AP-01 two-workflow tier (<=15 elements, <=950 token target); the budget is a hard cap set 53 tokens above the measured max, so regrowth is caught; AP-01's element budget stays the hard rule and its token target stays advisory, so passing this cap is not AP-01 compliance."
+    },
+    {
+      "id": "workspace-prompts",
+      "glob": "prompts/workspace/*.txt",
+      "kind": "workspace",
+      "budget_tokens": 900,
+      "measured_max_tokens": 879,
+      "rationale": "AP-01 standard tier token target (<=1000); these are retrieval-workspace prompt scripts, and the measured max is the deep-research script."
+    },
+    {
+      "id": "shared-fragments",
+      "glob": "fragments/*.md",
+      "kind": "fragment",
+      "budget_tokens": 485,
+      "measured_max_tokens": 478,
+      "rationale": "AP-01 invariant-fragment cost: the canonical conduct (AP-08) and doctrine (AP-14) blocks count once per prompt, so this surface tracks the byte-exact blocks only; the measured max is the doctrine block since 1.5.0, which carries the plan-review gate."
+    },
+    {
+      "id": "skill-bodies",
+      "glob": "skills/**/SKILL.md",
+      "kind": "skill",
+      "budget_tokens": 1700,
+      "measured_max_tokens": 1696,
+      "rationale": "SK-03 shape budget (1,200 target, 1,500 cap; vendor bodies are advisory); the measured max is a vendor body, so the registry ceiling follows it while the advisory cap stays in SK-03."
+    },
+    {
+      "id": "commands",
+      "glob": "commands/*.md",
+      "kind": "command",
+      "budget_tokens": 125,
+      "measured_max_tokens": 104,
+      "rationale": "AP-01 standard tier: a command is a short invocation stub that must not grow into a prompt, so its ceiling stays far below the 1000-token target; the measured max is the orchestrate dispatcher, which names the whole loop."
+    },
+    {
+      "id": "foreground-components",
+      "glob": "omp/prompts/foreground/*.md",
+      "kind": "adapter",
+      "budget_tokens": 275,
+      "measured_max_tokens": 232,
+      "rationale": "AP-01 standard tier: the foreground components assemble into one prompt, so each component is measured alone against a component-sized share of the 1000-token target; the governance module now carries the loop line and the plan-review rule (WL-15), which is one statement in one module rather than six copies."
+    },
+    {
+      "id": "dsh-presets",
+      "glob": "dsh/presets/*.yml",
+      "kind": "preset",
+      "budget_tokens": 1455,
+      "measured_max_tokens": 1411,
+      "rationale": "AP-01 preset tiers by schema kind (main 1100, subagent 800); the presets carry the doctrine block verbatim, so the ceiling follows the fragment and moves with it."
+    }
+  ],
+  "rule_families": {
+    "AD": "standards/agent-adapter.md",
+    "AP": "standards/agent-prompt-standard.md",
+    "AS": "standards/prompt-assembly.md",
+    "CF": "standards/agent-context-files.md",
+    "CR": "standards/code-review-contract.md",
+    "ED": "standards/evidence-duty.md",
+    "EF": "standards/durable-effects.md",
+    "HF": "standards/halt-taxonomy.md",
+    "LH": "standards/long-horizon-runs.md",
+    "MC": "standards/model-calibration.md",
+    "MD": "standards/message-delivery.md",
+    "NT": "standards/agent-notification.md",
+    "PS": "standards/prompt-security.md",
+    "SD": "standards/subagent-delegation.md",
+    "SG": "standards/stop-gate.md",
+    "SK": "standards/skill-system-standard.md",
+    "SP": "standards/system-prompt-standard.md",
+    "TS": "standards/tool-set.md",
+    "VI": "standards/verification-integrity.md",
+    "WA": "standards/work-authorization.md",
+    "WL": "standards/workflow-loop.md",
+    "EN": "standards/english-only.md"
+  },
+  "allow_unresolved": []
+}

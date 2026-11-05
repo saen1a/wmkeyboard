@@ -1,0 +1,35 @@
+{
+  "skill": "long-horizon-run",
+  "positive": [
+    {
+      "prompt": "Run this migration autonomously overnight and keep going across sessions.",
+      "top_k": 3
+    },
+    {
+      "prompt": "How should an agent resume after its context window compacts mid-task?",
+      "top_k": 3
+    },
+    {
+      "prompt": "What should an unattended long-running agent checkpoint so a crash does not lose work?",
+      "top_k": 3
+    },
+    {
+      "prompt": "Set up checkpointing, budget limits, and progress reporting for a multi-day autonomous run.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Should I fan this task out to parallel subagents?",
+      "owner": "subagent-delegation"
+    },
+    {
+      "prompt": "Before you claim the fix is done, show the fresh test output and exit code.",
+      "owner": "verification-before-completion"
+    },
+    {
+      "prompt": "The request is vague; what should I clarify before writing code?",
+      "owner": "ask-questions-if-underspecified"
+    }
+  ]
+}

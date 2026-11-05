@@ -1,0 +1,103 @@
+{
+  "schema": "agent-gate-verdict/1",
+  "verdict_id": "PR-loop-hardening-r2",
+  "unit": "loop-hardening",
+  "gate": "plan-review",
+  "verdict": "pass",
+  "mode": "block",
+  "attempt": 2,
+  "implementer": "library-maintainer",
+  "verifier": "wl-15-checklist",
+  "verifier_kind": "mechanical",
+  "fresh_context": true,
+  "artifacts": [
+    {
+      "path": "provenance/plan-loop-hardening-2026-11.md",
+      "sha256": "873e24f942757d0e8be4d7743fbe397216365e1b86bedb2b47b375103b60e4ac",
+      "bytes": 5889,
+      "non_whitespace_chars": 4948,
+      "shape": "ok"
+    }
+  ],
+  "checks": [],
+  "criteria": [
+    {
+      "id": "goal",
+      "severity": "MUST",
+      "criterion": "One decidable goal with the scope boundaries stated",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "request-coverage",
+      "severity": "MUST",
+      "criterion": "Every request item maps to a unit and every unit traces back",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "acceptance",
+      "severity": "MUST",
+      "criterion": "Every unit carries a checkable MUST/SHOULD criterion taken from the request",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "verification",
+      "severity": "MUST",
+      "criterion": "Every MUST criterion names a check that exists today or is updated to one that does",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "ownership-order",
+      "severity": "MUST",
+      "criterion": "One writer per surface and units ordered by dependency",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "risk-halt",
+      "severity": "MUST",
+      "criterion": "Unsafe or unresolvable items name the HALT path and the operator question",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    }
+  ],
+  "coverage": {
+    "measured": 100,
+    "floor": 95,
+    "basis": "all 7 sections and all 6 unit rows read; the U6 check was executed against the unit's own artifacts"
+  },
+  "findings": [
+    {
+      "id": "F-6",
+      "severity": "high",
+      "state": "fixed",
+      "file_line": "provenance/plan-loop-hardening-2026-11.md:47",
+      "evidence": "the review showed U6's cell cannot pass as written (one verdict file where two rounds exist); the cell now uses the glob form and the gate rejects the old form"
+    }
+  ],
+  "degraded": [],
+  "claims": [
+    {
+      "claim": "The spec is decidable and every request item has a unit",
+      "evidence": [
+        "goal",
+        "request-coverage"
+      ]
+    },
+    {
+      "claim": "The plan gate is clean against the current spec",
+      "evidence": [
+        "verification",
+        "F-6"
+      ]
+    }
+  ],
+  "notes": "PRIOR ROUND 1 PASSED, but the spec changed after it: the implementation review found that U6's own check cannot pass, so the plan is re-reviewed against the changed cell.\nCHANGED: U6 names the glob verdict form and the obligation that the ledger artifact cell names this spec.",
+  "verification_provenance": {
+    "defined_by": "standards/workflow-loop.md",
+    "authored_in_this_attempt": false
+  }
+}

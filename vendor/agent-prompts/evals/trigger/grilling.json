@@ -1,0 +1,27 @@
+{
+  "skill": "grilling",
+  "positive": [
+    {
+      "prompt": "Grill me on this plan - interview me relentlessly one question at a time until we share a clear understanding.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Stress-test my design before I start building by asking me hard questions about every branch of the decision tree.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Walk me through this plan question by question and push back on anything that is underspecified.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "This request is unclear - ask me the minimum clarifying questions before implementing.",
+      "owner": "ask-questions-if-underspecified"
+    },
+    {
+      "prompt": "Give my proposal a first-principles review.",
+      "owner": "first-principles-review"
+    }
+  ]
+}

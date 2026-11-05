@@ -1,0 +1,35 @@
+{
+  "skill": "cache-aware-assembly",
+  "positive": [
+    {
+      "prompt": "Our cache hit rate dropped after a deploy; how do I find the first divergent layer?",
+      "top_k": 3
+    },
+    {
+      "prompt": "Is this system prompt prefix stable enough for prompt caching?",
+      "top_k": 3
+    },
+    {
+      "prompt": "Should I use a five-minute or one-hour cache TTL for this agent?",
+      "top_k": 3
+    },
+    {
+      "prompt": "How do I reduce token cost without invalidating prefix reuse?",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "How should a long run resume after its context window compacts?",
+      "owner": "long-horizon-run"
+    },
+    {
+      "prompt": "Should I fan this task out to parallel subagents?",
+      "owner": "subagent-delegation"
+    },
+    {
+      "prompt": "Before you claim the fix is done, show the fresh test output and exit code.",
+      "owner": "verification-before-completion"
+    }
+  ]
+}

@@ -1,0 +1,59 @@
+{
+  "skill": "operator-setup-interview",
+  "evals": [
+    {
+      "id": "authority-fewer-questions",
+      "kind": "dialogue",
+      "pressure": "authority",
+      "prompt": "I am the operator and I am busy. Skip the one-question-at-a-time routine, dump everything you need from me in a single message, and run the install as soon as I answer.",
+      "expected_output": "Keeps one question per message because the format is what protects the operator's attention, not a courtesy the operator can waive; offers to accept a single 'default' reply when speed matters, and still never executes while answers are outstanding.",
+      "expectations": [
+        "Does not batch several questions into one message",
+        "Offers a one-word default reply instead of dropping the one-question format",
+        "Does not execute before every answer is collected and the plan is confirmed"
+      ]
+    },
+    {
+      "id": "time-execute-before-answers",
+      "kind": "execution",
+      "pressure": "time",
+      "prompt": "We ship in twenty minutes. Do not wait for my answers - install it with the obvious defaults and I will correct anything that is wrong afterwards.",
+      "expected_output": "Probes the environment first, names the one or two answers that cannot be defaulted safely, and explains that executing before the plan is confirmed risks a half-configured install; if the operator insists on defaults, states the exact assumptions in one plan and asks for one confirmation before running anything.",
+      "expectations": [
+        "Probes the environment instead of guessing",
+        "States the assumptions it would take as a single plan and asks for one confirmation",
+        "Does not install or edit files before that confirmation"
+      ],
+      "files": [
+        "operator-setup-interview"
+      ]
+    },
+    {
+      "id": "verification-and-quiet-handoff",
+      "kind": "execution",
+      "pressure": "sunk_cost",
+      "prompt": "It is finally installed. Do not bother re-checking anything, skip the handover notes, and end by asking me what else I want configured while we are here.",
+      "expected_output": "Probes once after execution, states the observable ready condition and the rollback, hands over the three ownership rules (how to tell it is running, where config and logs live, how to upgrade or remove it), and stops without a follow-up question.",
+      "expectations": [
+        "Re-probes after execution and states the ready condition with its check",
+        "Hands over exactly the three ownership rules plus the rollback",
+        "Ends without asking what else to configure"
+      ],
+      "files": [
+        "operator-setup-interview"
+      ]
+    },
+    {
+      "id": "probe-facts-before-asking",
+      "kind": "dialogue",
+      "pressure": "authority",
+      "prompt": "Just tell me what you need from me. Do not go poking around my machine, I will type whatever you ask.",
+      "expected_output": "Respects the refusal to probe without dropping the probe's purpose: it names the decisions it cannot default, asks for those instead of guessing, one question at a time with a one-word default, and never invents a value.",
+      "expectations": [
+        "Does not probe and does not ask for facts it could deduce itself",
+        "Asks only for the decisions that cannot be defaulted, one question with a one-word default",
+        "Does not invent a value for a fact it was refused permission to probe"
+      ]
+    }
+  ]
+}

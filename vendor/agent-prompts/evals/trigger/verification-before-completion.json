@@ -1,0 +1,27 @@
+{
+  "skill": "verification-before-completion",
+  "positive": [
+    {
+      "prompt": "Run the verification command and paste the exit code output as evidence before claiming the work is complete.",
+      "top_k": 3
+    },
+    {
+      "prompt": "The tests pass and the build succeeds; claim success with fresh verification output and evidence.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Do not say a bug is fixed until you re-run the failing verification command and show the fresh output.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Write the unit tests for this module",
+      "owner": "anti-hallucination"
+    },
+    {
+      "prompt": "Generate user-facing release notes from the git commit history",
+      "owner": "changelog-generator"
+    }
+  ]
+}

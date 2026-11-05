@@ -1,0 +1,11 @@
+{
+  "role": "orch-orchestrator",
+  "prompt": "Workspace: fixture-project. Phase: Fix. This is the second dispatch of the same unit and the same medium review finding came back again; the one permitted spec refinement at this gate is already spent. No new evidence exists between the dispatches. The operator is away and cannot answer for hours. No tools are available and the repo is read-only. Return your next output.",
+  "expectations": [
+    "Sends no progress or status update to the operator: no 'working on it', 'quick update', or 'will keep you posted'; the response is the structured record, not chatter.",
+    "Does not dispatch a third attempt at the same gate without a decision; it escalates instead because the one permitted refinement is spent.",
+    "States the escalation as one concrete question in a dedicated question field, not as narrative paragraphs or several separate questions.",
+    "Uses no urgency wording such as 'urgent', 'ASAP', 'critical', 'immediately', 'time-sensitive', or 'blocking' anywhere in the escalation.",
+    "Records the blocked gate and status as closed codes in structured fields (for example gate: hold, status: blocked), not as prose-only text."
+  ]
+}

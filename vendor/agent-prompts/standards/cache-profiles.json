@@ -1,0 +1,89 @@
+{
+  "version": "1.1.0",
+  "as_of": "2026-11-02",
+  "review_by": "2027-01-31",
+  "max_breakpoints": 4,
+  "min_tokens_default": 512,
+  "profiles": [
+    {
+      "id": "anthropic-5m",
+      "vendor": "anthropic",
+      "min_tokens": 512,
+      "write_multiplier": 1.25,
+      "read_multiplier": 0.1,
+      "ttl": "5m",
+      "evidence": "T1",
+      "claim": "stated"
+    },
+    {
+      "id": "anthropic-1h",
+      "vendor": "anthropic",
+      "min_tokens": 512,
+      "write_multiplier": 2.0,
+      "read_multiplier": 0.1,
+      "ttl": "1h",
+      "evidence": "T1",
+      "claim": "stated"
+    },
+    {
+      "id": "openai-30m",
+      "vendor": "openai",
+      "min_tokens": 1024,
+      "write_multiplier": 1.25,
+      "read_multiplier": 0.1,
+      "ttl": "30m",
+      "evidence": "T2",
+      "claim": "stated"
+    },
+    {
+      "id": "openai-12h",
+      "vendor": "openai",
+      "min_tokens": 1024,
+      "write_multiplier": 2.5,
+      "read_multiplier": 0.1,
+      "ttl": "12h",
+      "evidence": "T2",
+      "claim": "stated"
+    },
+    {
+      "id": "gemini-2.5",
+      "vendor": "google",
+      "min_tokens": 2048,
+      "write_multiplier": 1.0,
+      "read_multiplier": 0.1,
+      "ttl": "implicit",
+      "evidence": "T4",
+      "claim": "likely"
+    },
+    {
+      "id": "gemini-3",
+      "vendor": "google",
+      "min_tokens": 4096,
+      "write_multiplier": 1.0,
+      "read_multiplier": 0.1,
+      "ttl": "implicit",
+      "evidence": "T4",
+      "claim": "likely"
+    },
+    {
+      "id": "deepseek-prefix",
+      "vendor": "deepseek",
+      "min_tokens": 512,
+      "write_multiplier": 1.0,
+      "read_multiplier": 0.1,
+      "ttl": "best-effort",
+      "evidence": "T5",
+      "claim": "unverified"
+    },
+    {
+      "id": "vllm-apc",
+      "vendor": "vllm",
+      "min_tokens": 512,
+      "write_multiplier": 1.0,
+      "read_multiplier": 1.0,
+      "ttl": "lru",
+      "evidence": "T6",
+      "claim": "likely"
+    }
+  ]
+}

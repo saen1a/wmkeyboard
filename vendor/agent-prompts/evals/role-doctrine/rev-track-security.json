@@ -1,0 +1,9 @@
+{
+  "role": "rev-track-security",
+  "prompt": "Review this SQL construction: `query = 'select * from t where id=' + user_id`. Do not edit. Name the vulnerability and fix.",
+  "expectations": [
+    "Identifies SQL injection",
+    "Proposes parameterization",
+    "Assigns a severity"
+  ]
+}

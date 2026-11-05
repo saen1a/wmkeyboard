@@ -1,0 +1,315 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "agent work mandate",
+  "description": "One immutable grant of authorized work (WA-04). Shape only; the state invariants are enforced by tooling/check_mandate.py.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "mandate_id",
+    "policy_version",
+    "strength",
+    "basis",
+    "scope",
+    "actor",
+    "granted_at",
+    "state",
+    "history"
+  ],
+  "properties": {
+    "schema": {
+      "const": "agent-mandate/1"
+    },
+    "mandate_id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"
+    },
+    "policy_version": {
+      "type": "string",
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9.:_-]{1,63}$"
+    },
+    "strength": {
+      "enum": [
+        "explicit",
+        "inferred"
+      ]
+    },
+    "basis": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "via",
+        "source",
+        "sender",
+        "scope_key"
+      ],
+      "properties": {
+        "via": {
+          "enum": [
+            "addressed",
+            "followup",
+            "admission",
+            "bot"
+          ]
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        },
+        "sender": {
+          "type": "string",
+          "minLength": 1
+        },
+        "scope_key": {
+          "type": "string",
+          "minLength": 1
+        },
+        "cell": {
+          "enum": [
+            "listedUnaddressed",
+            "unlistedAddressed",
+            "unlistedUnaddressed"
+          ]
+        },
+        "addressed": {
+          "type": "boolean"
+        },
+        "listed_sender": {
+          "type": "boolean"
+        },
+        "rules": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "instruction"
+            ],
+            "properties": {
+              "id": {
+                "type": "string",
+                "pattern": "^[a-z0-9][a-z0-9-]{1,63}$"
+              },
+              "instruction": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          }
+        },
+        "trigger_id": {
+          "type": "string",
+          "minLength": 1
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "via": {
+                "const": "admission"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "cell"
+            ]
+          }
+        },
+        {
+          "if": {
+            "properties": {
+              "via": {
+                "const": "addressed"
+              }
+            }
+          },
+          "then": {
+            "required": [
+              "addressed",
+              "listed_sender"
+            ],
+            "properties": {
+              "addressed": {
+                "const": true
+              },
+              "listed_sender": {
+                "const": true
+              }
+            }
+          }
+        }
+      ]
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "unit",
+        "surface"
+      ],
+      "properties": {
+        "unit": {
+          "type": "string",
+          "minLength": 1
+        },
+        "surface": {
+          "type": "array",
+          "minItems": 1,
+          "items": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "accept_mode": {
+          "enum": [
+            "off",
+            "observe",
+            "auto"
+          ]
+        },
+        "notes": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "actor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "source"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "person",
+            "bot",
+            "system"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "source": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "granted_at": {
+      "type": "string",
+      "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+    },
+    "state": {
+      "enum": [
+        "active",
+        "withdrawn",
+        "revoked"
+      ]
+    },
+    "withdrawn_by": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "kind",
+        "name",
+        "at",
+        "reason_code"
+      ],
+      "properties": {
+        "kind": {
+          "enum": [
+            "person"
+          ]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1
+        },
+        "at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "reason_code": {
+          "type": "string",
+          "pattern": "^[a-z][a-z0-9_]{1,63}$"
+        }
+      }
+    },
+    "revocation": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "at",
+        "failed_check",
+        "policy_version"
+      ],
+      "properties": {
+        "at": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+        },
+        "failed_check": {
+          "enum": [
+            "source_stopped_listening",
+            "conversation_has_no_work",
+            "sender_not_listed",
+            "weaker_admission_cell",
+            "bot_not_listed",
+            "rule_disabled",
+            "proactive_acceptance_disabled"
+          ]
+        },
+        "policy_version": {
+          "type": "string",
+          "minLength": 1
+        }
+      }
+    },
+    "supersedes": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{2,63}$"
+    },
+    "history": {
+      "type": "array",
+      "minItems": 1,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "at",
+          "event"
+        ],
+        "properties": {
+          "at": {
+            "type": "string",
+            "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+          },
+          "event": {
+            "enum": [
+              "granted",
+              "revalidated",
+              "withdrawn",
+              "revoked",
+              "resumed"
+            ]
+          },
+          "policy_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "note": {
+            "type": "string",
+            "minLength": 1
+          }
+        }
+      }
+    }
+  }
+}
