@@ -3107,10 +3107,7 @@ open class WMKeyboardService : InputMethodService() {
      * backspace or an alternate tapped during the replay window is lost, and
      * the check-up records the rejected word as accepted.
      */
-    private data class PendingCheckupCorrection(val rejected: String, val chosen: String?)
-
-    private val inFlightCheckups = ConcurrentHashMap<String, Boolean>()
-    private val pendingCheckupCorrections = ConcurrentHashMap<String, PendingCheckupCorrection>()
+    private val checkupCorrections = CheckupCorrectionBuffer()
 
     /** What the user did with the words their glides gave them, as a nudge on the next decode (issue #52). */
     private var glideOutcomes = GlideOutcomes(null)
@@ -26610,8 +26607,7 @@ open class WMKeyboardService : InputMethodService() {
     /** The user took [chosen] in place of [rejected], the word a stroke was read as (issue #52). */
     private fun noteGlidePreference(rejected: String, chosen: String) {
         if (swipeStyleLearning) glideOutcomes.observeAlternative(rejected, chosen)
-        glideCheckup.correct(rejected, chosen)
-        rememberPendingCheckupCorrection(rejected, chosen)
+        noteCheckupCorrection(rejected, chosen)
         learningBuffer.drop(rejected)
         pushRecentWord(chosen)
         previousWord = chosen
@@ -26620,20 +26616,23 @@ open class WMKeyboardService : InputMethodService() {
     /** The user backspaced [word] the moment a glide committed it. */
     private fun noteGlideUndone(word: String) {
         if (swipeStyleLearning) glideOutcomes.observeImmediateUndo(word)
-        glideCheckup.correct(word, null)
-        rememberPendingCheckupCorrection(word, null)
+        noteCheckupCorrection(word, null)
     }
 
     /**
      * A correction that arrives while [measureGlideForCheckup] is still
-     * replaying has no record to rewrite yet. Keep it until the replay adds
-     * the record, then apply it there.
+     * replaying has no record to rewrite yet. Keep it until the last replay
+     * for that word adds the record, then apply it there. When no replay owns
+     * the word, apply it now.
      */
-    private fun rememberPendingCheckupCorrection(rejected: String, chosen: String?) {
+    private fun noteCheckupCorrection(rejected: String, chosen: String?) {
         val key = WordKey.of(rejected)
-        if (key.isNotEmpty() && inFlightCheckups.containsKey(key)) {
-            pendingCheckupCorrections[key] = PendingCheckupCorrection(rejected, chosen)
-        }
+        if (key.isEmpty()) return
+        val retained = checkupCorrections.remember(
+            key,
+            CheckupCorrectionBuffer.Correction(rejected, chosen),
+        )
+        if (!retained) glideCheckup.correct(rejected, chosen)
     }
 
     /**
@@ -26658,8 +26657,9 @@ open class WMKeyboardService : InputMethodService() {
         val checkup = glideCheckup
         val (previous, recent) = context
         val checkupKeys = setOf(WordKey.of(word), WordKey.of(current)).filter { it.isNotEmpty() }
-        checkupKeys.forEach { inFlightCheckups[it] = true }
+        checkupCorrections.begin(checkupKeys)
         serviceScope.launch(Dispatchers.Default) {
+            var observed = false
             try {
                 val base = engine.glideTuningInForce
                 val size = engine.glideVocabularySize()
@@ -26692,13 +26692,15 @@ open class WMKeyboardService : InputMethodService() {
                     under = under,
                     sample = GlideCheckup.profileOf(points, keys, keyWidthPx, word),
                 )
+                observed = true
             } finally {
                 // Stop accepting new pending corrections first, then apply
-                // the ones that arrived while the replay was running. If the
-                // replay failed there is no record, and `correct` is a no-op.
-                checkupKeys.forEach { inFlightCheckups.remove(it) }
-                checkupKeys.forEach { key ->
-                    pendingCheckupCorrections.remove(key)?.let { correction ->
+                // the ones that arrived while the replay was running. Without
+                // this replay's record, applying them could rewrite an older
+                // record for the same word, so a failed replay drops them.
+                val corrections = checkupCorrections.finish(checkupKeys)
+                if (observed) {
+                    corrections.forEach { correction ->
                         checkup.correct(correction.rejected, correction.chosen)
                     }
                 }
