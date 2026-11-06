@@ -1,6 +1,7 @@
 package com.wasimaster.wmkeyboard.core.util
 
 import java.io.File
+import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -50,23 +51,34 @@ class SnapshotFile(val file: File) {
      * Returns false only when the write failed, so the store can stay dirty
      * and try again at its next save; a skipped write counts as done.
      */
+    fun write(ticket: Long, text: () -> String): Boolean =
+        writeBytes(ticket) { text().toByteArray() }
+
+    /**
+     * The same ordering and atomic rename as [write], for a binary snapshot.
+     * With [keepBackup] the previous live file is rotated to `.bak` first, so
+     * a later read can recover a good snapshot when the live file is damaged.
+     */
     @Synchronized
-    fun write(ticket: Long, text: () -> String): Boolean {
+    fun writeBytes(ticket: Long, keepBackup: Boolean = false, bytes: () -> ByteArray): Boolean {
         if (ticket <= landed) return true
-        val written = runCatching { writeAtomically(file, text()) }.isSuccess
+        val written = runCatching { writeAtomically(file, bytes(), keepBackup) }.isSuccess
         if (written) landed = ticket
         return written
     }
 
     /**
-     * Deletes the file and retires every ticket drawn so far. Waits for a
-     * write already under way, so that write cannot land after the delete.
-     * Returns what [File.delete] did.
+     * Deletes the live file, its `.bak` and any `.part` and retires every
+     * ticket drawn so far. Waits for a write already under way, so that write
+     * cannot land after the delete. Returns what [File.delete] did.
+     *
+     * The backup must go too: a delete that leaves `.bak` behind would let the
+     * next load restore the data the user just cleared.
      */
     @Synchronized
     fun delete(): Boolean {
         landed = maxOf(landed, issued.get())
-        return file.delete()
+        return deleteWithSidecars(file)
     }
 
     /**
@@ -80,16 +92,60 @@ class SnapshotFile(val file: File) {
 
     companion object {
         /**
+         * Deletes [file] and the `.bak`, `.part` and `.corrupt` siblings a
+         * binary snapshot can leave behind. A caller that has no open
+         * [SnapshotFile] (the settings bulk-delete paths) uses this so a
+         * user-requested delete cannot be undone by a recovery copy.
+         */
+        fun deleteWithSidecars(file: File): Boolean {
+            val parent = file.parentFile
+            if (parent != null) {
+                File(parent, file.name + ".bak").delete()
+                File(parent, file.name + ".part").delete()
+                File(parent, file.name + ".corrupt").delete()
+            }
+            return file.delete()
+        }
+
+        /**
          * Replaces [file] with [text] in one step: written to a sibling, then
          * renamed over it, which on Android's file systems is atomic.
          */
         fun writeAtomically(file: File, text: String) {
+            writeAtomically(file, text.toByteArray())
+        }
+
+        /**
+         * The one replacement path. The part is fsync'd before the rename, so
+         * a crash cannot leave a half-written live file. With [keepBackup] the
+         * current live file becomes `.bak` first; a failure to rotate it only
+         * costs the extra copy, never the new snapshot.
+         */
+        fun writeAtomically(file: File, bytes: ByteArray, keepBackup: Boolean = false) {
             file.parentFile?.mkdirs()
-            val part = File(file.parentFile, file.name + ".part")
-            part.writeText(text)
+            val parent = file.parentFile
+            val part = File(parent, file.name + ".part")
+            FileOutputStream(part).use { out ->
+                out.write(bytes)
+                out.fd.sync()
+            }
+            if (keepBackup && file.isFile) {
+                val backup = File(parent, file.name + ".bak")
+                backup.delete()
+                // If this fails the new snapshot still replaces the live file;
+                // only the one-generation recovery copy is lost.
+                file.renameTo(backup)
+            }
             if (!part.renameTo(file)) {
-                part.delete()
-                error("could not replace ${file.name}")
+                // Windows cannot rename over an existing target; Android can.
+                // The rest of the store code retries after removing it, and a
+                // JSON file becoming the binary runtime format needs exactly
+                // that replacement path.
+                file.delete()
+                if (!part.renameTo(file)) {
+                    part.delete()
+                    error("could not replace ${file.name}")
+                }
             }
         }
     }

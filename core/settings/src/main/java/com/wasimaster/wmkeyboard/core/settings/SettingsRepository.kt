@@ -158,6 +158,7 @@ import com.wasimaster.wmkeyboard.core.tools.speedtest.SpeedCardLayout
 import com.wasimaster.wmkeyboard.core.tools.speedtest.SpeedCardSize
 import com.wasimaster.wmkeyboard.core.tools.speedtest.SpeedCardStyle
 import com.wasimaster.wmkeyboard.core.tools.speedtest.SpeedUnit
+import com.wasimaster.wmkeyboard.core.util.SnapshotFile
 import com.wasimaster.wmkeyboard.core.util.runCancellable
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -17810,6 +17811,12 @@ class SettingsRepository(private val context: Context) {
     private fun readStore(relativePath: String): JsonElement? {
         val file = storeFile(relativePath)
         if (!file.exists()) return null
+        if (relativePath == GLIDE_SHAPES_FILE) {
+            // The runtime store is binary now; the backup section stays v2 JSON
+            // so builds that only know the old format can still restore it.
+            val text = GlideShapeStore.exportJson(file)?.takeIf { it.isNotBlank() } ?: return null
+            return runCatching { bundleJson.parseToJsonElement(text) }.getOrNull()
+        }
         val text = runCatching { file.readText() }.getOrNull()?.takeIf { it.isNotBlank() } ?: return null
         return runCatching { bundleJson.parseToJsonElement(text) }.getOrNull()
     }
@@ -17818,7 +17825,13 @@ class SettingsRepository(private val context: Context) {
     private fun writeStore(relativePath: String, element: JsonElement): Boolean = runCatching {
         val file = storeFile(relativePath)
         file.parentFile?.mkdirs()
-        file.writeText(element.toString())
+        if (relativePath == GLIDE_SHAPES_FILE) {
+            // Restore as JSON; GlideShapeStore reads the v2 fallback and turns
+            // it back into binary on the next save.
+            if (!GlideShapeStore.importJson(file, element.toString())) error("could not write shapes")
+        } else {
+            file.writeText(element.toString())
+        }
         true
     }.getOrDefault(false)
 
@@ -18872,10 +18885,14 @@ class SettingsRepository(private val context: Context) {
      */
     suspend fun clearLearnedData() {
         for (path in LEARNED_DATA_FILES) {
-            runCatching { File(context.filesDir, path).delete() }
+            runCatching { SnapshotFile.deleteWithSidecars(File(context.filesDir, path)) }
         }
         bumpLexiconVersion()
         bumpEmojiUsageVersion()
+        // The key offsets and outcome files have their own signal. The
+        // lexicon signal already reloads the shape store; this one clears the
+        // gesture stores whose files were just deleted.
+        bumpSwipeStyleVersion()
     }
 
     suspend fun setEmojiFont(value: EmojiFontChoice) =
@@ -20079,7 +20096,9 @@ class SettingsRepository(private val context: Context) {
      * empties the keyboard's half-learned words.
      */
     suspend fun forgetSwipeStyle() {
-        for (path in SWIPE_STYLE_FILES) runCatching { File(context.filesDir, path).delete() }
+        for (path in SWIPE_STYLE_FILES) {
+            runCatching { SnapshotFile.deleteWithSidecars(File(context.filesDir, path)) }
+        }
         bumpSwipeStyleVersion()
     }
 

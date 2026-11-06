@@ -48,6 +48,21 @@ class SnapshotFileTest {
     }
 
     @Test
+    fun deleteWithSidecarsRemovesEveryRecoveryCopy() {
+        val file = target()
+        file.parentFile?.mkdirs()
+        file.writeText("live")
+        for (suffix in listOf(".bak", ".part", ".corrupt")) {
+            File(file.parentFile, file.name + suffix).writeText("old")
+        }
+        assertTrue(SnapshotFile.deleteWithSidecars(file))
+        assertFalse(file.exists())
+        for (suffix in listOf(".bak", ".part", ".corrupt")) {
+            assertFalse("$suffix must not survive a delete", File(file.parentFile, file.name + suffix).exists())
+        }
+    }
+
+    @Test
     fun supersedeDropsWritesOfMemoryThatWasReloaded() {
         val file = SnapshotFile(target())
         assertTrue(file.write(file.ticket()) { "on disk" })
