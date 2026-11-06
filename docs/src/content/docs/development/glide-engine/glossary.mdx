@@ -1,0 +1,52 @@
+---
+title: "Glossary"
+description: "The glide engine's terms with the precise meaning this subsystem gives them."
+sidebar:
+  label: "Glossary"
+  order: 32
+---
+
+**Scope.** The words this subsystem uses with a meaning narrower than ordinary
+English. **Not covered:** general keyboard terms, which the
+[architecture page](/development/architecture/) defines.
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+
+| Term | Meaning |
+|---|---|
+| **Glide** | One finger stroke over the letter grid, from pointer down to lift, that the engine reads as a word. Not a multi-finger action, a flick arm, or handwriting. |
+| **Stroke** | The sampled path and its clock. A stroke is only meaningful against the grid it was drawn on, so `GlideStroke` carries the keys with the points. |
+| **Path** | The sequence of `GesturePoint` samples in keyboard-view pixels. |
+| **Key width** | The unit the decoder uses for geometry. Coordinates are divided by the rendered key width, so density and keyboard size drop out. |
+| **Grid** | The `GlideKeyMap`: every character the layout can produce, resolved to a key center. Several characters can share one key. |
+| **Source** | A word list the search may read, wrapped as a `FuzzyBeamSearch.WalkSource` with a log weight, a tier and a frequency floor. |
+| **Walker** | The trie walker behind a source. A source without a Rust twin cannot be read by the native decoder. |
+| **Tier** | `USER` for the personal lexicon, `DICTIONARY` for shipped, downloaded and imported lists. A sandbox decode can restrict the search to one tier. |
+| **Candidate** | One scored word from a decoder. `score` is in nats and higher is better; `shapeCost` is a cost and lower is better. |
+| **Reading** | One decode's candidate list plus its scores, close-call flag, guesses and sure set. Scores are comparable only within a reading. |
+| **Leader** | The first candidate in a reading. It is what a lift commits when no picker answer replaces it. |
+| **Runner-up** | The second candidate. The gap to the leader is what the ambiguity picker measures. |
+| **Close call** | A stroke whose leader is less than the selected margin ahead of its runner-up. The default margin is 1.1 nats. |
+| **Guess** | A candidate with `ahead > 0`: it carries letters the stroke has not drawn. A guess is not a reading of the stroke. |
+| **Shape** | A resampled, quantized stroke the user kept for a word. The store keeps up to three per word by default. |
+| **Shape channel** | The part of the decoder that compares the drawn stroke with a word's stored shapes and may lower the word's cost. |
+| **Seeding** | Letting a stored shape name a word the trie walk did not reach. Off by default. |
+| **Loop** | A small circle drawn on a key, read as a doubled letter. `loopExtent` decides the widest loop that still counts. |
+| **Dwell** | A pause on a key, read as evidence that the letter is in the word. It is relative to the stroke's own pace, not a fixed millisecond count. |
+| **Wiggle** | A back-and-forth on a key, read as a doubled letter when the setting is on. Off by default. |
+| **Joiner** | Punctuation a word may carry while the stroke steps over it without spending a sample: hyphen, dot, at, underscore, ampersand, plus, slash, ZWNJ. The apostrophe is not one. |
+| **Compound** | A word read as several listed parts joined together. The default cost is infinite, so it is off except where a language profile enables it. |
+| **Coverage** | The share of the language's top 1,500 words the layout can spell. At least 90 percent is required to glide. |
+| **Romanization** | A Latin spelling that stands for a word in another script. A phonetic layout decodes the stroke against the romanized vocabulary, then maps the answer back. |
+| **Sandbox** | The policy that restricts a decode to the user's learned words. The internal policy calls the off state `OFF`; the setting calls it `NORMAL` and adds `AUTOMATIC` for the ladder. |
+| **Ladder** | The measured path between sandbox policies. It offers a rung only when the user's own strokes support it. |
+| **Outcome** | A pairwise correction or an undone word, stored as a bounded nudge on the next decode. |
+| **Check-up** | Replaying strokes under candidate weights and proposing one change, with a before-and-after confirmation window. |
+| **Profile** | A per-language set of decoder weights. German is the only shipped profile. |
+| **Preview gate** | The component that holds the word on screen against challengers and makes a lift type the shown word when the final decode still ranks it close. |
+| **Steadiness** | The tier that sets the preview gate's margin and hold time: off, light, steady, very steady. |
+| **Look-ahead** | Offering a word the stroke has not finished spelling, with a confidence margin over the best ordinary reading. |
+| **Deep retry** | The second decode after an undo: no vocabulary cap and a wider candidate pool. |
+| **Slip** | A word one key off the leader, offered on the strip as an alternate. It carries negative infinity and is never typed by a lift. |
+| **Settle** | The point where a committed word has survived long enough to be learned. Shapes and learning attach at settlement, not at commit. |
+| **Engine** | The decoder selected for a stroke: built-in, FUTO Swipe, or the imported Google library. |

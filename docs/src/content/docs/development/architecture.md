@@ -222,6 +222,11 @@ dictionaries and the eval sets, bit for bit; then the copy left the app for
 the test sources, where it stays as the reference that test compares
 against (`reference/` under `app/src/test/.../prediction` and `.../gesture`).
 
+The glide decoder has its own subsystem documentation:
+[Glide engine](/development/glide-engine/), with its context, components,
+pipeline, runtime scenarios, stores, integration, language profiles and
+decisions.
+
 `NativeEngine` (`core/language`, package `core.engine`) loads
 libwm_engine_jni once for every class that calls into it, on a device and in
 a JVM test alike. `NativeEngine.forceKotlin` pins the SIMD kernels to their

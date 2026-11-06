@@ -1,0 +1,255 @@
+---
+title: "Languages and engines"
+description: "Where glide words come from, how coverage and romanization decide whether a layout can glide, and what the built-in, FUTO and imported engines each do."
+sidebar:
+  label: "Languages and engines"
+  order: 27
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** Word-source selection, coverage, language profiles, romanized layouts,
+joiners and compounds, the three engines, and the build gates around them. **Not
+covered:** the scoring formula itself, which the
+[pipeline page](/development/glide-engine/pipeline/) owns.
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+
+## Word sources
+
+A glide is scored against the same sources typing uses, plus three glide-only
+sources:
+
+1. `walkSources()`: the active language's bundled or downloaded list, the
+   personal lexicon, imports and secondary languages, at the same weights typing
+   gives them.
+2. Trigger sources: snippets and personal-dictionary shortcuts that expand when
+   glided.
+3. Contraction sources: listed contractions the stroke can stand for.
+4. Apostrophe sources: words that differ only by an apostrophe, offered when the
+   user has not put an apostrophe key on the grid.
+
+On a phonetic layout the list is replaced by `RomanizedIndex.walkSources()`,
+because the stroke spells a romanization, not a word in the target script.
+
+<Mermaid
+	caption="How the sources for one decode are chosen. The romanization replaces the normal list entirely; it does not run beside it. Tiers are a sandbox filter over the normal list, not a second vocabulary."
+	chart={`
+flowchart TD
+  A["Decode request"] --> B{"Romanized layout?"}
+  B -- yes --> C["RomanizedIndex sources"]
+  B -- no --> D["walkSources"]
+  D --> E["Glide trigger sources"]
+  D --> F["Contraction sources"]
+  D --> G["Apostrophe sources"]
+  C --> H["Search"]
+  E --> H
+  F --> H
+  G --> H
+  H --> I["Post-processing"]
+`}
+/>
+
+## Coverage
+
+A layout that covers a tenth of a language does not fail loudly. It decodes
+strokes against the tenth it can reach and commits confident nonsense. The guard
+is empirical: take the language's most common words and count how many the grid
+can draw end to end.
+
+| Rule | Value |
+|---|---|
+| Words sampled per source | 1,500 |
+| Share the grid must spell | 0.90 |
+| Words shorter than this are ignored | 3 code points |
+| Punctuation the grid cannot draw | Excluded from the question, not counted as a failure |
+| Sources asked, in order | Romanization, the language's own lists, imports when it has none, secondary lists |
+
+The order matters. A secondary language's words are not the language's words. An
+import is not the language's list while the language has a list of its own. Each
+step down exists because the previous one was letting the wrong list vote.
+
+Coverage is asked when the language, layout or word-source epoch changes. It is
+not asked per stroke, and it is computed off the keyboard thread.
+
+## Language profiles
+
+`GlideBeam.Tuning` is fitted on English swipes. Two of its weights are a property
+of the language and its list rather than of the hand:
+
+- `freqWeight` controls how much a word's frequency counts against the stroke's
+  shape.
+- `gapWeight` controls how dearly a detour between two keys is charged.
+
+German's useful words are rare in every list. Its compounds sit at a median rank
+of 20,714 in a 150,000-word list, against 369 for the English words people swipe,
+so an English frequency weight outvotes the shape for German.
+
+| Profile | `freqWeight` | `gapWeight` | `joinCost` | `joinMinPart` | `joinPartPenalty` |
+|---|---|---|---|---|---|
+| Default | 1.0 | 1.33 | infinity | 3 | 0.0 |
+| German | 0.5 | 2.0 | 8.0 | 4 | 0.1 |
+
+The German profile was measured on 2,588 real German swipes from FUTO's public
+stroke set, plus 10,908 from HeliBoard's gesture data for rare words. Success per
+swipe, ordinary and rare:
+
+| Setup | Ordinary | Rare |
+|---|---|---|
+| Shipped | 71.41 | 21.95 |
+| `freqWeight` 0.5 | 73.69 | 30.46 |
+| `freqWeight` 0.5, `gapWeight` 2.0 | 74.27 | 32.51 |
+| The above, plus `joinCost` 8.0, 4-letter parts, penalty 0.1 | 74.61 | not reported |
+
+The same profile costs English about one point: 81.49 to 80.41 on 2,129 strokes.
+No single value wins both languages, which is why this is a profile and not a new
+default. A profile changes only the weights no setting reaches, so a user's radii
+and marks stay theirs.
+
+## Romanized layouts
+
+A converting layout normally refuses glide because a stroke would spell a
+reading, not a word. Five layouts are the exception.
+
+| Layout | What the stroke spells | How it becomes words |
+|---|---|---|
+| Avro (Bangla) | Latin romanization | `RomanizedIndex` resolves the spelling to Bengali candidates |
+| Hindi phonetic | Latin romanization | The Hindi phonetic index resolves the spelling |
+| Khipro | Latin keys for Bengali consonants | On-device Khipro spellings of the active Bangla lists |
+| Full Pinyin | Latin readings | Pinyin composer converts the reading |
+| Kana JIS | Kana readings | Kana composer converts the reading |
+
+Khipro gets its own file. `KhiproGlideSpellings` builds `khipro_glide.wmdict` on
+the phone the first time it is needed, in parallel chunks, from the active Bangla
+lists and the Khipro romanizer. The signature includes the version, the list size
+and a hash, so a change to either list rebuilds it. Khipro Dark glides on the
+same Classic spellings, because a Dark stroke cannot draw the `/` joins.
+
+Romanization is not free. The curated Avro index carries about 14,000
+hand-written spellings, weighted above the downloaded list. Later homophone
+alternatives lose 0.35 nats per position. Look-ahead is disabled on a phonetic
+layout: a guess would be counted in Latin characters the user never sees and
+applied to a word whose length has nothing to do with them.
+
+## Joiners and compounds
+
+The glide grid is letters only. `GlideJoiners` is the short closed list of
+characters a word may carry while the stroke steps over them without spending a
+sample:
+
+```text
+-  ‐  ‑  .  @  _  &  +  /  ZWNJ
+```
+
+The apostrophe is deliberately absent. It has its own key route and its own
+repair path, because contractions are exactly where a free skip does damage:
+`its` and `it's`, `were` and `we're`, `ill` and `i'll` are one stroke each.
+
+`isNonWord` filters list entries that are not words even though they use a
+joiner: an entry ending on a joiner (`can-`, `no.`) or a stutter (`n-no`,
+`t-that`). A word the user taught the keyboard is still glidable however it is
+spelled.
+
+Compounds are a separate mechanism. A finished part of at least `joinMinPart`
+letters may hand the rest of the stroke to a second word from the trie root, on
+the same alignment column, as if the list held the joined spelling. A joined word
+scores on the rarest part, pays `joinCost` per join, and maxes out at two joins,
+so three parts. The default cost is infinite, which means off. German is the only
+shipped profile that enables it.
+
+## Engines
+
+<Mermaid
+	caption="Engine choice is a property of the user setting, the language and the layout, not of the word. Every path that cannot answer returns null and the built-in engine reads the stroke."
+	chart={`
+flowchart LR
+  A["Stroke"] --> B{"User engine"}
+  B -- "built-in" --> C["GlideBeam"]
+  B -- "FUTO Swipe" --> D{"English and QWERTY?"}
+  D -- no --> C
+  D -- yes --> E{"Model and runtime present?"}
+  E -- no --> C
+  E -- yes --> F["NeuralGlide + CtcGlideBeam"]
+  B -- "Google library" --> G{"Imported and loaded?"}
+  G -- no --> C
+  G -- yes --> H{"Dictionary built for language?"}
+  H -- no --> C
+  H -- yes --> I["LatinImeGlide"]
+`}
+/>
+
+| Engine | Languages and layouts | What it adds | What it does not get |
+|---|---|---|---|
+| Built-in `GlideBeam` | Every language and layout with a source and a Rust twin | Language profiles, shape channel, loops, dwell, compounds, look-ahead, vocabulary cap | Nothing from the external engines |
+| FUTO Swipe `NeuralGlide` | English on a QWERTY frame | A neural encoder and CTC search | Non-English, non-QWERTY, and the built-in pause and wiggle readings |
+| Google `LatinImeGlide` | Any language with a dictionary built from the active lists | AOSP's gesture search and its own dictionary | Look-ahead, loops, dwell, shapes, vocabulary cap, a different deep search |
+
+Selection and refusal are separate. The service selects FUTO only for English on
+a QWERTY grid. The engine itself returns `null` for a non-QWERTY frame, a stroke
+below its minimum length, a missing model, a missing ExecuTorch runtime, or a
+failed inference. The Google engine returns `null` until its dictionary for the
+language is built. Every `null` sends the stroke to the built-in decoder. This
+section owns those selection and refusal rules.
+
+FUTO Swipe is about 3.9 MB of models, downloaded from FUTO's own Hugging Face
+repository under the FUTO Model Weights License, and run on ExecuTorch. The
+notice the license asks for is shown wherever the engine is selected, and the
+About screen credits it. On 5,000 real swipes from FUTO's MIT test set, over
+words the shipped English list holds, top-1 was 0.801 built-in against 0.957
+FUTO, and top-4 was 0.937 against 0.993. The built-in engine stays the default
+until that comparison holds on a phone.
+
+The Google library is the user's own import of `libjni_latinime.so`, accepted
+only as one of the builds pinned by SHA-256. It builds an AOSP dictionary from
+the active lists on its own thread, named by a fingerprint of the word set, and
+keeps the user's words in memory only. Until the dictionary is ready it returns
+`null`, and the built-in engine answers. The Google Play build compiles the
+loader out, because Play forbids loading executable code that did not come from
+Play.
+
+The evidence classes behind these comparisons, and the difference between a
+vendor benchmark and an internal measurement, are on
+[Research basis](/development/glide-engine/research/).
+
+## Build gates
+
+| Gate | Effect on glide | Where |
+|---|---|---|
+| `wmkb.enablePlayStore` | `:core:prediction` compiles `src/nouserlib` instead of `src/userlib`, so the Google library loader refuses every import | `core/prediction/build.gradle.kts` |
+| `wmkb.enableFdroid` | `:feature:ime` compiles `src/nogoogle` and carries no Google artifact | `feature/ime/build.gradle.kts` |
+| Native delivery | `libwm_engine_jni` ships in the base APK; the on-demand `executorch` gate carries the ExecuTorch runtime | `core/language`, `native/gates.json` |
+| Host tests | `:core:language:buildHostEngine` builds the JNI library for the JVM test tasks | `core/language/build.gradle.kts` |
+| FUTO models | Downloaded at runtime after the license dialog, not shipped in the APK | `GlideEngineSettings.kt` |
+| Google library | Imported at runtime, never downloaded by the app | `GlideEngineSettings.kt` |
+
+## Adding a language
+
+1. Make a word list available, bundled, downloaded or importable. English and
+   Bangla carry theirs; most languages need a download.
+2. Confirm the layout alphabet spells at least 90 percent of the top 1,500 words.
+   If not, glide stays off, and that is the correct outcome.
+3. If the layout converts, add a romanization path or a Khipro, Pinyin or Kana
+   path. A converting layout without one cannot glide.
+4. If the language compounds or its useful words are rare in the list, add a
+   `GlideLanguageProfiles` row. Measure it; do not copy German's numbers.
+5. Run the real-swipe evaluation and the parity tests before changing a weight.
+6. Add the language to the relevant test coverage, then update this page and the
+   verified line.
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| Source list | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt:1506` |
+| Coverage | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideCoverage.kt:63` |
+| Coverage caller | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt:1426` |
+| Profiles | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideLanguageProfiles.kt:94` |
+| Joiners | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideJoiners.kt:47` |
+| Khipro spellings | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/KhiproGlideSpellings.kt:104` |
+| Romanized index | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/RomanizedIndex.kt:42` |
+| Engine choice | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27055` |
+| Engine descriptions and FUTO measurement | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:1598` |
+| FUTO comparison numbers | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:1617` |
+| Readiness | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27756` |
+| Play gate | `core/prediction/build.gradle.kts:57` |
+| Native loading | `core/language/src/main/java/com/wasimaster/wmkeyboard/core/engine/NativeEngine.kt:35` |

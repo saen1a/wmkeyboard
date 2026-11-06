@@ -1,0 +1,310 @@
+---
+title: "Decode pipeline"
+description: "The data flow from touch samples to ranked words, the beam and CTC searches, the shape channel, and the post-processing every candidate passes."
+sidebar:
+  label: "Decode pipeline"
+  order: 23
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** The transformations between a raw pointer path and the candidate
+list that reaches the preview or the commit. **Not covered:** how the service
+decides whether a glide may start. That is the
+[IME integration page](/development/glide-engine/integration/).
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+
+## Data flow
+
+<Mermaid
+	caption="The decode pipeline. The left half normalizes and selects data. The middle is the search. The right half is ranking and display, and every stage there preserves or reshuffles candidates rather than inventing words."
+	chart={`
+flowchart LR
+  A["Pixel path + timestamps"] --> R{"Glide ready and source available?"}
+  R -- no --> T["Land as taps"]
+  R -- yes --> B["GlideOverhang.fold"]
+  B --> C["Source selection"]
+  C --> D{"External engine?"}
+  D -- yes --> E["GlideDecoder"]
+  E -- null --> F["GlideBeam"]
+  D -- no --> F
+  F --> G["Native beam or CTC"]
+  E --> H["Candidates"]
+  G --> H
+  H --> I["Apostrophe and contraction repair"]
+  I --> J["Context blend"]
+  J --> K["Language-model rerank"]
+  K --> L["Rank and outcome shifts"]
+  L --> M["Dedupe by spelling"]
+  M --> N["Leader slips"]
+  N --> O["Display form"]
+  O --> P["Look-ahead gate"]
+  P --> Q["Preview or commit"]
+`}
+/>
+
+| Stage | Input | Transformation | Output | Owner |
+|---|---|---|---|---|
+| Fold | Pixels and times | Clamp samples above the top letter row onto its edge | Same path, folded | `GlideOverhang` |
+| Sources | Active language, layout, tiers | Typing walkers plus trigger, contraction and apostrophe sources | `WalkSource` list | `SuggestionEngine` |
+| Engine choice | `externalGlide`, language, layout | Ask the chosen engine first, fall back on `null` | Candidate list | `GlideDecoder` |
+| Search | Resampled path, key map, sources | Beam or CTC walk over the tries | Scored candidates | `wm-engine` |
+| Repair | Candidate words | Put apostrophes back and offer listed contractions | Rewritten candidates | `SuggestionEngine`, service |
+| Context | Candidates, previous words | Blend the neural context model | Shifted scores | `SuggestionEngine` |
+| Rerank | Candidates, context | Reorder with the suggestion reranker | Reordered candidates | `SuggestionEngine` |
+| Personalize | Candidates | Add rank offsets and pairwise outcome nudges | Shifted scores | `SuggestionEngine` |
+| Dedupe | Candidates | One word per spelling, first wins | Unique candidates | `SuggestionEngine` |
+| Slips | Leader | Add up to two one-key neighbours, unscored | Strip candidates | `SuggestionEngine` |
+| Case | Candidates | Apply the board shift, then drawn shift crossings | Display words | `SuggestionEngine`, service |
+| Guess gate | Candidates, tier | Drop guesses that do not beat the best reading | Admitted candidates | `GlideGuessGate` |
+
+## The built-in beam
+
+The built-in decoder is a best-first search over the trie of every active word
+source, aligned to the resampled stroke. The Rust implementation lives in
+`native/wm-engine/src/glide/mod.rs`; the Kotlin `GlideBeam` holds the weights and
+the result types and calls across JNI.
+
+### 1. Resample the stroke
+
+The path is resampled to 48 points below 40 key widths, 64 points at 40, and two
+more points for every three key widths beyond 40, up to 96. A long compound
+crosses the board twice, so a fixed sample count undersampled the second half.
+The count is chosen from the arc length because the stroke is resampled before
+any word is known.
+
+### 2. Precompute the grid costs
+
+For every sample and every key, the decoder stores
+
+```text
+point_cost = min(maxPointCost, (dx^2 + dy^2) / (2 * sigma^2))
+```
+
+with `sigma` at 0.42 key widths and `maxPointCost` at 18. A key enters the near
+set when its cost is below `nearRadius^2 / (2 * sigma^2)`. The first and last
+samples additionally build a start mask and an end mask from `startRadius` and
+`endRadius`, with a slack band that forgives a near miss without forgiving a
+distant key.
+
+A stroke with an open end, one drawn from or to the spacebar, disables those
+anchors: the word may begin or end anywhere on the open run. That is how a
+chained multi-word stroke reads its first and last word correctly.
+
+### 3. Walk the tries
+
+<Mermaid
+	caption="The beam in one pass. The real loop also carries compound joins, look-ahead, and the shape channel; the shape of the search is this."
+	chart={`
+flowchart TD
+  S["Resample and precompute"] --> R["Push each trie root"]
+  R --> P["Pop the best state"]
+  P --> T{"Is this a word at the stroke end?"}
+  T -- yes --> E["Score and emit"]
+  T -- no --> C{"Joiner edge?"}
+  C -- yes --> J["Descend without spending stroke"]
+  C -- no --> N{"Key near and subtree above floor?"}
+  N -- yes --> X["Advance column and push child"]
+  N -- no --> P
+  E --> P
+  J --> P
+  X --> P
+`}
+/>
+
+A state is a trie node plus an alignment column. The column is the index of the
+sample where the next letter is placed. A child is reachable only when its key is
+in the near set and its alignment column can be reached from the parent's column.
+The search pops states in bound order, keeps a bounded frontier and stops on a
+pop budget; the exact budgets and their history are on the
+[testing page](/development/glide-engine/testing/#budgets). The bound carries the
+source weight, the best frequency in the subtree, the cheapest possible shape,
+and any join charge, so pruning does not discard a word that could still win.
+
+Two details matter for correctness.
+
+- **Joiner edges cost no stroke.** A hyphen, a dot, a ZWNJ, or another character
+  in `GlideJoiners` is on the trie edge but not on the grid. The walk descends
+  it without spending a sample, so `f-droid` is drawn as `fdroid` and returned
+  with its hyphen.
+- **A repeated letter can reuse the column.** A doubled letter reads as one key
+  visit. The walk charges `repeatCost` when the stroke does not loop on the key,
+  and `unloopedRepeat` on top. The loop is the evidence that the letter is
+  doubled.
+
+### 4. Score a finished word
+
+For a plain word, the score in nats is
+
+```text
+score = source.logWeight
+      + freqWeight * ln(1 + frequency)
+      - shapeWeight * shape
+      - joinCharge
+```
+
+and `shape` is
+
+```text
+shape = alignmentCost
+      + extraMarks
+      + unclaimedDwell
+      + unclaimedLoop
+```
+
+`alignmentCost` is the sum of the per-sample point costs for the placement.
+`extraMarks` carries repeat and joiner charges that the shape alone cannot show.
+`unclaimedDwell` charges a word that ignores a pause the finger made on a key.
+`unclaimedLoop` charges a word that ignores a loop drawn on a key. Both are
+evidence, not decoration: shape alone cannot separate `good` from `god`, `write`
+from `wrote`, or `not` from `nor`.
+
+For a compound, the joined word scores on the rarest part, each join adds
+`joinCost`, each part must be at least `joinMinPart` letters, and a part joined
+past pays `joinPartPenalty` on its own frequency. The default `joinCost` is
+positive infinity, so compounding is off outside a language profile that enables
+it. German enables it.
+
+## Weights
+
+| Weight | Default | What it trades |
+|---|---|---|
+| `sigma` | 0.42 key widths | How forgiving the path is around a key |
+| `maxPointCost` | 18.0 | Ceiling for one stray sample |
+| `gapWeight` | 1.33 | Disagreement between finger travel and key distance |
+| `gapWindow` | 32 samples | How far a placement may sit from its arc-length position |
+| `shapeWeight` | 0.5 | Shape against the language model |
+| `freqWeight` | 1.0 | Word frequency against shape |
+| `startRadius` | 1.6 key widths | How far the first sample may sit from the first key |
+| `endRadius` | 2.0 key widths | How far the last sample may sit from the last key |
+| `nearRadius` | 1.9 key widths | Whether a key is walked at all |
+| `repeatCost` | 0.8 | A doubled letter the stroke did not loop |
+| `unloopedRepeat` | 0.1 | Extra charge for an unmarked doubling |
+| `dwellFull` | 2.0 | How long a pause must be, relative to the stroke's pace |
+| `unclaimedDwell` | 0.9 | Charge for ignoring a pause |
+| `loopExtent` | 0.8 key widths | Widest loop that still means a doubled letter |
+| `loopMinArc` | 1.0 key width | Least path a loop must hold |
+| `loopRadius` | 0.6 key widths | How near a key's center the loop must sit |
+| `unclaimedLoop` | 1.1 | Charge for ignoring a loop |
+| `joinerCost` | 0.2 | Cost of stepping over a joiner |
+| `joinCost` | infinity | Cost per compound join; infinite means off |
+| `joinMinPart` | 3 letters | Shortest part a compound may use |
+| `vocabularyRank` | 0 | Frequency cap; 0 means every word |
+| `lookAheadCost` | 1.4 nats per letter | Charge for letters the stroke did not draw |
+| `lookAheadBudget` | 48 | Prefix states expanded into completions |
+| `learnedShapeGain` | 0.15 | How much a learned shape may forgive |
+| `shapeChannel` | 6.0 | Weight of the shape channel |
+| `shapeSeeding` | false | Whether stored shapes may seed words the walk missed |
+
+The German profile moves five of these on top of the user's tuning:
+`freqWeight`, `gapWeight`, `joinCost`, `joinMinPart`, and `joinPartPenalty`. The
+values, the rationale and the measured numbers are owned by the
+[languages profile table](/development/glide-engine/languages-and-engines/#language-profiles);
+[decision 4](/development/glide-engine/decisions/#4-german-gets-a-language-profile)
+records why.
+
+## The shape channel
+
+The ideal path through a word's key centers is not how a hand draws it. A thumb
+cuts corners, overshoots one key and undershoots the next, and does it the same
+way every time. `GlideShapeStore` keeps up to three such shapes per word by
+default, twenty at most, for the layout the stroke was drawn on.
+
+The channel has two jobs.
+
+1. **Compare.** A candidate with stored shapes is scored against the nearest one,
+   after both the drawn stroke and the stored shape are centered and scaled to
+   unit spread. The result is a mean distance in key widths, which the decoder
+   turns into a score benefit bounded by `learnedShapeGain`.
+2. **Seed.** When `shapeSeeding` is on, a stored shape near the drawn stroke may
+   name a word the trie walk did not reach. This is off by default because it
+   changes the search, not just the ranking.
+
+A decode with shapes crosses the JNI boundary twice. The first call walks and
+   returns the words the shape channel scores. Kotlin reads those words'
+shapes and calls `glideFinish` with them. That is why the shape store never has
+to cross the boundary: it stays in Kotlin, and the native side receives only
+byte arrays.
+
+## The CTC path
+
+`NeuralGlide` is the optional FUTO engine for English on a QWERTY grid. It
+replaces the beam's shape model with a neural encoder and keeps the same word
+tries.
+
+1. `SwipeFrame.fit` maps the actual key centers onto the model's QWERTY unit
+   square with one scale and offset per axis. A layout that moves letters to
+   another row fails the residual check, and the engine returns `null`.
+2. `SwipeFrame.features` puts the stroke on a 60 Hz clock, resamples it to 64
+   points, and clamps it to the unit square.
+3. The model returns log probabilities over `a..z` plus a blank, 27 classes per
+   step.
+4. `CtcGlideBeam` runs a beam search over the tries, width 100 ordinarily and
+   300 for a deep retry. A hypothesis may take the blank, descend to a child, or
+   repeat its own letter.
+5. A finished word scores as `path / L^lengthNorm + lengthBonus * L + freqWeight *
+   (logWeight + ln(1 + f))`, with FUTO's shipped weights. A loop on a key still
+   charges a word that does not double it, and learned shapes still apply. Pauses
+   and wiggles are left to the model, which reads timing for itself.
+
+The Kotlin CTC decoder that this replaced is kept in the test sources as
+`KotlinCtcGlideBeam`, and the parity test holds the Rust one to it.
+
+## Post-processing
+
+The search returns candidates. It does not return the words the user sees.
+
+1. **Apostrophes.** A glide cannot draw the apostrophe on a normal layout, so
+   listed contractions are offered behind the spelling that was drawn. When the
+   user assigned an apostrophe key, the drawn character restores the apostrophe
+   directly.
+2. **Blacklist.** Suppressed words are removed.
+3. **Context blend.** The neural context model scores the top pool, and each
+   finite score shifts the candidate by a clamped amount relative to the first
+   finite score. This is the step that reads the sentence, not the stroke.
+4. **Rerank.** The same reranker the suggestion strip uses reorders the pool
+   with the previous words, the recent words and the context.
+5. **Personal shifts.** `rankOffsets` and `GlideOutcomes` add nats to the
+   decoder's scores, bounded at +1.2 and -0.4. A hand-placed rank offset is ten
+   times the largest outcome nudge, so an explicit preference wins.
+6. **Dedupe.** One word per spelling, first wins, before the list is sliced.
+7. **Leader slips.** Up to two words one key off the leader join the strip from
+   slot three. They carry negative infinity, so a lift never types one and the
+   ambiguity picker never counts one.
+8. **Display form.** The keyboard's capitalization is applied after ranking,
+   because ranking matches on keys.
+9. **Guess gate.** If look-ahead produced prefixes, only guesses that beat the
+   best ordinary reading by the tier's margin survive.
+
+The service then offers apostrophes and contractions again against the field
+context, declares a contraction when the evidence supports it, and computes the
+close-call flag and the set of guesses it considers sure.
+
+## Complexity and budgets
+
+The search is bounded on four axes: sample count, frontier size, word length and
+pop count. The defaults are chosen so the bound is a backstop, not a regular
+exit. The exact budgets, and the history of the German frontier saturation, are
+owned by [Testing](/development/glide-engine/testing/#budgets). The shape-seeding
+scan is indexed by the key-sized cell where a shape starts, so it stays a local
+lookup instead of a full-store scan; the measured speedup is in the same budget
+section.
+
+The lineage from SHARK2 through probabilistic FST decoding to neural CTC, and
+where this engine diverges from each, is on
+[Research basis](/development/glide-engine/research/).
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| Fold | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideOverhang.kt:41` |
+| Decode orchestration | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt:1477` |
+| Post-decode order | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt:1617` |
+| Built-in weights | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideBeam.kt:109` |
+| Native score | `native/wm-engine/src/glide/mod.rs:692` |
+| Native costs | `native/wm-engine/src/glide/mod.rs:1182` |
+| Resampling | `native/wm-engine/src/glide/workspace.rs:6` |
+| CTC scoring | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/CtcGlideBeam.kt:58` |
+| Shape store | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideShapeStore.kt:111` |

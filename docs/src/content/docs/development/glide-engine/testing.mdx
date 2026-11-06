@@ -1,0 +1,155 @@
+---
+title: "Testing and evaluation"
+description: "The test layers that hold the glide engine, the real-swipe evaluation harness, the budgets, and the failure modes each layer covers."
+sidebar:
+  label: "Testing"
+  order: 28
+---
+
+**Scope.** What proves a glide change is correct: unit tests, native parity,
+real-stroke evaluation, service integration and the docs gate. **Not covered:**
+the general testing conventions of the repository.
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+
+## Test layers
+
+| Layer | What it proves | Examples |
+|---|---|---|
+| Pure unit | The weights, geometry, case and coverage rules behave as documented | `GlideBeamTest`, `GlideCaseTest`, `GlideShapeStoreTest`, `GlideCoverageImportedTest` |
+| Native parity | The Rust decoder reproduces the Kotlin reference, bit for bit | `NativeGlideParityTest`, `CtcGlideBeamTest`, `reference/KotlinGlideBeam`, `reference/KotlinCtcGlideBeam` |
+| Real-stroke evaluation | The decoder still meets a floor on strokes it did not fit | `GlideRealSwipeFloorTest`, `GlideTuningSweepTest`, `GlideKeyOffsetEvalTest` |
+| Policy evaluation | The sandbox, look-ahead and rerank policies do what their measurements claim | `GlideSandboxEvalTest`, `GlideSandboxSweepTest`, `GlideLookAheadEvalTest`, `GlideRerankOracleTest` |
+| Service integration | The lift, preview, picker, spacing, backspace and gating paths behave end to end | `GlideServiceHarness`, `GlideGatingTest`, `GlideCommitSpacingTest`, `GlidePickerStateTest` |
+| Native unit | The Rust crate's own long-word, join and frequency tests | `native/wm-engine/tests/glide_*.rs` |
+| House rules | The build keeps the rules a compiler cannot see | `:tools:architecture:test` |
+
+The parity tests are the safety net for the Rust rewrite: a change to the native
+search has to survive the Kotlin reference that the behavior was originally
+specified against. The real-stroke floor is the other safety net, because it
+catches a change that is locally reasonable and globally worse.
+
+## Commands
+
+```powershell
+# One Gradle module's unit tests
+./gradlew :app:testDebugUnitTest --tests "com.wasimaster.wmkeyboard.core.gesture.*"
+
+# The service-level glide tests
+./gradlew :feature:ime:testDebugUnitTest --tests "*Glide*"
+
+# The architecture rules
+./gradlew :tools:architecture:test
+
+# The Rust crate
+cargo test --manifest-path native/wm-engine/Cargo.toml
+
+# A reproducible decoder evaluation
+cargo run --release --manifest-path native/wm-engine/Cargo.toml --example glide_beam_eval
+
+# The docs site
+npm run build --prefix docs
+
+# Link check on PowerShell
+$env:CHECK_LINKS=1; npm run build --prefix docs
+```
+
+On a POSIX shell, the last line is `CHECK_LINKS=1 npm run build --prefix docs`.
+The package's `check` script assumes a POSIX shell, so it does not run unchanged
+on Windows.
+
+The JVM tests reach `libwm_engine_jni` through `:core:language:buildHostEngine`,
+so the Gradle tasks build the host library first. A test that fails to load the
+library is a build-order failure, not a decoder failure.
+
+The example binaries print their own arguments when run without any. They are the
+reproduction path for a tuning change, not a fixed benchmark.
+
+## What the evaluation harness covers
+
+| Harness | Corpus | Question it answers |
+|---|---|---|
+| `SwipeCorpus` and `GlideGrid` | Synthetic and recorded strokes, graded by noise | Does the decoder read the word the stroke was drawn for? |
+| `GlideRealSwipeEval` | A slice of FUTO's public swipe set | Does the change hold on real thumbs? |
+| `GlideTuningSweepTest` | The graded corpus | Where is each weight's plateau? |
+| `GlideSandboxSweepTest` | A synthetic user with a 2,000-word vocabulary | Does learned-only decoding help the words that user writes? |
+| `GlideLookAheadEvalTest` | Full strokes cut short at 40, 60 and 80 percent | Is the guess on screen the word that was meant? |
+| `glide_beam_eval` | FUTO's train and test split | What do the coordinate-descent weights do on held-out strokes? |
+| `glide_lm_blend_eval` | German swipes with a preceding word | Does the context blend move top-1? |
+| `ctc_glide_eval` | FUTO emissions and a word list | Does the CTC search match its reference? |
+
+The fitted defaults are not guesses. The built-in weights were fitted by
+coordinate descent over 35,928 FUTO strokes from 8,701 sessions, then checked on
+38,103 test-split strokes the fit never saw. Top-1 moved from 0.7982 to 0.8734
+and top-4 from 0.9358 to 0.9598 on the bundled English list. Those numbers are
+the reason a weight change needs a harness run, not an argument. The datasets,
+their selection bias and the calibration gap are on
+[Research basis](/development/glide-engine/research/).
+
+## Budgets
+
+| Resource | Bound | Why |
+|---|---|---|
+| Samples per stroke | 48 to 96 | Long compounds need more than 48; every stroke does not need 96 |
+| Frontier states | 8,192 | 3,072 saturated on long German strokes; 8,192 ends on the pop budget instead |
+| Pops | 2,000 | A backstop; floor pruning ends healthy walks earlier |
+| Word length | 32 letters | A 26-letter compound has to fit |
+| Candidate pool | 8, 16 deep | The strip cannot show more, and the rerank needs a little depth |
+| Shapes per word | 3 by default, 20 at most | A hand changes; a fixed average freezes |
+| Shape store | 10,000 words | Bounded memory on a phone |
+| Check-up records | 200 | Enough to fit and hold out, small enough to replay |
+
+The shape seeding scan is indexed by the key-sized cell where a shape starts.
+That turns the full-store scan into a 3x3 cell lookup, roughly 5.5 times faster,
+and it is why seeding can be considered at all on the decode thread.
+
+## Quality attributes and risks
+
+| Attribute | Mechanism | Risk if it fails | Owner |
+|---|---|---|---|
+| Accuracy | Real-stroke floor, parity, context rerank | A corpus shift rewards the wrong weight | This page, [pipeline](/development/glide-engine/pipeline/) |
+| Latency | Decode off the main thread, bounded frontier, preview generation guard | A late preview overwrites the strip; a long list blows the frame budget | [runtime](/development/glide-engine/runtime/) |
+| Memory | 2 to 3 MB frontier ceiling, 10,000-word shape cap, 500-entry reading buffer | Low-end devices pay for a long stroke | [state and data](/development/glide-engine/state-and-data/) |
+| Privacy | No network on the decode path; stores are local | `GlideOutcomes` and the shape store contain words, not anonymous counters | [state and data](/development/glide-engine/state-and-data/) |
+| Availability | Built-in engine is the fallback for every external engine | A missing native library or model must degrade to a word, not an error | [languages and engines](/development/glide-engine/languages-and-engines/) |
+| Maintainability | Kotlin reference and native parity tests | Constants drift silently between the two implementations | [decisions](/development/glide-engine/decisions/) |
+| Learnability | Shapes learn only after settlement | A wrong lesson is replayed on every future stroke of that word | [state and data](/development/glide-engine/state-and-data/) |
+
+## Failure modes
+
+| Symptom | Likely cause | First check |
+|---|---|---|
+| A swipe types the tapped letters instead of a word | Glide is not ready, or the layout converts | The missing-list chip, the composer type, the coverage |
+| A word commits but is the wrong one | Word list is too small, or the stroke is ambiguous | The alternates, the picker margin, the vocabulary cap |
+| The preview promises one word and the lift types another | Preview gate and final decode disagree | The steadiness tier and the final decode's leader |
+| A long word is impossible to swipe | The list lacks it, or the vocabulary cap hides it | `GlideVocabulary`, the compound profile, the deep retry |
+| Learning does not improve a word | The shape never settled, or learning is off | `learnSwipeStyle`, the learning buffer, `GlideShapeStore` |
+| The Google engine never answers | Library not imported or loaded, or dictionary still building | `LatinImeLibrary.status`, the dictionary thread |
+| The FUTO engine never answers | Not English, not QWERTY, model or runtime missing | The engine row's status, `SwipeFrame.fit` |
+| The keyboard is slower during a glide | Shape seeding, long stroke, or a huge list | The frontier, the shape store size, the vocabulary cap |
+
+## Changing the engine safely
+
+1. Reproduce the behavior in a test at the lowest layer that can show it. A
+   geometry bug goes in a pure test. A parity bug goes in the native reference.
+   A gating bug goes in the service harness.
+2. Run the parity tests and the real-stroke floor before and after.
+3. If a weight moves, run the sweep and say which corpus it moved on.
+4. If a policy moves, run its evaluation with the user model it is meant to
+   serve, not with a larger dictionary.
+5. Update the page that owns the behavior and the verified line.
+6. Run the docs build and link check if a documentation page changed. On
+   PowerShell, set `CHECK_LINKS=1` before `npm run build --prefix docs`.
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| Parity reference | `app/src/test/java/com/wasimaster/wmkeyboard/core/gesture/reference/KotlinGlideBeam.kt:1` |
+| Parity test | `app/src/test/java/com/wasimaster/wmkeyboard/core/gesture/NativeGlideParityTest.kt:1` |
+| Real-stroke floor | `app/src/test/java/com/wasimaster/wmkeyboard/core/gesture/eval/GlideRealSwipeFloorTest.kt:1` |
+| Service harness | `feature/ime/src/test/java/com/wasimaster/wmkeyboard/ime/GlideServiceHarness.kt:1` |
+| Native tests | `native/wm-engine/tests/glide_long_words.rs:1` |
+| Fit script | `native/bench/futo-swipe/fit_glide.py:1` |
+| Host engine task | `core/language/build.gradle.kts:58` |
+| Docs check | `docs/package.json:10` |

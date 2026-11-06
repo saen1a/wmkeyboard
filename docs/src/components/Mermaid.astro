@@ -1,0 +1,171 @@
+---
+/**
+ * A Mermaid diagram rendered on the client from the chart source in the
+ * component. The source stays on the page inside a disclosure, so a reader can
+ * copy it, and the caption is the diagram's text alternative.
+ *
+ * Usage in MDX:
+ *
+ *   <Mermaid
+ *     caption="One sentence that names the reading order."
+ *     chart={`
+ * flowchart LR
+ *   A["Touch"] --> B["Stroke"]
+ *     `}
+ *   />
+ */
+interface Props {
+	/** Mermaid source without the ```mermaid fence. */
+	chart: string;
+	/** Text alternative and visible caption. Required for accessibility. */
+	caption: string;
+}
+
+const { chart, caption } = Astro.props;
+const source = chart.trim();
+---
+
+<figure class="wm-diagram">
+	<div class="wm-mermaid" data-wm-mermaid aria-hidden="true"></div>
+	<p class="wm-diagram-error" data-wm-mermaid-error role="status" hidden></p>
+	<figcaption>{caption}</figcaption>
+	<details class="wm-diagram-source">
+		<summary>Diagram source</summary>
+		<pre><code>{source}</code></pre>
+	</details>
+</figure>
+
+<script>
+	import mermaid from 'mermaid';
+
+	let generation = 0;
+	let renderCount = 0;
+	let initializedTheme = '';
+	let visibilityObserver: IntersectionObserver | null = null;
+
+	const ensureInitialized = () => {
+		const theme = document.documentElement.dataset.theme === 'light' ? 'default' : 'dark';
+		if (initializedTheme === theme) return;
+		mermaid.initialize({
+			startOnLoad: false,
+			securityLevel: 'strict',
+			theme,
+			fontFamily: 'inherit',
+			flowchart: { htmlLabels: true, curve: 'basis', padding: 12 },
+			sequence: { useMaxWidth: true, wrap: true },
+			state: { useMaxWidth: true },
+			class: { useMaxWidth: true },
+		});
+		initializedTheme = theme;
+	};
+
+	const setError = (node: HTMLElement, message: string) => {
+		const errorNode = node
+			.closest('.wm-diagram')
+			?.querySelector<HTMLElement>('[data-wm-mermaid-error]');
+		node.dataset.rendered = 'error';
+		node.replaceChildren();
+		if (errorNode) {
+			errorNode.textContent = message;
+			errorNode.hidden = false;
+		}
+	};
+
+	const renderNode = async (node: HTMLElement, renderGeneration: number) => {
+		if (
+			node.dataset.rendered === 'true' ||
+			node.dataset.rendered === 'error' ||
+			node.dataset.wmMermaidQueued === 'true'
+		) {
+			return;
+		}
+		const figure = node.closest('.wm-diagram');
+		const source = figure?.querySelector('.wm-diagram-source code')?.textContent;
+		if (!source) return;
+
+		node.dataset.wmMermaidQueued = 'true';
+		try {
+			ensureInitialized();
+			const { svg } = await mermaid.render(
+				`wm-mermaid-${Date.now()}-${renderGeneration}-${renderCount++}`,
+				source,
+			);
+			if (renderGeneration !== generation) return;
+			node.innerHTML = svg;
+			node.dataset.rendered = 'true';
+			const errorNode = figure?.querySelector<HTMLElement>('[data-wm-mermaid-error]');
+			if (errorNode) errorNode.hidden = true;
+		} catch (error) {
+			if (renderGeneration !== generation) return;
+			setError(node, 'This diagram could not be rendered. Its source is below.');
+			console.error('Mermaid render failed', error);
+		} finally {
+			if (renderGeneration === generation) node.dataset.wmMermaidQueued = 'false';
+		}
+	};
+
+	const renderAllPending = async () => {
+		const nodes = Array.from(document.querySelectorAll<HTMLElement>('[data-wm-mermaid]'));
+		for (const node of nodes) await renderNode(node, generation);
+	};
+
+	const boot = () => {
+		visibilityObserver?.disconnect();
+		const nodes = Array.from(document.querySelectorAll<HTMLElement>('[data-wm-mermaid]'))
+			.filter((node) => node.dataset.wmMermaidBooted !== 'true');
+		if (nodes.length === 0) return;
+		nodes.forEach((node) => (node.dataset.wmMermaidBooted = 'true'));
+
+		if (!('IntersectionObserver' in window)) {
+			nodes.forEach((node) => void renderNode(node, generation));
+			return;
+		}
+
+		visibilityObserver = new IntersectionObserver(
+			(entries, observer) => {
+				for (const entry of entries) {
+					if (!entry.isIntersecting) continue;
+					observer.unobserve(entry.target);
+					void renderNode(entry.target as HTMLElement, generation);
+				}
+			},
+			{ rootMargin: '400px 0px' },
+		);
+		nodes.forEach((node) => visibilityObserver?.observe(node));
+	};
+
+	const rerender = () => {
+		generation += 1;
+		initializedTheme = '';
+		visibilityObserver?.disconnect();
+		const nodes = Array.from(document.querySelectorAll<HTMLElement>('[data-wm-mermaid]'));
+		if (nodes.length === 0) return;
+		nodes.forEach((node) => {
+			node.innerHTML = '';
+			node.dataset.wmMermaidBooted = 'true';
+			node.dataset.wmMermaidQueued = 'false';
+			node.dataset.rendered = '';
+			const errorNode = node
+				.closest('.wm-diagram')
+				?.querySelector<HTMLElement>('[data-wm-mermaid-error]');
+			if (errorNode) errorNode.hidden = true;
+		});
+		// A theme change is rare and already user-initiated; render every
+		// diagram rather than leaving the off-screen ones on the skeleton.
+		void renderAllPending();
+	};
+
+	const booted = window as Window & { __wmMermaidBooted?: boolean };
+	if (!booted.__wmMermaidBooted) {
+		booted.__wmMermaidBooted = true;
+		if (document.readyState === 'loading') {
+			document.addEventListener('DOMContentLoaded', boot, { once: true });
+		} else {
+			boot();
+		}
+		window.addEventListener('beforeprint', () => void renderAllPending());
+		new MutationObserver((mutations) => {
+			if (mutations.some((mutation) => mutation.attributeName === 'data-theme')) rerender();
+		}).observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] });
+	}
+</script>

@@ -1,0 +1,239 @@
+---
+title: "IME integration"
+description: "How the keyboard service samples a stroke, decides whether glide is allowed, applies the settings, commits the word and exposes the diagnostics."
+sidebar:
+  label: "IME integration"
+  order: 26
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** The `:feature:ime` side of the contract: pointer sampling, gating,
+settings, commit and diagnostics. **Not covered:** the decode itself, which the
+[pipeline page](/development/glide-engine/pipeline/) owns.
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+
+## Where a stroke enters
+
+Two pointer loops in `KeyboardScreen` own the raw touch stream. The one-finger
+loop samples the letter grid and arbitrates between a tap, a flick arm and a
+glide. The two-thumb loop keeps one `ThumbStroke` per finger, orders the
+gestures by time, and hands them to the service as a list.
+
+The service has four entry points on the path:
+
+| Entry | Caller | What it does |
+|---|---|---|
+| `onGesturePreview` | Pointer move | Enqueues a decode request with the current generation |
+| `onGesture` | Pointer up | Re-decodes, chooses the leader or the picker answer, commits |
+| `onGestureWords` | Chained or two-thumb stroke | Decodes each segment or token group and commits in order |
+| `captureGlide` | A keyboard-owned field has the keys | Decodes into the panel's own buffer and caret |
+
+The preview consumer is one coroutine for the life of the service. It checks
+`request.generation` before and after the decode, so a result from a stroke that
+already committed cannot republish. That check, not a cancel-and-relaunch per
+preview, is what keeps the strip stable.
+
+## Whether glide is allowed
+
+<Mermaid
+	caption="Two gates, in order. Readiness depends on the language, layout and word list. Permission depends on the field, the test mode, the capture target and the user's switch. A stroke that fails either gate never reaches the engine."
+	chart={`
+flowchart TD
+  A["Gesture"] --> B{"glideReady?"}
+  B -- no --> X["No glide"]
+  B -- yes --> C{"Typing test active?"}
+  C -- yes --> D{"The test's glide switch?"}
+  D -- no --> X
+  D -- yes --> H["Decode"]
+  C -- no --> E{"Capture target present?"}
+  E -- yes --> F{"Gesture typing on and target takes words?"}
+  F -- no --> X
+  F -- yes --> H
+  E -- no --> G{"Gesture typing on and field allows it?"}
+  G -- no --> X
+  G -- yes --> H
+`}
+/>
+
+### Readiness
+
+`startGlideReadinessWatcher` combines the language, the composer, the layout
+alphabet and a word-source epoch into one `GlideGate`, then asks
+`SuggestionEngine.glideCoverage` whether the grid can spell the language.
+
+- A layout that **converts** keystrokes into another script is refused, because a
+  stroke would spell a reading rather than a word.
+- A **phonetic** composer is the exception: Avro, Khipro, full Pinyin and Kana JIS
+  have a romanization, so the stroke is decoded against the romanized vocabulary
+  and the answer is mapped back.
+- The coverage threshold is 90 percent of the top 1,500 words per source.
+  Punctuation that no grid can draw is excluded from the question, so French
+  elisions do not switch glide off for a grid that spells 98 percent of its
+  letters.
+- A finished dictionary download bumps the source epoch and re-asks the question.
+  A language can start gliding a minute after the list arrives.
+
+### Permission
+
+- A typing test uses the test's own glide switch, because the word never reaches
+  the field behind the panel.
+- A keyboard-owned capture target uses the target's `takesWords` flag. The
+  calculator and converter keypads take no words.
+- A normal field uses `gestureTyping` plus the field's own allowance. Secure
+  fields and structured keypads skip glide the same way they skip autocorrect.
+  A URL bar is the exception: it accepts a glided word because people search from
+  it as often as they type an address.
+- Power saving can drop the trail without dropping glide, or drop gesture typing
+  entirely when the user asks it to.
+- A keyboard mode can override gesture typing and two-thumb typing for its field.
+
+## Settings
+
+All of these live in `GestureSettings`. The default is the shipped value; a mode
+can override a small subset of them.
+
+### Engine and vocabulary
+
+| Setting | Default | Effect |
+|---|---|---|
+| `engine` | `BUILT_IN` | Which decoder reads the stroke |
+| `vocabulary` | `LARGE` (300,000 words) | Frequency cap for the search; `ALL` means no cap |
+| `sandbox` | `NORMAL` | Whether the search may use only the user's learned words |
+| `lookAhead` | `OFF` | Whether a stroke may offer a word it has not finished spelling |
+| `commitColor` | `CONFIDENT` | Which word gets the strip's promise color |
+| `commitColorScope` | `STRIP_AND_PILL` | Which surfaces show that color |
+
+### Preview and picker
+
+| Setting | Default | Effect |
+|---|---|---|
+| `previewSteadiness` | `LIGHT` (0.6 nats, 90 ms) | How hard the shown word resists a challenger |
+| `ambiguityPicker` | on | Offer choices while the finger is still down |
+| `pickerDwellMs` | 350 ms | How long the finger must hold still |
+| `pickerSensitivity` | `CLOSE_CALLS` (1.1 nats) | How close the top two must be before the picker asks |
+| `pickerHoldToAsk` | on | A confident stroke still asks after twice the dwell |
+| `pickerChoices` | 3 | How many words the picker shows |
+| `wordPreview` | on | Draw the word pill above the fingertip |
+| `stripPreviewOnly` | off | Hold the strip to one word during the stroke |
+| `trailWidthDp` | 10 | Trail head width |
+| `trailDurationMs` | 350 | How long a trail point lives |
+| `trailOpacity` | 0.55 | Peak trail opacity |
+
+### Marks and tolerances
+
+| Setting | Default | Effect |
+|---|---|---|
+| `dwellFull` | [weights](/development/glide-engine/pipeline/#weights) | How long a pause reads as a deliberate mark |
+| `loopDouble` | on | Read a small circle as a doubled letter |
+| `loopMinArc` | [weights](/development/glide-engine/pipeline/#weights) | Least path a loop must hold |
+| `loopExtent` | [weights](/development/glide-engine/pipeline/#weights) | Widest loop that still means one key |
+| `loopRadius` | [weights](/development/glide-engine/pipeline/#weights) | How near the key center a loop must sit |
+| `wiggleDouble` | off | Read a back-and-forth as a doubled letter |
+| `apostropheKey` | off | Which key can be drawn as an apostrophe |
+| `possessiveKey` | off | Which punctuation key starts a possessive flick |
+| `shiftGlideCapitals` | on | A stroke through shift capitalizes |
+| `shiftGlideMode` | `WORD` | One crossing means the whole word or one letter |
+
+The three radius settings (`startRadius`, `endRadius`, `nearRadius`) are decoder
+weights with a user-facing switch. Their defaults and meaning are owned by the
+[weights table](/development/glide-engine/pipeline/#weights). The mark settings
+that show `weights` in the Default column point at the same table; this page owns
+the switch name and its effect, not a second numeric default.
+
+### Gestures and spacing
+
+| Setting | Default | Effect |
+|---|---|---|
+| `spaceGlideMultiWord` | on | A stroke across the spacebar starts the next word |
+| `twoThumbGlide` | off | Both thumbs may contribute to one word |
+| `twoThumbWordEnd` | `SPACE` | What finishes a two-thumb word |
+| `swipeContinuesTyped` | off | A swipe may finish letters already typed |
+| `autoSpaceAfterGlide` | on | Commit a space after the word |
+| `startThresholdSlop` | 2x touch slop | How far a press must travel to become a glide |
+| `postTypeCooldownMs` | 160 ms | Extra distance right after a tap |
+| `backspaceUndoesGlide` | on | One backspace removes the whole glided word |
+
+### Learning and diagnostics
+
+| Setting | Default | Effect |
+|---|---|---|
+| `learnSwipeStyle` | on | Keep shapes and pairwise corrections |
+| `shapesPerWord` | 3 | How many ways of drawing one word to keep; 20 at most |
+| `shapeSeeding` | off | Let stored shapes name words the walk missed |
+| `keptStrokes` | 24 | How many recent strokes stay searchable in a field |
+| `checkupMeasure` | off | Replay strokes and propose a weight change |
+| `frequencyWeight` | 0 | The user's override; 0 uses the language profile |
+| `searchAllChip` | off | Offer a full search on a word the sandbox could not answer |
+
+## Commit
+
+The lift path owns the field. It reads the shown word from the preview gate
+before the preview is retired, re-decodes the finished stroke, and chooses
+between the shown word and the finished strike's leader within the steadiness
+margin. Then it:
+
+1. Applies the board shift and the drawn shift crossings.
+2. Expands a snippet or a personal-dictionary shortcut if the word is a trigger.
+3. Restores the space before the word when the text before the caret needs one.
+4. Commits the word through the input connection.
+5. Adds the trailing space, unless the field or the word says otherwise.
+6. Arms the revert guard, records the statistic, pushes the word into the
+   learning buffer and attaches the shape sample.
+7. Publishes the alternates and the next-word suggestions.
+
+A punctuation mark typed straight after takes the trailing space back. A space
+press immediately after confirms it instead of doubling it. A backspace removes
+the word and its space together, unless `backspaceUndoesGlide` is off. The
+user-facing rules are in [Glide typing](/typing/glide-typing/).
+
+## Diagnostics
+
+| Surface | What it shows | How to reach it |
+|---|---|---|
+| `ImeTrace.GLIDE_DECODE` | A trace span around one decode | The keyboard's tracing tools |
+| Missing-list chip | The language has no list, or the layout cannot spell it | The suggestion strip, once per language |
+| Sandbox offer | Learned-only decoding is earning its place | The strip, after the ladder measures |
+| Glide check-up | Measured success, this hand's profile, one proposed change | Settings, typing, glide check-up |
+| `GlideCheckup.Report` | Strokes, current right count, proposal, confirmation | The settings repository |
+| `GlideSandboxLadder` | Accepted rung, declined rungs, hit-rate window | Settings or the store file |
+
+### Debugging a wrong word
+
+Work from the outside in.
+
+1. **Is glide ready?** Check the language's word list, the composer type and the
+   coverage. A converting layout or a missing list explains most reports.
+2. **Which engine?** The built-in engine, FUTO or the imported library. The
+   external engine returns `null` until its model or dictionary is ready.
+3. **Was the word a guess?** `GlideReading.guesses` and the `ahead` field on the
+   candidate. A guess is not a reading of the stroke.
+4. **Did the picker ask?** The close-call flag uses the leader to runner-up gap
+   in nats, not the shape cost.
+5. **Was the preview held?** The gate can keep a word that is no longer the
+   leader within the margin. That is intentional.
+6. **Was the word learned?** A shape is learned only after the word settles. A
+   backspace or a replacement rejects it.
+7. **Was the dictionary removed?** Under `PREFER_LEARNED` or `LEARNED_ONLY`, a
+   word outside the personal lexicon is unreachable by design. The deep retry
+   after an undo searches every word again.
+8. **Did a personal nudge move it?** Check `GlideOutcomes` and the rank offsets.
+9. **Did the check-up move a weight?** The check-up changes `vocabularyRank` or
+   `freqWeight`, never a geometric radius.
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| One-finger loop | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ui/KeyboardScreen.kt:19173` |
+| Two-thumb loop | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ui/KeyboardScreen.kt:22087` |
+| Readiness watcher | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27756` |
+| Permission gate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27710` |
+| Preview entry | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27863` |
+| Decode | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27105` |
+| Lift | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:29071` |
+| Commit space | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:29595` |
+| Check-up screen | `app/src/main/java/com/wasimaster/wmkeyboard/app/GlideCheckupScreen.kt:62` |
+| Check-up report | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:20066` |
+| Defaults | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:8063` |

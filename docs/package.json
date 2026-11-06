@@ -35,6 +35,7 @@
     "fengari-web": "^0.1.4",
     "fflate": "^0.8.3",
     "luaparse": "^0.3.1",
+    "mermaid": "^12.3.0",
     "opentype.js": "^2.0.0",
     "preact": "^10.29.8",
     "qrcode": "^1.5.4",

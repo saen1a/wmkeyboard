@@ -1,0 +1,170 @@
+---
+title: "Glide engine"
+description: "How one finger stroke across the letter grid becomes a ranked word: the decoders, the scoring, the preview, the commit and what the keyboard learns."
+sidebar:
+  label: "Overview"
+  order: 20
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+**Scope.** One finger path over the letter grid, from the first pointer sample to
+the committed word, including the optional neural and imported engines. **Not
+covered:** tap typing, handwriting recognition, the suggestion strip's general
+behavior, themes, or the add-on store.
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work
+at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see
+[Version and sync](#version-and-sync). Line numbers move; the class and
+function names are the stable reference.
+
+The glide engine turns a stroke into a word. A person drags a finger across the
+letter keys, the keyboard samples that path, and a search over the active word
+lists proposes the words the path could spell. The best proposal commits with a
+space, the next few wait on the strip as alternates, and the stroke teaches the
+keyboard how this person draws that word.
+
+The engine is deliberately boring at the edges. It does not own the text field,
+the layout, or the settings screen. It takes a path, a key map and a list of word
+sources, and it returns scored candidates. Everything that draws, commits or
+remembers sits on one side or the other of that contract.
+
+## What it does
+
+- **Decodes.** A stroke becomes ranked words through the built-in beam, a neural
+  CTC decoder, or an imported gesture library.
+- **Previews.** Every touch move can decode, and a steadiness gate holds the word
+  already on screen while the finger is still moving.
+- **Commits.** A lift commits the leader, or the word held under the finger with
+  the ambiguity picker, and adds the space the next word expects.
+- **Learns.** Settled words teach the personal lexicon, a per-word shape store,
+  pairwise corrections, and an optional per-user tuning check-up.
+- **Degrades.** A missing word list, a non-letter composer, a secure field, a
+  missing engine, or a locked device (direct boot) each turn glide off without
+  breaking typing.
+
+## Version and sync
+
+The glide-engine pages describe the code at commit `8f61dd563` plus the
+uncommitted shape-storage work in this worktree, verified on 2026-11-05. That
+commit is the `v0.6.4` release (`5bd3efa`) plus 22 local commits, not the
+`v0.6.5` tag.
+
+Upstream `v0.6.5` (`f0be26d`) is fetched but deliberately not merged: it is
+396 commits ahead of the common base and conflicts in `ContextModel.kt`,
+`SuggestionEngine.kt` and `native/wm-engine-jni/src/lm.rs`, where this worktree
+keeps its German WMLM work. `v0.6.5` does not touch `GlideShapeStore.kt` or the
+binary shape format, so the storage work described here does not depend on it.
+Re-check the merge decision before claiming `v0.6.5` anywhere.
+
+## Reading map
+
+<CardGrid>
+	<LinkCard
+		title="Context and containers"
+		description="Who the engine talks to, which modules carry the work, and where the JNI boundary sits."
+		href="/development/glide-engine/context/"
+	/>
+	<LinkCard
+		title="Components"
+		description="The decode façade, input trackers, preview gate, stores and the engine selection seam."
+		href="/development/glide-engine/components/"
+	/>
+	<LinkCard
+		title="Decode pipeline"
+		description="Touch samples to ranked words: normalization, beam search, CTC, shape channel and reranking."
+		href="/development/glide-engine/pipeline/"
+	/>
+	<LinkCard
+		title="Runtime"
+		description="Sequence diagrams for a swipe, a live preview, the ambiguity picker, commit and multi-gesture words."
+		href="/development/glide-engine/runtime/"
+	/>
+	<LinkCard
+		title="State and data"
+		description="Session states, core types, persisted stores, ownership and threading."
+		href="/development/glide-engine/state-and-data/"
+	/>
+	<LinkCard
+		title="IME integration"
+		description="How the service wires gestures, settings, gating, diagnostics and learning."
+		href="/development/glide-engine/integration/"
+	/>
+	<LinkCard
+		title="Languages and engines"
+		description="Word sources, coverage, romanization, language profiles, FUTO and the Google library."
+		href="/development/glide-engine/languages-and-engines/"
+	/>
+	<LinkCard
+		title="Testing"
+		description="Parity tests, real-swipe evaluation, the service harness, and the failure modes they cover."
+		href="/development/glide-engine/testing/"
+	/>
+	<LinkCard
+		title="Research basis"
+		description="Papers, datasets, open-source prior art and internal experiments, separated by evidence quality."
+		href="/development/glide-engine/research/"
+	/>
+	<LinkCard
+		title="Decisions"
+		description="The choices a future author would otherwise reverse, with the evidence behind them."
+		href="/development/glide-engine/decisions/"
+	/>
+	<LinkCard
+		title="Glossary"
+		description="The words this subsystem uses with a precise meaning."
+		href="/development/glide-engine/glossary/"
+	/>
+</CardGrid>
+
+## System at a glance
+
+The engine is a library inside the keyboard process. `:feature:ime` samples the
+stroke, `:core:prediction` ranks words, `native/wm-engine` runs the search, and
+the service commits. The C4 context and container views, including the optional
+engines and the JNI boundary, are on
+[Context and containers](/development/glide-engine/context/).
+
+The engine never writes text. `SuggestionEngine.glide` returns scored
+`GlideBeam.Candidate` values; the service wraps them in a `GlideReading` and owns
+the field, the space, the undo guard and the learning buffer. That split is why
+the same decode serves the final lift, the live preview, the ambiguity picker,
+the word drawn on the keys, and the check-up replay.
+
+## Key numbers
+
+This table is a summary. The [pipeline page](/development/glide-engine/pipeline/)
+owns the sampling and weights, the [testing page](/development/glide-engine/testing/)
+owns the budgets and caps, and the
+[languages page](/development/glide-engine/languages-and-engines/) owns coverage
+and the engines.
+
+| Quantity | Value | Where it comes from |
+|---|---|---|
+| Resampled points per built-in stroke | 48 below 40 key widths, 64 at 40, up to 96 for long words | `GlideWorkspace` |
+| Frontier states per built-in decode | 8,192 | `GlideWorkspace.MAX_STATES` |
+| Longest word the built-in decoder spells | 32 letters | `GlideWorkspace.MAX_WORD_LENGTH` |
+| Pop budget per search | 2,000 | `GlideBeam.MAX_POPS` |
+| Neural input | 64 points at 60 Hz, 27 classes | `SwipeFrame`, `SwipeEmissions` |
+| Neural beam width | 100, 300 for a deep retry | `NeuralGlide` |
+| Default vocabulary cap | 300,000 words, 0 means all | `GlideVocabulary.LARGE` |
+| Coverage needed to enable glide | 90 percent of the top 1,500 words | `GlideCoverage` |
+| Candidate pool before rerank | 8, 16 after a deep search | `SuggestionEngine` |
+| Stored shapes | 10,000 words, 3 per word by default, 20 at most | `GlideShapeStore` |
+| Ambiguity threshold | 1.1 nats between leader and runner-up | `SuggestionEngine.AMBIGUOUS_MARGIN` |
+| Imported engine result cap | 18 words | `LatinImeGlide.MAX_RESULTS` |
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| Decode entry point | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt:1477` |
+| Post-decode pipeline | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt:1617` |
+| Built-in decoder facade | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideBeam.kt:684` |
+| JNI calls | `native/wm-engine-jni/src/glide.rs:228` |
+| Service decode | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27105` |
+| Service gesture entry | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:29071` |
+| Store files | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:4682` |
+
+The user-facing behavior lives in [Glide typing](/typing/glide-typing/). This
+section explains how that behavior is built.

@@ -1,0 +1,165 @@
+---
+title: "Context and containers"
+description: "The glide engine's system context, its containers inside WM Keyboard, and the dependency direction between them."
+sidebar:
+  label: "Context and containers"
+  order: 21
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** The boundary between the glide engine, the rest of the keyboard, and
+the external systems it reads or loads. **Not covered:** the internals of the
+decoders, which the [pipeline page](/development/glide-engine/pipeline/) owns.
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+
+## System context
+
+<Mermaid
+	caption="C4 level 1. The person and the Android text field are outside the keyboard. The word lists, the context model and the learned stores are data the engine reads. FUTO Swipe and the Google library are optional engines the user installs."
+	chart={`
+flowchart LR
+  User["Person typing"] --> Keyboard["WM Keyboard"]
+  Keyboard --> Field["Android text field"]
+  Keyboard --> Sources["Word sources<br/>bundled, downloaded, imported"]
+  Keyboard --> Context["Context model<br/>n-gram and corpus"]
+  Keyboard --> Learned["Learned stores<br/>shapes, outcomes, sandbox, checkup"]
+  Keyboard -. "downloads once" .-> Futo["FUTO Swipe models<br/>Hugging Face"]
+  Keyboard -. "imports once" .-> Google["Google gesture library<br/>user file"]
+  Settings["Settings app"] --> Keyboard
+`}
+/>
+
+| Element | Type | Responsibility | When it is missing |
+|---|---|---|---|
+| Person typing | Person | Draws the stroke and chooses a candidate | Nothing decodes; taps still type |
+| Android text field | External system | Receives committed text and reports the caret | The service cannot commit; the stroke is dropped |
+| WM Keyboard | Software system | Samples touch, decodes, previews and commits | Not applicable |
+| Word sources | Data | The vocabulary a stroke is scored against | Glide is off for that language until a list is available |
+| Context model | Data and native code | Reranks the candidates against the previous words | Decode still works; context rerank is a no-op |
+| Learned stores | Data | Personal shapes, pairwise corrections, ladder and check-up evidence | Decode uses shipped defaults |
+| FUTO Swipe models | External model | Neural emissions for English QWERTY | The built-in decoder reads the stroke |
+| Google gesture library | External binary | AOSP gesture search over a dictionary built from the user's lists | The built-in decoder reads the stroke |
+| Settings app | Software system | Owns toggles and engine choice | The keyboard uses `SettingsDefaults` |
+
+## Containers
+
+<Mermaid
+	caption="C4 level 2. The engine is a library, not a service. The JNI bridge is the only native boundary on the decode path; the FUTO engine crosses into `:core:voice` for the ExecuTorch runtime."
+	chart={`
+flowchart TB
+  subgraph App["Application"]
+    SettingsApp[":app<br/>settings and check-up screens"]
+    Assets[":app assets<br/>layouts and dictionaries"]
+  end
+  subgraph Feature["Feature layer"]
+    IME[":feature:ime<br/>WMKeyboardService, KeyboardScreen"]
+  end
+  subgraph Core["Core layer"]
+    Prediction[":core:prediction<br/>SuggestionEngine, core.gesture, stores"]
+    Language[":core:language<br/>layout, key map, composers"]
+    Voice[":core:voice<br/>FUTO model and ExecuTorch"]
+    Settings[":core:settings<br/>settings model and DataStore"]
+  end
+  subgraph Native["Native"]
+    Jni["native/wm-engine-jni<br/>JNI bridge"]
+    Rust["native/wm-engine<br/>glide, ctc, duet, lm"]
+  end
+  Storage[("Learning files<br/>binary and JSON")]
+  Lists[("Word lists<br/>wmdict")]
+  Models[("FUTO model<br/>filesDir")]
+
+  SettingsApp -->|starts and configures| IME
+  SettingsApp -->|check-up| Prediction
+  SettingsApp -->|writes prefs| Settings
+  IME -->|decode request| Prediction
+  IME -->|layout and keys| Language
+  IME -->|FUTO model| Voice
+  IME -->|reads settings| Settings
+  Prediction -->|key map| Language
+  Prediction -->|JNI call| Jni
+  Jni -->|in-process call| Rust
+  Prediction -->|reads and writes| Storage
+  IME -->|bundled assets| Assets
+  Assets -->|word lists| Lists
+  Prediction -->|reads| Lists
+  Voice -->|model files| Models
+`}
+/>
+
+| Container | Technology | Responsibility | State it owns |
+|---|---|---|---|
+| `:app` | Kotlin, Compose | Settings screens, check-up screen, manifest, assets | Preferences and the check-up proposal card |
+| `:feature:ime` | Kotlin, Android `InputMethodService`, Compose | Pointer sampling, preview, picker, commit, learning buffer | The current session, `KeyboardUiState`, the preview gate |
+| `:core:prediction` | Kotlin | Word sources, decode orchestration, rerank, stores | `GlideShapeStore`, `GlideOutcomes`, `GlideSandboxLadder`, `GlideCheckup`, `KeyOffsets` |
+| `:core:language` | Kotlin | Layout resolution, `GlideKeyMap`, composers, native library loading | Per-layout derived data |
+| `:core:voice` | Kotlin, ExecuTorch | FUTO Swipe model lifecycle and inference | The loaded model |
+| `:core:settings` | Kotlin, DataStore | `GestureSettings` and the file paths for the stores | Persisted preferences |
+| `:core:common`, `:core:config` | Kotlin | Shared types and build-time configuration | None |
+| `native/wm-engine-jni` | Rust, JNI | Marshals the Kotlin call into the crate and back | Thread-local decoder handles |
+| `native/wm-engine` | Rust | The beam, CTC and duet searches, loops, workspace, LM | Per-thread workspaces and registries |
+
+## Dependency direction
+
+<Mermaid
+	caption="Module graph for the decode path. Every arrow is a compile-time dependency, so the relation is uniform and the edges are unlabeled. The native crate is reached only through the JNI bridge."
+	chart={`
+flowchart LR
+  app[":app"] --> ime[":feature:ime"]
+  app --> prediction[":core:prediction"]
+  app --> settings[":core:settings"]
+  ime --> prediction
+  ime --> language[":core:language"]
+  ime --> voice[":core:voice"]
+  ime --> settings
+  prediction --> language
+  prediction --> common[":core:common"]
+  prediction --> config[":core:config"]
+  language --> common
+  prediction --> jni["wm-engine-jni"]
+  jni --> rust["wm-engine"]
+`}
+/>
+
+Three rules hold this shape.
+
+- **The engine is a library.** `:core:prediction` never depends on `:app` or
+  `:feature:ime`. It takes a path, a key map, sources and a callback, and it
+  returns data. A change to the IME's UI cannot force a change in the decoder.
+- **The hot path runs in Rust.** `GlideBeam`, `CtcGlideBeam` and `DuetBeam` are
+  Kotlin façades over `PredictionNative`. The Kotlin beam that used to run here
+  survives only in the test sources as the parity reference.
+- **Shapes stay in Kotlin.** The user's learned shapes are read on the Kotlin
+  side and passed into the native finish phase. The
+  [pipeline page](/development/glide-engine/pipeline/) owns the two-call
+  consequence.
+
+## Where the seams are
+
+| Seam | Contract | Why it exists |
+|---|---|---|
+| `GlideDecoder` | Returns candidates or `null` to fall back to the built-in beam | Lets FUTO and the Google library plug in without the service knowing them |
+| `FuzzyBeamSearch.WalkSource` | A trie walker, a log weight and a tier; the frequency floor comes from the tuning's vocabulary rank | The same sources serve typing and gliding |
+| `GlideShapeSource` | Read-only shape lookups for one layout | Keeps a decode thread lock-free while the keyboard thread learns |
+| `GlideReading` | Words, scores, close-call flag, sandbox answer, guesses and sure set | One value feeds the strip, the pill, the picker and the commit |
+| `LearningBuffer.Entry` | A committed word waiting to settle | A shape or a preference is learned only if the word survives |
+
+The engine also relies on a package convention that the file tree hides:
+`com.wasimaster.wmkeyboard.core.gesture` lives under
+`core/prediction/src/main/java/`, not under `core/language`. The package is the
+API; the module is the build unit. See
+[module architecture](/development/architecture/) for the repository-wide
+version of this rule.
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| `core:prediction` dependencies | `core/prediction/build.gradle.kts:77` |
+| `feature:ime` dependencies | `feature/ime/build.gradle.kts:145` |
+| `app` dependencies | `app/build.gradle.kts:1255` |
+| Decoder interface | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideDecoder.kt:13` |
+| JNI bridge | `native/wm-engine-jni/src/glide.rs:228` |
+| Native modules | `native/wm-engine/src/glide/mod.rs:13` |
+| Native loading | `core/language/src/main/java/com/wasimaster/wmkeyboard/core/engine/NativeEngine.kt:35` |

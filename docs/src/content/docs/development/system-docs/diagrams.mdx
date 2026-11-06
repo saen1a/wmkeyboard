@@ -1,0 +1,115 @@
+---
+title: "Diagram guide"
+description: "Which Mermaid view answers which question, how to write it for review, and how it renders on this site."
+sidebar:
+  label: "Diagrams"
+  order: 42
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+A diagram is a claim about structure or behavior. Pick the view by the question
+the reader has, not by the shape that looks best.
+
+| Reader asks | View | Mermaid type | Lives on |
+|---|---|---|---|
+| Who uses this, and what does it talk to? | Context | `flowchart` | Context page |
+| Which units run the work? | Container | `flowchart` with subgraphs | Context page |
+| Which parts inside the unit carry the behavior? | Component | `flowchart` with groups | Components page |
+| What are the steps and branches of this process? | Flow | `flowchart` | Pipeline page |
+| Who calls whom, in what order, for this scenario? | Sequence | `sequenceDiagram` | Runtime page |
+| What states can a session be in? | State | `stateDiagram-v2` | State page |
+| What are the types and their relationships? | Class | `classDiagram` | Data page |
+| What depends on what? | Dependency | `flowchart LR` | Components or context page |
+
+## A live flow example
+
+<Mermaid
+	caption="A pointer becomes a glide only after it travels past the claim distance. The decision is a gate, not a score."
+	chart={`
+flowchart LR
+  A["Pointer down"] --> B{"Traveled past claim distance?"}
+  B -- yes --> C["Glide candidate"]
+  B -- no --> D["Key press"]
+  C --> E{"Any word source available?"}
+  E -- yes --> F["Decode"]
+  E -- no --> G["Land as taps"]
+`}
+/>
+
+## A live sequence example
+
+<Mermaid
+	caption="One preview frame: the UI never decodes, and the service never draws. The engine is the only place that ranks words."
+	chart={`
+sequenceDiagram
+  actor User
+  participant Grid as Key grid
+  participant Service as IME service
+  participant Engine as Glide engine
+  User->>Grid: drag across letters
+  Grid->>Service: gesture preview
+  Service->>Engine: decode(path, keys)
+  Engine-->>Service: ranked candidates
+  Service-->>Grid: preview words
+  User->>Grid: lift
+  Grid->>Service: commit gesture
+  Service->>Service: commit word and space
+`}
+/>
+
+## Writing a diagram
+
+Use the `Mermaid` component from `@components/Mermaid.astro`. Pass the source in
+a template literal and give the figure a caption.
+
+````mdx
+<Mermaid
+  caption="One sentence that names the reading order."
+  chart={`
+flowchart LR
+  A["Input"] --> B["Transform"]
+  B --> C["Output"]
+`}
+/>
+````
+
+The component renders on the client, keeps the source in a disclosure under the
+figure, and re-renders when the site theme changes. The source is part of the
+page, so a reviewer can read the diff without opening an image.
+
+## House style
+
+- **Name the scope in the caption.** "One preview frame", not "architecture".
+- **Put the entry point on the left and the outcome on the right** for flows.
+  For sequences, put the actor first.
+- **Label decisions with the question, not the answer.** `{"Word list ready?"}`
+  is checkable. `{"Good"} ` is not.
+- **Label arrows that cross a boundary** with the data or call that crosses it.
+  An unlabeled arrow into storage is the most common documentation bug.
+- **Show the failure path.** A diagram with only the success path hides the
+  behavior a maintainer needs at 2 a.m.
+- **Keep one question per diagram.** If the caption needs "and", split it.
+- **Avoid color as the only signal.** The site has a light and a dark theme.
+  Use labels and shapes first.
+
+## Accessibility
+
+- Write the caption as the diagram's text alternative. It should make sense
+  without the image.
+- Keep the Mermaid source in the disclosure. A screen reader, a copy-paste, and
+  a future author all get the same text.
+- Do not put a paragraph of explanation inside a node. Put it in the prose.
+- If a diagram needs a legend, put the legend in the caption or the surrounding
+  table, not in a floating box.
+
+## Validation
+
+The diagram is valid when all of these hold.
+
+1. `npm run build` in `docs/` succeeds.
+2. The page loads with every diagram drawn and no console error from
+   `Mermaid render failed`.
+3. The source in the disclosure matches the drawing.
+4. Every element name appears in the page's component or container table.
+5. The diagram still reads in the light theme.

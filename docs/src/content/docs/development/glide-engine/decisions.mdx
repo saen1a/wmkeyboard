@@ -1,0 +1,291 @@
+---
+title: "Decisions"
+description: "The glide engine's architecture decisions in MADR form: the context, the options, the outcome and the evidence that would reopen each one."
+sidebar:
+  label: "Decisions"
+  order: 31
+---
+
+**Scope.** Decisions that a future author would otherwise reverse without seeing
+the evidence. **Not covered:** every implementation choice. If a choice has no
+consequence beyond one file, it belongs in a code comment.
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync). The
+decisions predate this record. The dates below are the best evidence in the code
+and the issue history, not minutes from a meeting.
+
+The prior work behind these decisions, and the evidence class of each source, is
+mapped on [Research basis](/development/glide-engine/research/).
+
+## 1. The hot path runs in Rust, with a Kotlin reference
+
+- **Status:** accepted
+- **Date:** before 2026-10
+- **Related:** [pipeline](/development/glide-engine/pipeline/), [testing](/development/glide-engine/testing/)
+
+**Context.** A beam search over several word tries runs on every touch move. The
+original decoder was Kotlin. A long-word search saturated its frontier on every
+stroke, and the pool grew to about 2 MB of columns on a long stroke.
+
+**Decision drivers.** Per-stroke latency, allocation churn, the ability to share
+the engine with the desktop app, and the need to keep the behavior reviewable.
+
+**Considered options.**
+
+1. Keep the Kotlin decoder and optimize it in place.
+2. Move the search to Rust and keep Kotlin as the façade and the reference.
+3. Move the whole engine, including stores and Android types, to Rust.
+
+**Decision outcome.** Option 2. `GlideBeam`, `CtcGlideBeam` and `DuetBeam` are
+Kotlin façades. The search, workspace, loop scan and key map live in
+`native/wm-engine/src/glide`. The old Kotlin decoder stays in the test sources as
+the parity reference.
+
+**Consequences.** The decode path has one JNI boundary and two-phase decoding
+when shapes are used, as the [pipeline page](/development/glide-engine/pipeline/)
+describes. The Rust crate can be tested without Android. The cost is
+that every native change needs a parity test, and the Kotlin and Rust constants
+must stay in step.
+
+**Confirmation.** `NativeGlideParityTest` and `CtcGlideBeamTest` compare the two
+implementations. A new native change that cannot pass them is not ready.
+
+## 2. Glide shares the typing word sources and the typing reranker
+
+- **Status:** accepted
+- **Date:** before 2026-10
+- **Related:** [languages](/development/glide-engine/languages-and-engines/)
+
+**Context.** Glide once ran on its own flat English list. A learned word reached
+the suggestion strip immediately but the swipe decoder only after a cache
+rebuild, and no language beyond English could glide at all.
+
+**Decision drivers.** One vocabulary, one ranking contract, and no cache that can
+disagree with the strip.
+
+**Considered options.**
+
+1. Keep a separate glide dictionary and rebuild it when the lexicon changes.
+2. Build glide sources from `walkSources()` and reuse the strip's reranker.
+
+**Decision outcome.** Option 2. A glide gets the same bundled, downloaded,
+imported, personal and secondary sources typing uses, at the same weights. The
+same context reranker runs afterwards.
+
+**Consequences.** Whatever the user can type, they can swipe. A source that cannot
+provide a Rust twin cannot glide, which is why every keyboard-built walker has
+one. The cost is that a glide now depends on the same source-selection rules as
+typing, including their bugs.
+
+**Confirmation.** `GlideCrossSourceDedupeTest`, the coverage tests, and the
+absence of a separate glide cache in the service.
+
+## 3. A shape is learned only after the word settles
+
+- **Status:** accepted
+- **Date:** before 2026-10
+- **Related:** [state and data](/development/glide-engine/state-and-data/)
+
+**Context.** A glide commits a guess. If the keyboard learned the shape at
+commit, a word the user immediately backspaced or replaced would teach the wrong
+shape and the wrong spelling.
+
+**Decision drivers.** The cost of a wrong lesson is paid on every future stroke
+of that word. A shape is small and long-lived.
+
+**Considered options.**
+
+1. Learn at commit, and reject on undo.
+2. Attach the shape to the learning buffer and learn only when the word settles.
+3. Never learn shapes automatically; ask the user to confirm.
+
+**Decision outcome.** Option 2. `LearningBuffer` carries the shape from commit to
+settle. A backspace or a replacement rejects the matching shape instead.
+
+**Consequences.** A learned shape is evidence of a word the user kept, not a word
+they saw. The buffer adds a small delay between the commit and the lesson. A
+field that never settles loses the shape, which is the correct failure.
+
+**Confirmation.** `GlideShapeStoreTest`, `GlideEarlyLiftLearningTest`, and the
+`learnGlideShape` call site, which runs only from settlement.
+
+## 4. German gets a language profile
+
+- **Status:** accepted
+- **Date:** 2026-10
+- **Related:** [languages](/development/glide-engine/languages-and-engines/)
+
+**Context.** The decoder weights were fitted on English. German compounds are
+rare in a frequency list, so a frequency weight fitted on English outvotes the
+stroke shape for German. The same sweep showed that no single frequency weight
+serves both languages.
+
+**Decision drivers.** Real German swipes, ordinary and rare words, without
+regressing English.
+
+**Considered options.**
+
+1. Change the global default to a compromise.
+2. Add a per-language profile for frequency and gap, and a compound reading.
+3. Ask the user to tune the weights by hand.
+
+**Decision outcome.** Option 2. German moves the frequency and gap weights and
+enables a compound reading with a minimum part length and a join charge. Every
+other language keeps the shipped defaults. A profile changes only the weights no
+setting reaches. The exact values are in the
+[languages profile table](/development/glide-engine/languages-and-engines/#language-profiles).
+
+**Consequences.** German gains on both ordinary and rare words in the measured
+set; the same table shows the cost to English, which is why the profile is not
+applied to it. The cost is a second set of numbers to keep documented.
+
+**Confirmation.** The measured table on the
+[languages page](/development/glide-engine/languages-and-engines/) and the
+`GlideLanguageProfilesTest`. A new compounding language needs its own run.
+
+## 5. Look-ahead ships off, in confidence tiers
+
+- **Status:** accepted
+- **Date:** 2026-10
+- **Related:** [pipeline](/development/glide-engine/pipeline/)
+
+**Context.** A normal swipe decoder anchors the last letter to the last sample,
+so a long word cannot appear until the finger reaches its end. Early prediction
+lifts that anchor for a prefix, but the guess is wrong more often than right
+until most of the word is drawn.
+
+**Decision drivers.** A wrong guess is a word shown, not a word typed. A
+flickering guess is worse than no guess. The feature changes what a lift types.
+
+**Considered options.**
+
+1. Ship it on with one threshold.
+2. Ship it off, with `CONFIDENT` and `EAGER` tiers and a separate color promise.
+3. Never offer guesses.
+
+**Decision outcome.** Option 2. `GlideLookAhead` defaults to `OFF`. `CONFIDENT`
+requires a 4.0-nat lead over the best ordinary reading; `EAGER` requires 1.0.
+`GlideGuessGate.admit` enforces the margin, and the preview gate applies on top.
+
+**Consequences.** People who want the feature get it, and people who do not never
+see a guess. A guess that survives the gate may still lead, which is the point,
+and the strip color says whether the decoder is sure.
+
+**Confirmation.** `GlideLookAheadEvalTest` and `GlideGuessGateTest`. The measured
+accuracy table is in `GlideLookAhead`'s documentation.
+
+## 6. Learned-only decoding is a measured opt-in
+
+- **Status:** accepted
+- **Date:** 2026-10
+- **Related:** [languages](/development/glide-engine/languages-and-engines/), [state and data](/development/glide-engine/state-and-data/)
+
+**Context.** Most people write with a few thousand words. Once the keyboard has
+learned them, the dictionary is mostly competition. On a synthetic user whose
+2,000-word vocabulary is the personal lexicon, learned-only decoding improved
+top-1 on the words they write from 0.9188 to 0.9750, and scored zero on words
+they had not written.
+
+**Decision drivers.** A large gain on the common case, a total loss on the rare
+case, and no way to know which case a user is in without measuring.
+
+**Considered options.**
+
+1. Make learned-only the default.
+2. Offer it as a setting.
+3. Offer it as a setting with an automatic ladder that measures the user first.
+
+**Decision outcome.** Option 3. `GlideSandbox` defaults to `NORMAL`. The ladder
+offers `PREFER_LEARNED` at 800 lexicon words, then `LEARNED_ONLY` after 200
+strokes at a 95 percent hit rate. The user accepts or declines each rung. A
+declined rung is never offered again.
+
+**Consequences.** The gain is opt-in and reversible. The ladder adds two store
+fields and a chip. The deep retry after an undo is the escape hatch for a word
+the sandbox does not hold.
+
+**Confirmation.** `GlideSandboxEvalTest`, `GlideSandboxSweepTest` and
+`GlideGuessGateTest`. The synthetic-user numbers are in `GlideSandboxPolicy`.
+
+## 7. External engines are pluggable, and `null` means fall back
+
+- **Status:** accepted
+- **Date:** before 2026-10
+- **Related:** [components](/development/glide-engine/components/)
+
+**Context.** FUTO Swipe is much more accurate on English QWERTY than the built-in
+decoder, and Google's library is the only way some users want to glide. Neither
+covers every language, layout, build or device state.
+
+**Decision drivers.** Accuracy where an engine is strong, no dead end where it is
+weak, and a build that can exclude code it may not load.
+
+**Considered options.**
+
+1. Replace the built-in decoder with the best external engine.
+2. Run every engine and merge the results.
+3. Ask the selected engine first, and let `null` mean the built-in decoder takes
+   the stroke.
+
+**Decision outcome.** Option 3. `GlideDecoder` is the seam. The service selects
+FUTO only for English on QWERTY; the engine returns `null` for a non-QWERTY
+frame, a short stroke, a missing model, or a failed inference. The Google engine
+returns `null` until its dictionary is built. The service never has to know
+which engine answered. Selection and refusal are owned by
+[Languages and engines](/development/glide-engine/languages-and-engines/#engines).
+
+**Consequences.** The built-in decoder stays the default and the safety net. The
+external engines do not get every built-in feature: the Google library has no
+look-ahead, loops, shapes or vocabulary cap. That is documented on the
+[languages page](/development/glide-engine/languages-and-engines/).
+
+**Confirmation.** The engine tests and the service path: an external `null` is
+followed by a built-in decode, not an error.
+
+## 8. The preview steadies the display and the commit together
+
+- **Status:** accepted
+- **Date:** 2026-10
+- **Related:** [runtime](/development/glide-engine/runtime/)
+
+**Context.** A glide re-decodes on every touch move. Early in a stroke the leader
+is genuinely unstable, and a strip that churns several times a second breaks the
+motor flow the preview exists to support. A gate that steadied the display while
+the lift typed a different word would replace a visible annoyance with an
+invisible one.
+
+**Decision drivers.** Display and commit must agree. A word that drops out of the
+reading must be replaced at once. Scores from two frames are not comparable.
+
+**Considered options.**
+
+1. Publish every reading raw.
+2. Hold the shown word with a minimum display time and a margin, and let the same
+   held word win a lift within that margin.
+3. Steady the display only.
+
+**Decision outcome.** Option 2. `GlidePreviewGate` holds the leader for
+`holdMs`, requires a challenger to beat it by `margin` nats within the current
+reading, and makes `commit` prefer the shown word while the final decode still
+ranks it within the margin.
+
+**Consequences.** The preview is calmer and the lift keeps its promise. A
+confident challenger can still take over, and a word that is no longer a reading
+leaves immediately. The cost is one more state machine on the stroke path.
+
+**Confirmation.** `GlidePreviewGateTest` and the service preview tests. The
+default is `LIGHT`: 0.6 nats and 90 ms.
+
+## Source anchors
+
+| Decision | Anchor |
+|---|---|
+| Rust decode | `native/wm-engine/src/glide/mod.rs:1` |
+| Kotlin façade | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideBeam.kt:84` |
+| Shared sources | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt:1506` |
+| Shape settlement | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/LearningBuffer.kt:149` |
+| German profile | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideLanguageProfiles.kt:86` |
+| Look-ahead tiers | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:1583` |
+| Sandbox ladder | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/GlideSandbox.kt:312` |
+| Engine seam | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideDecoder.kt:13` |
+| Preview gate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/GlidePreviewGate.kt:46` |

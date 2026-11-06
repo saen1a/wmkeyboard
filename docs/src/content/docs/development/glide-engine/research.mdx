@@ -1,0 +1,207 @@
+---
+title: "Research basis and prior work"
+description: "The papers, datasets, open-source projects and internal experiments behind the glide engine, separated by evidence quality."
+sidebar:
+  label: "Research basis"
+  order: 29
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** The external research and internal experiments that explain the
+engine's design, the claims each source can support, and the questions this
+documentation cannot answer. **Not covered:** the implementation itself, which
+the [pipeline page](/development/glide-engine/pipeline/) owns.
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync). External
+sources were checked live on 2026-11-05. They are cited by ID and listed with
+their status on the [references page](/development/glide-engine/references/).
+
+## The engine in research terms
+
+The glide engine is a **hybrid shape-and-lexicon decoder**, not one end-to-end
+neural model:
+
+- a shape and location model proposes words from a shared trie of the same
+  sources typing uses;
+- a best-first beam scores the alignment of the stroke to each candidate;
+- an optional neural encoder and CTC beam replace the shape model for one
+  supported configuration;
+- a context model and the suggestion reranker reorder the finished candidates;
+- a small set of learned stores personalizes the shapes, the hand offset and the
+  pairwise corrections;
+- a preview gate and a dwell picker handle the confidence problem with score
+  margins and time, not with a calibrated word posterior.
+
+That is closest to the SHARK2 lineage plus a probabilistic beam decoder in the
+FST-decoder line, with an optional neural path. It is not a pure template
+matcher, not a pure neural transducer, and not a clone of Gboard.
+
+<Mermaid
+	caption="A lineage, not a call graph. The engine inherits the shape channel from SHARK2, the search discipline from probabilistic keyboard decoding, and the optional neural path from CTC work. The LM and personalization layers are later additions."
+	chart={`
+flowchart LR
+  R["Rubine 1991<br/>feature gestures"] --> S["SHARK2 2004<br/>shape + location"]
+  S --> Z["Zhai 2012<br/>N-best word gestures"]
+  S --> P["Probabilistic decoding<br/>Li 2010, Ouyang 2017"]
+  P --> N["Neural + CTC<br/>Alsharif 2015, FUTO 2026"]
+  Z --> E["WMK glide engine<br/>trie beam + shape store"]
+  P --> E
+  N --> E
+  E --> L["LM, rerank and personalization<br/>context blend, shapes, outcomes"]
+`}
+/>
+
+## Prior-work map
+
+| Layer | Prior work | Idea | What this engine uses | Where it differs |
+|---|---|---|---|---|
+| Shape and location | [Rubine 1991](/development/glide-engine/references/#rubine1991), [SHARK2 2004](/development/glide-engine/references/#kristensson2004), [Kristensson 2005](/development/glide-engine/references/#kristensson2005), [Zhai 2012](/development/glide-engine/references/#zhai2012) | Resample the stroke, compare it with word templates, combine a shape channel with a location channel, and return N-best candidates | Resampling, a shape channel, location tolerance, N-best output, word frequency | The engine searches a trie with a beam over shared typing sources. It does not exhaustively score every template, and its shape channel is a learned per-user store rather than only a lexicon template |
+| Probabilistic search | [Li 2010](/development/glide-engine/references/#li2010), [Ouyang 2017](/development/glide-engine/references/#ouyang2017) | Treat the stroke as evidence over character sequences, prune the search, and score with a lexicon and a language model | Best-first beam, candidate scoring, pruning by start and end anchors, a frequency prior | The engine uses its own Rust beam over a character trie, not an FST composition; it also carries dwell, loop and shape marks |
+| Neural and CTC | [Graves 2006](/development/glide-engine/references/#graves2006), [Alsharif 2015](/development/glide-engine/references/#alsharif2015), [Biju 2020](/development/glide-engine/references/#biju2020), [FUTO 2026](/development/glide-engine/references/#futo2026), [FUTO model card](/development/glide-engine/references/#futo-model) | Learn character evidence from the stroke and decode it with a lexicon | An optional CTC emission path and a lexicon beam | The integrated path pairs FUTO's layout-agnostic `honorable_sturgeon` encoder with the English QWERTY `magic_macaw` decoder. The context LM is not downloaded, and the service still gates on English and QWERTY |
+| Language model and rerank | [Zhang 2024](/development/glide-engine/references/#zhang2024), [Hard 2018](/development/glide-engine/references/#hard2018), [Adhikary 2023](/development/glide-engine/references/#adhikary2023), [Sivek 2022](/development/glide-engine/references/#sivek2022), [Kim & Rush 2016](/development/glide-engine/references/#kimrush2016), [Hinton 2015](/development/glide-engine/references/#hinton2015) | Use a language model to reorder the candidate list; personalize the model or the spatial model on device | Context blend, bounded score shifts, per-user shape and hand stores, internal WMLM experiments | The engine does not use federated learning, does not export raw text, and does not train in the background. Its context blend is a bounded rerank, not a second decoder |
+| Confidence and ambiguity | [Guo 2017](/development/glide-engine/references/#guo2017) | Calibrate a model's scores before using them as confidence | A leader-to-runner-up margin, a steadiness gate, a dwell picker, and look-ahead tiers | The engine's nat scores are not calibrated posteriors. The thresholds are product choices; calibration is an open question |
+| Human factors and evaluation | [Palin 2019](/development/glide-engine/references/#palin2019), [Reyal 2015](/development/glide-engine/references/#reyal2015), [Leiva 2021](/development/glide-engine/references/#leiva2021), [Soukoreff 2003](/development/glide-engine/references/#soukoreff2003) | Measure speed, errors, OOV behavior and keystroke savings on real people | Top-1/top-4 accuracy, word error rate, keystroke savings, and the distinction between in-vocabulary and OOV results | The engine has no published user study. Its numbers are decoder measurements on donated swipes, not typing speed or learnability findings |
+| Movement models | [Quinn 2016](/development/glide-engine/references/#quinn2016) | Model gesture movements to synthesize and evaluate traces | The evaluation design separates real swipes from synthetic traces | The real-swipe floor uses recorded strokes; Quinn's movement model is not part of the decoder |
+| Open source and prior art | [AOSP LatinIME](/development/glide-engine/references/#aosp-latinime), [HeliBoard](/development/glide-engine/references/#heliboard), [FlorisBoard](/development/glide-engine/references/#florisboard), [OpenBoard](/development/glide-engine/references/#openboard), [Unexpected Keyboard](/development/glide-engine/references/#unexpected-keyboard), [FUTO Keyboard](/development/glide-engine/references/#futo-keyboard), [CleverKeys](/development/glide-engine/references/#cleverkeys) | Reuse the AOSP dictionary model, or build an independent decoder, or run a neural model on device | The AOSP dictionary format, the idea of a layout abstraction, and the warning that the open AOSP tree has no word-level decoder | This engine's decoder is open and native. It does not depend on a closed swypelibs binary, and it is not a fork of the AOSP decoder |
+| Patents | [Swype 2003](/development/glide-engine/references/#us7098896b2), [Google 2013](/development/glide-engine/references/#us9454240b2), [Apple 2007](/development/glide-engine/references/#us8059101b2) | Continuous stroke word input, non-dictionary gesture output, and swipe gestures for editing | Nothing directly; the patents define the prior-art landscape | This page is not a freedom-to-operate review. Patent status and claim scope need a lawyer |
+
+## What we adopted, rejected and diverged from
+
+**Adopted.**
+
+- Resampling and a shape representation that is independent of translation and
+  scale, from the SHARK2 line.
+- A location term, because a stroke near the right keys is better evidence than
+  a shape that only looks right.
+- N-best output and a ranked candidate list, not a single answer.
+- Lexicon-constrained search with a frequency prior.
+- CTC as a valid way to learn character evidence from an unsegmented stroke.
+- On-device personalization, with the privacy boundary kept on the device.
+
+**Rejected.**
+
+- A separate glide-only dictionary. The engine reads the same sources typing
+  uses, so a learned word is swipeable without a cache rebuild.
+- Exhaustively scoring every lexicon template. The trie beam prunes by start,
+  end and shape as it walks.
+- Raw model scores as confidence. The engine uses a margin and a time gate, and
+  treats calibration as unfinished work.
+- Learning a shape at commit. The shape is learned only after the word settles,
+  because a backspace or a replacement is evidence against the lesson.
+- An end-to-end neural default. The built-in decoder must work for every
+  language and layout with a source, including layouts and languages the neural
+  model does not cover.
+
+**Diverged.**
+
+- The search runs in Rust behind a JNI façade, with a Kotlin reference in the
+  test sources.
+- A language profile changes a small number of decoder weights, instead of
+  asking the user to tune radii.
+- Compounds and joiners are a first-class part of the search, not a post-hoc
+  dictionary expansion.
+- Coverage is measured before glide is offered, instead of failing quietly on a
+  layout that cannot spell the language.
+- External engines return `null` to fall back to the built-in decoder. The
+  service never has to know which engine answered.
+- The sandbox can restrict the search to learned words, but only as a measured
+  opt-in.
+- Shape seeding is off by default because it changes the search, not just the
+  ranking.
+
+## Internal research program
+
+The repository contains an internal research log for the German work and the
+context model. These results are **not peer-reviewed**. They are reproducible
+from the scripts and notes in `wmk-glide/`, but they are single-fork measurements,
+not an independent benchmark.
+
+| Internal study | What it measured | Result | Evidence | Status |
+|---|---|---|---|---|
+| German profile | FUTO German swipes plus HeliBoard rare-word strokes | Profile and shapes improve ordinary and rare words; exact counts and results are on the [languages page](/development/glide-engine/languages-and-engines/#language-profiles) | `wmk-glide/state.md:52-72` | Internal, not peer-reviewed |
+| Compound join guard | FUTO German set with and without the join penalty | The guard improves top-1 and top-4 over no guard; the source log owns both pairs | `wmk-glide/state.md:228-242` | Internal |
+| Observed compound list | 150k-word list plus 441k observed compounds | 75.70 top-1 against 74.15; top-4 84.23 against 82.81 | `wmk-glide/state.md:292-298` | Internal |
+| Context blend | Glide top-1 with no context model and with the shipped 0.5/5.0 blend | 74.15 to 77.40 on the 150k list; 75.70 to 78.48 with the 441k compounds | `wmk-glide/state.md:318-325` | Internal |
+| Blend fairness | The same blend on a fair 20 percent split | 68.97 to 69.17, not the in-sample 80.82 | `wmk-glide/experiments-followup.md:10-22` | Internal, and the public page does not quote the in-sample number |
+| German WMLM | Context model trained on German, then used for Glide and Typing | Glide 77.40/83.42 on 150k; 78.48/84.85 with 441k; Typing +2.4 top-1 | `wmk-glide/state.md:318-331` | Internal Phase 1; not the shipped default |
+| OOV piece distillation | German 150k types that need more than six pieces | 2.45 percent of types, after single-letter start pieces; the old 20.5 percent figure excluded those pieces | `wmk-glide/kb-student-architecture-de.md:7-23` | Internal audit |
+| Statistical power | Minimum detectable effect on the German profile corpus | 1.74 percentage points at 10 percent discordance; 0.5-point claims are noise | `wmk-glide/kb-student-architecture-de.md:84` | Internal evaluation design |
+
+The public pages cite only the subset that shipped or that the code enforces. The
+internal log is listed on the [references page](/development/glide-engine/references/#internal-artifacts).
+
+## Evidence quality
+
+| Class | Examples | What it can support | What it cannot support |
+|---|---|---|---|
+| Peer-reviewed | SHARK2, CTC, Zhang 2024, calibration, the mobile typing studies | Design lineage, known failure modes, evaluation definitions | This engine's exact accuracy or latency |
+| Preprint or engineering report | FUTO 2026, Ouyang 2017, Hard 2018, Hinton 2015 | The architecture and the engineering constraints, with attribution | Independent validation, or a claim that the implementation matches the report |
+| Dataset | [FUTO swipe corpus](/development/glide-engine/references/#futo-dataset), [HeliBoard gesture data](/development/glide-engine/references/#heliboard-data), [Leiva 2021](/development/glide-engine/references/#leiva2021) | Decoder evaluation and corpus construction | Human speed or learnability, without a user study |
+| Source code | AOSP LatinIME, HeliBoard, FlorisBoard, OpenBoard, Unexpected Keyboard, FUTO, CleverKeys | Implementation facts and license boundaries | Performance claims that the project did not publish or that were not reproduced |
+| Internal experiment | `wmk-glide/` notes and measurements | This fork's German and context-model results | Peer review, independent replication, or generalization to all users |
+
+A number in this KB should always name its class. The public pages already say
+when a number is a product default or a measurement. The research page adds the
+third distinction: **vendor claim**, **internal measurement**, or **independent
+study**.
+
+## Open questions
+
+- **Calibration.** The picker and preview use nat margins. No keyboard-specific
+  calibration benchmark was found in this pass. A temperature fit on held-out
+  strokes would turn the margins into calibrated posteriors, but the thresholds
+  would need a product study.
+- **FUTO decoder and gate.** The encoder `honorable_sturgeon` and the English
+  QWERTY decoder `magic_macaw` are pinned at revision `18328c30`, and the app
+  downloads both (3.9 MB). The encoder is layout-agnostic; the decoder is
+  English. The open question is the English/QWERTY gate and a German decoder
+  plus context model, not which encoder to integrate. See the
+  [model card](/development/glide-engine/references/#futo-model) and
+  `core/voice/src/main/java/com/wasimaster/wmkeyboard/core/voice/futoswipe/FutoSwipe.kt:43`.
+- **Non-English FUTO.** The 2026 encoder is layout-agnostic, but the released
+  decoder and context model are English. Extending the neural path to German
+  needs a decoder, a context model and a new evaluation, not just a layout file.
+- **Rare German words.** The FUTO and HeliBoard sets are donated and selected. The
+  join guard and the compound list have measured gains, but the rare-word
+  denominator and the OOV policy differ between the two corpora.
+- **Learning from a wrong commit.** No primary study directly measures the cost
+  of learning a shape from a word the user later corrects. The engine mitigates
+  it by settling before learning and by recording outcomes, but that is an
+  engineering choice, not an experimentally validated one.
+- **Sandbox policy.** The ladder is an internal product experiment. It has a
+  measured gain on a synthetic user and a real decline on words outside the
+  personal lexicon. It needs a user study before it becomes a default.
+- **Independent benchmark.** The FUTO and built-in comparison in this repository
+  is an internal measurement. A third-party run on a held-out corpus, with a
+  pinned model and dictionary, would be stronger.
+- **Open-source decoder gap.** The open AOSP tree has no word-level decoder; the
+  HeliBoard path depends on a library that is not in its repository. The claim
+  that a fully open decoder is rare is a statement about those trees, not about
+  every keyboard.
+- **Patents.** The patent table records prior art. It is not a legal opinion and
+  should not be used as a freedom-to-operate conclusion.
+
+## Reproduction and maintenance
+
+- The test and evaluation commands are on the [testing page](/development/glide-engine/testing/).
+- The internal run log is `wmk-glide/state.md`; the context-blend audit is
+  `wmk-glide/kb-context-blend-optimizations.md`; the student-model audit is
+  `wmk-glide/kb-student-architecture-de.md`.
+- To add a source, give it a stable ID, record the exact title, authors, year,
+  venue, DOI or URL, the status, the date checked and the claim it supports.
+- If a source is a vendor report, say so. If it is a preprint, say so. If it is
+  an internal measurement, say so. The label is part of the citation.
+
+## Code anchors
+
+| Claim | Anchor |
+|---|---|
+| FUTO pinned revision | `core/voice/src/main/java/com/wasimaster/wmkeyboard/core/voice/futoswipe/FutoSwipe.kt:44` |
+| FUTO encoder, decoder and 3.9 MB size | `core/voice/src/main/java/com/wasimaster/wmkeyboard/core/voice/futoswipe/FutoSwipe.kt:55` |
+| FUTO output classes | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/SwipeModel.kt:37` |
+| FUTO frame points | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/SwipeModel.kt:125` |
+| QWERTY-only neural gate | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/NeuralGlide.kt:25` |
+| Shape store | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideShapeStore.kt:111` |
+
+The full list is on [References](/development/glide-engine/references/).
