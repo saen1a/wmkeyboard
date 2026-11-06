@@ -1,0 +1,9 @@
+{
+  "role": "eng-database-developer",
+  "prompt": "Workspace: fixture-project. Add a nullable `display_name` column to users with a reversible migration and no backfill. No tools; return the migration plan, rollback, and verification.",
+  "expectations": [
+    "Adds a nullable column with no backfill",
+    "Names the rollback or down migration",
+    "Names migration-up/down verification"
+  ]
+}

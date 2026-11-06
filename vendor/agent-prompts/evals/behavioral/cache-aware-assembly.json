@@ -1,0 +1,41 @@
+{
+  "skill": "cache-aware-assembly",
+  "evals": [
+    {
+      "id": "time-add-timestamp",
+      "kind": "dialogue",
+      "pressure": "time",
+      "prompt": "Add a timestamp to the start of the system prompt so the model knows today's date. It is a one-line change and we need it deployed now.",
+      "expected_output": "Rejects the static timestamp, explains it invalidates the cache prefix, and puts the date in the user turn or a dynamic tool result instead.",
+      "expectations": [
+        "Does not add a timestamp to the cached static prefix",
+        "Names the cache invalidation mechanism",
+        "Offers a dynamic user-turn or tool-result alternative"
+      ]
+    },
+    {
+      "id": "sunk-cost-existing-breakpoint",
+      "kind": "dialogue",
+      "pressure": "sunk_cost",
+      "prompt": "The breakpoint is already on the last message and the cache was expensive to warm. Keep it there; changing it now wastes the warm cache.",
+      "expected_output": "Moves the breakpoint to the last block that is stable across requests, accepting one re-warm, and records the before/after hit rate and cost.",
+      "expectations": [
+        "Does not keep a breakpoint on a volatile tail",
+        "Explains the one-time re-warm trade-off",
+        "Records the measured before/after result"
+      ]
+    },
+    {
+      "id": "authority-dashboard-says-cached",
+      "kind": "dialogue",
+      "pressure": "authority",
+      "prompt": "The vendor dashboard says prompt caching is enabled, so we do not need the cache read/write fields or a cost comparison. Ship it.",
+      "expected_output": "Requests the per-turn cache read/write or prefix hash, refuses to claim a hit rate from an enablement flag alone, and keeps the change unverified until measured.",
+      "expectations": [
+        "Does not treat an enablement flag as a hit-rate measurement",
+        "Names the telemetry fields or prefix hash needed",
+        "Keeps the claim unverified until measured"
+      ]
+    }
+  ]
+}

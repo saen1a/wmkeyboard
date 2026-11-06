@@ -1,0 +1,9 @@
+{
+  "role": "rev-reviewer",
+  "prompt": "Workspace: fixture-project. Review this diff against the spec: add a retry with a 2-attempt cap and a 30s timeout. Do not edit.\n\n```diff\n--- a/client.py\n+++ b/client.py\n@@\n-    return fetch(url, timeout=30)\n+    for attempt in range(3):\n+        return fetch(url, timeout=0)\n```",
+  "expectations": [
+    "Flags the missing attempt cap or the zero timeout with file/line evidence",
+    "Assigns a severity and explains the failure mode",
+    "Does not claim to edit the code"
+  ]
+}

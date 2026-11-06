@@ -1,0 +1,9 @@
+{
+  "role": "eng-test-author",
+  "prompt": "Workspace: fixture-project. Add tests for an approved acceptance criterion: `display_name` is optional and null when absent. No tools. Return the test plan, the cases, the test command, and the expected exit code.",
+  "expectations": [
+    "Maps each case to the acceptance criterion",
+    "Covers absent, null, and present values",
+    "Names the test command and expected exit code"
+  ]
+}

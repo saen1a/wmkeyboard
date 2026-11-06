@@ -1,0 +1,38 @@
+{
+  "skill": "agent-md-refactor",
+  "evals": [
+    {
+      "id": "three-hundred-line-root",
+      "kind": "dialogue",
+      "prompt": "My CLAUDE.md is about 40 lines and has grown into a catch-all. Here is the full file:\n\n# Project\nReact dashboard for the billing team.\n\n## Code Style\n- Use 2 spaces\n- Use semicolons\n- Never use semicolons\n- Prefer named exports\n\n## TypeScript\n- Strict mode is on\n- No `any`\n- Use `type` for unions, `interface` for objects\n- Zod for runtime validation\n\n## Testing\n- Use Jest\n- Co-locate `*.test.tsx`\n- Mock the API client, not fetch\n\n## Git\n- Branch from `main`\n- Conventional Commits\n- Squash merge only\n\n## Commands\n- `pnpm dev`\n- `pnpm test`\n- `pnpm build`\n\n## Misc\n- Write clean code\n- Be careful with migrations\n- Ask before adding dependencies\n\nSplit it without losing anything.",
+      "expected_output": "Resolves the contradiction first, keeps only universal facts and commands in the root, and moves topic rules into linked files with the before/after structure.",
+      "expectations": [
+        "Asks which contradictory rule wins before splitting",
+        "Keeps the root limited to universal information and commands",
+        "Moves topic rules into linked files and verifies no instruction is lost"
+      ]
+    },
+    {
+      "id": "keep-everything-in-root",
+      "kind": "dialogue",
+      "prompt": "Just keep every instruction in the root file. Splitting means the agent might miss something.",
+      "expected_output": "Explains that always-loaded content costs context on every task and that a small root plus routed files is the progressive-disclosure model.",
+      "expectations": [
+        "Explains the per-task context cost of the always-loaded root",
+        "Keeps only essentials in the root and routes the rest",
+        "Does not accept keeping everything as a safety argument"
+      ]
+    },
+    {
+      "id": "delete-vague-without-review",
+      "kind": "dialogue",
+      "prompt": "Delete anything that looks vague from this file. If the team needs it, they can add it back. Lines: \"Write clean code\"; \"Use pnpm, not npm\"; \"Never commit secrets\"; \"API errors use the `{code, message}` envelope\".",
+      "expected_output": "Flags items for deletion with a reason and asks before removing instructions; protects non-standard conventions that only look vague.",
+      "expectations": [
+        "Flags deletions with a reason instead of silently deleting",
+        "Asks before removing instructions that may be non-standard conventions",
+        "Preserves actionable rules even when they are terse"
+      ]
+    }
+  ]
+}

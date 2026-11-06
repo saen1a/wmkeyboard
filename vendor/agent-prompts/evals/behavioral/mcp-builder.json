@@ -1,0 +1,38 @@
+{
+  "skill": "mcp-builder",
+  "evals": [
+    {
+      "id": "vague-tool-description",
+      "kind": "dialogue",
+      "prompt": "Add a search tool to my TypeScript MCP server. The description can be short; the model will inspect the schema. Show the Zod input and output schemas and the error shape. No tools are available; answer in prose.",
+      "expected_output": "Requires a what + when description, a typed input schema, a return schema, and actionable errors; the description is how the model selects the tool.",
+      "expectations": [
+        "Requires a description that states what the tool does and when to use it",
+        "Requires typed input and return schemas",
+        "Requires actionable error messages"
+      ]
+    },
+    {
+      "id": "twenty-tools-scope-creep",
+      "kind": "dialogue",
+      "prompt": "Our REST API has 7 endpoints (list, get, create, update, delete, search, export). Expose every endpoint as its own MCP tool. Seven tools is fine if it covers everything. No tools are available; answer in prose.",
+      "expected_output": "Pushes back on endpoint-per-tool sprawl, proposes a small set of workflow tools, and explains the context cost of tool definitions.",
+      "expectations": [
+        "Does not map every endpoint to a tool by default",
+        "Proposes workflow-level tools or a smaller surface",
+        "Explains that tool definitions consume context on every request"
+      ]
+    },
+    {
+      "id": "server-hangs-test",
+      "kind": "dialogue",
+      "prompt": "I ran `python server.py` to test my stdio MCP server and my terminal is stuck. No tools are available. What should I do differently, and what is the minimum real test?",
+      "expected_output": "Explains that an MCP server is long-running and should be exercised through the evaluation harness, a tmux session, or a timeout, not run directly in the main shell.",
+      "expectations": [
+        "Identifies the hang as expected for a long-running server",
+        "Recommends the evaluation harness or a timeout/tmux",
+        "Requires an initialize plus real tool call as the test"
+      ]
+    }
+  ]
+}

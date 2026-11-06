@@ -1,0 +1,9 @@
+{
+  "role": "rev-code-skeptic",
+  "prompt": "Challenge the claim that this cache is safe: `cache[key] = value` with no eviction and a 30-day TTL. Cite evidence and do not edit.",
+  "expectations": [
+    "Identifies the unbounded-growth or eviction gap",
+    "Cites the code or a concrete failure mode",
+    "Does not edit or approve the change"
+  ]
+}

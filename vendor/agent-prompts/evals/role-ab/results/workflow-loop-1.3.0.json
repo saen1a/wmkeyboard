@@ -1,0 +1,545 @@
+{
+  "schema": "role-ab-summary/3",
+  "experiment": "workflow-loop-2026-10",
+  "protocol": {
+    "seeds": [
+      211,
+      223,
+      227
+    ],
+    "max_tokens": 16384,
+    "temperature": 0,
+    "executor_model": "deepseek-flash",
+    "grader_model": "deepseek-v4-pro",
+    "harness": "openai-compatible-chat",
+    "doctrine_version": "1.3.0",
+    "current_ref": "bf26209",
+    "current_arm": "doctrine 1.3.0 loop (template 1.1.0; measured at bf26209)",
+    "candidate_arm": "doctrine 1.1.0 linear (pinned at evals/role-ab/arms/linear-v1.1)",
+    "excluded_roles": {
+      "ops-format-normalizer": "tool-dependent task; text-only 0.33/0.33 vs tool-enabled 1.0/1.0"
+    },
+    "raw_results": [
+      "evals/results/loop-ab-pre-211",
+      "evals/results/loop-ab-pre-223",
+      "evals/results/loop-ab-pre-227"
+    ],
+    "note": "Pre-registered protocol: evals/role-ab/pre-registrations/workflow-loop-1.3.0.md. Current-arm hashes are for bf26209; the neutral-layout move bumped every template to 2.0.0 and changed all hashes. f27a681 also changed ops-executor after the run; the sole loss is on that pre-fix body.",
+    "completion_tokens": {
+      "current": 145720,
+      "candidate": 151763
+    }
+  },
+  "arm_hashes": {
+    "eng-api-developer": {
+      "current": {
+        "sha256": "2eec2a06cd388d4f5617342f3431dd30d443c279371bfc8a4aea6ea0f2f2cc9e",
+        "chars": 4935
+      },
+      "candidate": {
+        "sha256": "1a3307c8a149c5c0ccabdfb3cc23d4b1d3d4b5cdc24e1caa03112aee3b5446ca",
+        "chars": 4966
+      }
+    },
+    "eng-backend-developer": {
+      "current": {
+        "sha256": "d14b413b916df7036a7a2d0abdf6af648a92798e81b171ae204f7e723e35a52e",
+        "chars": 4948
+      },
+      "candidate": {
+        "sha256": "ed0dcf5b7746c8b8128d6e533ca407752f413cf49c5e2fb7d8777d2031a16be9",
+        "chars": 4979
+      }
+    },
+    "eng-database-developer": {
+      "current": {
+        "sha256": "5b98e126a3c25ce21fae0cb4a82e3e949accd76d0c9e63f33cf1891d7ada9076",
+        "chars": 4956
+      },
+      "candidate": {
+        "sha256": "4ab5d911430f8813ccfc1c83a07726a12f280a25dd41ef761d1ba1afd7e8e830",
+        "chars": 4987
+      }
+    },
+    "eng-frontend-developer": {
+      "current": {
+        "sha256": "4eb16f5ddfd1d04a351c781a74fb8acec83206f71a3385ce32f64b05957363c3",
+        "chars": 5060
+      },
+      "candidate": {
+        "sha256": "9dc62c940840c04883986348369fd89c6488167d92adc6bb02e1012532d2aa6a",
+        "chars": 5038
+      }
+    },
+    "eng-test-author": {
+      "current": {
+        "sha256": "7860ef3c8f83bbda80e365017fa12fafccb8a25a6a13f0652c937ac9a05f29b8",
+        "chars": 4877
+      },
+      "candidate": {
+        "sha256": "30654b1ddf46fdf3ff32d6f8c0c176c00b348f6ae6c001b92e8a7292028d101c",
+        "chars": 4908
+      }
+    },
+    "net-network-architect": {
+      "current": {
+        "sha256": "250d06f9eee3881d8cfad51f99a87860d7eb49150bdc82ad730ea78043e29437",
+        "chars": 4988
+      },
+      "candidate": {
+        "sha256": "ca88478f1f85a2aa88f7a5f028635524b523da05945994e286bd1b64bb705c49",
+        "chars": 5011
+      }
+    },
+    "ops-ci-implementer": {
+      "current": {
+        "sha256": "691210a59d2174dad2d2bb7812e5a35c5ee227ea125afd00a84f3e47cd3d524f",
+        "chars": 4979
+      },
+      "candidate": {
+        "sha256": "64b896e885e5af705bca21c48f4bfb6977ec588efd6e35a4373711757bbe3803",
+        "chars": 4765
+      }
+    },
+    "ops-executor": {
+      "current": {
+        "sha256": "0865fcfda5e7e8106eda681ecfe06deee34e768dbdf4b79140278c1b8c67f10a",
+        "chars": 4710
+      },
+      "candidate": {
+        "sha256": "348d6131f1f9cecea243b2a7953e4a010c06586ab96c27924651d8654e2e203c",
+        "chars": 4641
+      }
+    },
+    "orch-orchestrator": {
+      "current": {
+        "sha256": "4d4dec86eb71d505819bc243ddab3ce148881ede752d58fe792075d411a94f3e",
+        "chars": 5414
+      },
+      "candidate": {
+        "sha256": "2516b625ac786976b88daba4277a36b442023e697f7919cb35eb486bdfa68b61",
+        "chars": 5340
+      }
+    },
+    "rev-code-skeptic": {
+      "current": {
+        "sha256": "0f4d75921b20b0c70bec56830f9f69931f4e3c161b8bcc776d91b5aacac60373",
+        "chars": 4715
+      },
+      "candidate": {
+        "sha256": "b160bec1d9efc743b3ea622f577139d89335991bf6317cbee6bea3f9057f7205",
+        "chars": 4738
+      }
+    },
+    "rev-review-lead": {
+      "current": {
+        "sha256": "a8a888f66af571688a674f275cb874531e849e78b577b7e168a110730cc52508",
+        "chars": 5036
+      },
+      "candidate": {
+        "sha256": "dfd91bb95addbcd1704ac4fc8f76a6f2f0a2e3a6d1be3f02c4701b8987e40390",
+        "chars": 5064
+      }
+    },
+    "rev-reviewer": {
+      "current": {
+        "sha256": "8211505a5ba3df082bb1ec4bb84304ce5065353b2362c2b1d74f2cddb94fa973",
+        "chars": 4289
+      },
+      "candidate": {
+        "sha256": "0a10faa166b57f1036289f0876ca8fb9b52102998f006455ef8f9185cd6363b2",
+        "chars": 4317
+      }
+    }
+  },
+  "per_role": {
+    "eng-api-developer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "eng-backend-developer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 0.8889,
+        "passed": 2,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 0.6667,
+        "delta": 0.3333,
+        "truncated": false
+      }
+    },
+    "eng-database-developer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "eng-frontend-developer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "eng-test-author": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 0.89,
+        "passed": 2,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 0.67,
+        "delta": 0.33,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "net-network-architect": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "ops-ci-implementer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "ops-executor": {
+      "current": {
+        "mean": 0.8889,
+        "passed": 2,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 0.6667,
+        "candidate": 1.0,
+        "delta": -0.3333,
+        "truncated": false
+      }
+    },
+    "orch-orchestrator": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "rev-code-skeptic": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "rev-review-lead": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 0.8889,
+        "passed": 2,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 0.6667,
+        "delta": 0.3333,
+        "truncated": false
+      }
+    },
+    "rev-reviewer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    }
+  },
+  "truncated_pairs": [],
+  "overall_all": {
+    "current_mean": 0.9907,
+    "candidate_mean": 0.9723,
+    "delta": 0.0184,
+    "wins": 3,
+    "ties": 32,
+    "losses": 1,
+    "pairs": 36
+  },
+  "overall_complete": {
+    "current_mean": 0.9907,
+    "candidate_mean": 0.9723,
+    "delta": 0.0184,
+    "wins": 3,
+    "ties": 32,
+    "losses": 1,
+    "pairs": 36
+  },
+  "post_run_changes": {
+    "measured_doctrine_version": "1.3.0",
+    "measured_ref": "bf26209",
+    "doctrine_changed_at": "31952d9",
+    "current_doctrine_version": "1.3.1",
+    "current_body_ref": "ecc04ca",
+    "current_body_hashes_match": false,
+    "note": "The doctrine text changed after this run (31952d9). These results measure the pre-change body and are not evidence for the current doctrine 1.3.1 body; a new run is required for that claim."
+  }
+}

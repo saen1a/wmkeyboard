@@ -1,0 +1,40 @@
+schema: agent-pack-exclusions/1
+project: wmkeyboard
+library_commit: 801c3f7424ecc96956f9fe88a3ca78bd44595711
+excluded:
+  - id: networking-network-architect
+    class: out-of-domain
+    reason: wmkeyboard is an Android keyboard, not a network topology project.
+  - id: tabletop-lore-keeper
+    class: out-of-domain
+    reason: No world bible or tabletop corpus in this repository.
+  - id: tabletop-prose-editor
+    class: out-of-domain
+    reason: No world bible or tabletop corpus in this repository.
+  - id: tabletop-rules-designer
+    class: out-of-domain
+    reason: No tabletop rules system in this repository.
+  - id: tabletop-scenario-writer
+    class: out-of-domain
+    reason: No tabletop rules system or world bible in this repository.
+  - id: tabletop-worldbuilder
+    class: out-of-domain
+    reason: No world bible in this repository.
+  - id: skills/vendor/caveman
+    class: overlaps-global-runtime
+    reason: The operator's global config already mounts this skill.
+  - id: skills/vendor/caveman-commit
+    class: overlaps-global-runtime
+    reason: The operator's global config already mounts this skill family.
+  - id: skills/vendor/caveman-compress
+    class: overlaps-global-runtime
+    reason: The operator's global config already mounts this skill family.
+  - id: skills/vendor/caveman-help
+    class: overlaps-global-runtime
+    reason: The operator's global config already mounts this skill family.
+  - id: skills/vendor/caveman-review
+    class: overlaps-global-runtime
+    reason: The operator's global config already mounts this skill family.
+  - id: skills/vendor/misakanet
+    class: missing-runtime
+    reason: Requires a MisakaNet endpoint this project does not mount.

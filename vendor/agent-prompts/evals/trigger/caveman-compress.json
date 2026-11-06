@@ -1,0 +1,27 @@
+{
+  "skill": "caveman-compress",
+  "positive": [
+    {
+      "prompt": "Compress my CLAUDE.md memory file into caveman format and save a human-readable backup.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Run the memory-file compression on this preferences file so it costs fewer input tokens but keeps every technical detail.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Shrink these long notes into terse caveman prose and write the compressed version over the original with a backup.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Help me author a reusable agent skill with frontmatter and a workflow section.",
+      "owner": "skill-creator"
+    },
+    {
+      "prompt": "Write a commit message for this diff in Conventional Commits format.",
+      "owner": "caveman-commit"
+    }
+  ]
+}

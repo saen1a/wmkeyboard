@@ -1,0 +1,9 @@
+{
+  "prompt": "Fix the typo Postgress to Postgres in a YAML comment in stacks/foo/compose.yaml. Return the exact change.",
+  "expectations": [
+    "Identifies the change as comment-only",
+    "Provides the exact one-line change",
+    "Does not add unrelated changes"
+  ],
+  "id": "safe-tiny"
+}

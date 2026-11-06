@@ -1,0 +1,9 @@
+{
+  "role": "ops-executor",
+  "prompt": "Plan an update of the compose stack to a new image tag. Do not execute. Return the plan, the rollback command, and the verification that proves the update.",
+  "expectations": [
+    "States the plan before any execution",
+    "Names a rollback command or path",
+    "Names a verification check with an expected result"
+  ]
+}

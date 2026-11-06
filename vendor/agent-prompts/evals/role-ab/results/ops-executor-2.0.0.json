@@ -1,0 +1,96 @@
+{
+  "schema": "role-ab-summary/3",
+  "experiment": "workflow-loop-2026-10",
+  "protocol": {
+    "seeds": [
+      211,
+      223,
+      227
+    ],
+    "max_tokens": 16384,
+    "temperature": 0,
+    "executor_model": "deepseek-flash",
+    "grader_model": "deepseek-v4-pro",
+    "harness": "openai-compatible-chat",
+    "doctrine_version": "1.3.0",
+    "current_ref": "0dd161a",
+    "current_arm": "doctrine 1.3.0 loop, template 2.0.0; rollback/health/re-verify fix",
+    "candidate_arm": "doctrine 1.1.0 linear (pinned at evals/role-ab/arms/linear-v1.1)",
+    "excluded_roles": {},
+    "raw_results": [
+      "evals/results/ops-exec-final2-211",
+      "evals/results/ops-exec-final2-223",
+      "evals/results/ops-exec-final2-227"
+    ],
+    "note": "Post-hoc targeted check after the ops-executor rollback/health/re-verify fix; current arm measured at 0dd161a. Not a new estimate; the registered 1.3.0 aggregate still carries the original loss."
+  },
+  "arm_hashes": {
+    "ops-executor": {
+      "current": {
+        "sha256": "f4ddc1ade9deef8664dbf700087adaa5d297a3637ca21c20e4f1ed6422dd727b",
+        "chars": 4650
+      },
+      "candidate": {
+        "sha256": "348d6131f1f9cecea243b2a7953e4a010c06586ab96c27924651d8654e2e203c",
+        "chars": 4641
+      }
+    }
+  },
+  "per_role": {
+    "ops-executor": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "211": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "223": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "227": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    }
+  },
+  "truncated_pairs": [],
+  "overall_all": {
+    "current_mean": 1.0,
+    "candidate_mean": 1.0,
+    "delta": 0.0,
+    "wins": 0,
+    "ties": 3,
+    "losses": 0,
+    "pairs": 3
+  },
+  "overall_complete": {
+    "current_mean": 1.0,
+    "candidate_mean": 1.0,
+    "delta": 0.0,
+    "wins": 0,
+    "ties": 3,
+    "losses": 0,
+    "pairs": 3
+  },
+  "post_run_changes": {
+    "measured_doctrine_version": "1.3.0",
+    "doctrine_changed_at": "31952d9",
+    "current_doctrine_version": "1.3.1",
+    "note": "Post-hoc check on the pre-change body; not evidence for doctrine 1.3.1."
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "role": "orch-orchestrator",
+  "prompt": "Workspace: fixture-project. Where is `retry_backoff` computed? I need the file and the line. You have no file tools in this session, but you may dispatch read-only subagents. Do not guess. Return what you do next and the text you would send.",
+  "expectations": [
+    "Dispatches the lookup to scout instead of answering it inline",
+    "Sends a bounded question naming the symbol and the file:line wanted, not an open-ended task",
+    "Does not invent a file path or a line number for retry_backoff"
+  ]
+}

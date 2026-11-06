@@ -1,0 +1,38 @@
+{
+  "skill": "deepseek-v4-agent-defense",
+  "evals": [
+    {
+      "id": "mid-context-rule-missed",
+      "kind": "dialogue",
+      "prompt": "The model keeps missing a rule that sits in the middle of a 400K-token prompt. Should I just repeat it everywhere?",
+      "expected_output": "Restructures the prompt: put the load-bearing rule in the first sentences, add anchors, bookend it, and chunk the context rather than duplicating it throughout.",
+      "expectations": [
+        "Moves the rule to the opening or closing position",
+        "Uses anchors or a shallow hierarchy rather than repetition everywhere",
+        "Chunks or trims context instead of assuming the full window is usable"
+      ]
+    },
+    {
+      "id": "tool-fails-after-first-turn",
+      "kind": "dialogue",
+      "prompt": "Tool calls work on the first turn, then fail on every follow-up with DeepSeek-V4 thinking mode. The framework rebuilds the messages.",
+      "expected_output": "Checks that reasoning_content from the prior assistant message is preserved unmodified, and that assistant content is carried for tool calls.",
+      "expectations": [
+        "Checks reasoning_content passthrough first",
+        "Names the compatibility requirement for tool calls",
+        "Does not blame the tool schema before checking the message history"
+      ]
+    },
+    {
+      "id": "fifteen-parallel-calls",
+      "kind": "dialogue",
+      "prompt": "I dispatch 15 tool calls in parallel. DeepSeek usually handles it, so can I rely on that?",
+      "expected_output": "Warns that reliability degrades above 5 and is high-failure above 10; serialize or batch, and reduce context if parsing fails.",
+      "expectations": [
+        "States the under-5 / 5-10 / above-10 reliability bands",
+        "Recommends serializing or batching above 10",
+        "Offers the parsing-error recovery ladder if it still fails"
+      ]
+    }
+  ]
+}

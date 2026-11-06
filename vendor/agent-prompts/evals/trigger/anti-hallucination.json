@@ -1,0 +1,27 @@
+{
+  "skill": "anti-hallucination",
+  "positive": [
+    {
+      "prompt": "You are asserting a statistic and a data value from memory - verify the fact against the file before shipping that claim.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Check whether the file path and function name actually exist, and quote the source line instead of guessing.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Audit this session for ungrounded claims about system state and stale data.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Build an MCP server in Python that exposes my REST API as tools",
+      "owner": "mcp-builder"
+    },
+    {
+      "prompt": "Run the test suite and show the exit code before you say the change is done.",
+      "owner": "verification-before-completion"
+    }
+  ]
+}

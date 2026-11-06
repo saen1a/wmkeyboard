@@ -1,0 +1,35 @@
+{
+  "skill": "subagent-delegation",
+  "positive": [
+    {
+      "prompt": "Should I use subagents or parallel agents for this coding task?",
+      "top_k": 3
+    },
+    {
+      "prompt": "Write a handoff prompt so I can delegate this research to a worker agent.",
+      "top_k": 3
+    },
+    {
+      "prompt": "How do I orchestrate an orchestrator-worker fan-out without parallel writers?",
+      "top_k": 3
+    },
+    {
+      "prompt": "When is a subagent worth the token cost instead of doing the work myself?",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Review this diff for correctness and cite evidence for each finding.",
+      "owner": "verification-before-completion"
+    },
+    {
+      "prompt": "Interview me relentlessly about this plan until we share the same assumptions.",
+      "owner": "grilling"
+    },
+    {
+      "prompt": "Generate user-facing release notes from the git commit history.",
+      "owner": "changelog-generator"
+    }
+  ]
+}

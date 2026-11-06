@@ -1,0 +1,236 @@
+{
+  "version": "1.2.0",
+  "frontmatter": {
+    "required": [
+      "schema_version",
+      "run_id",
+      "goal",
+      "status",
+      "phase",
+      "owner",
+      "started",
+      "updated",
+      "units_total",
+      "units_done",
+      "checkpoint",
+      "next_action",
+      "last_progress_at",
+      "budget",
+      "acceptance",
+      "progress_max_minutes"
+    ],
+    "optional": [
+      "reason",
+      "stall_window",
+      "checkpoint_base",
+      "push_approval",
+      "changed_files",
+      "lease",
+      "branch",
+      "model",
+      "notes",
+      "checkpoint_archive",
+      "run_gate",
+      "harness",
+      "doctrine_version"
+    ]
+  },
+  "enums": {
+    "status": [
+      "active",
+      "waiting",
+      "blocked",
+      "done",
+      "halted"
+    ],
+    "phase": [
+      "Plan",
+      "PlanReview",
+      "Implement",
+      "Review",
+      "Fix",
+      "Verify",
+      "Push",
+      "Ready",
+      "Ready (unverified)",
+      "Done",
+      "HALT"
+    ],
+    "gate": [
+      "pass",
+      "fix",
+      "hold",
+      "halt"
+    ],
+    "acceptance_state": [
+      "pending",
+      "verified",
+      "unverified",
+      "failed"
+    ]
+  },
+  "status_phase": {
+    "active": [
+      "Plan",
+      "PlanReview",
+      "Implement",
+      "Review",
+      "Fix",
+      "Verify",
+      "Push"
+    ],
+    "blocked": [
+      "Plan",
+      "PlanReview",
+      "Implement",
+      "Review",
+      "Fix",
+      "Verify"
+    ],
+    "waiting": [
+      "Ready",
+      "Ready (unverified)"
+    ],
+    "done": [
+      "Done"
+    ],
+    "halted": [
+      "HALT"
+    ]
+  },
+  "halt_reasons": [
+    "blocked",
+    "unsafe",
+    "unresolvable",
+    "over-bound",
+    "budget",
+    "stalled",
+    "drift",
+    "operator-declined"
+  ],
+  "budget": {
+    "required": [
+      "tokens",
+      "wall_clock_minutes",
+      "tool_calls",
+      "units"
+    ],
+    "measure_required": [
+      "limit",
+      "used"
+    ]
+  },
+  "acceptance": {
+    "required": [
+      "id",
+      "criterion",
+      "state",
+      "evidence"
+    ],
+    "evidence_states": [
+      "verified",
+      "unverified",
+      "failed"
+    ],
+    "completion_states": [
+      "verified",
+      "unverified"
+    ]
+  },
+  "push_approval": {
+    "required": [
+      "operator",
+      "at",
+      "ids"
+    ],
+    "optional": [
+      "scope"
+    ]
+  },
+  "lease": {
+    "required": [
+      "resource",
+      "owner",
+      "expires"
+    ]
+  },
+  "tables": {
+    "units": [
+      "unit_id",
+      "phase",
+      "gate",
+      "status",
+      "artifact",
+      "evidence",
+      "kind",
+      "next"
+    ],
+    "checkpoints": [
+      "n",
+      "at",
+      "unit",
+      "phase",
+      "gate",
+      "kind",
+      "progress",
+      "artifact",
+      "next_action"
+    ],
+    "in_flight": [
+      "intent",
+      "key",
+      "state",
+      "at"
+    ]
+  },
+  "checkpoint_kinds": [
+    "progress",
+    "cadence",
+    "stop"
+  ],
+  "unit_kinds": [
+    "delivery",
+    "report"
+  ],
+  "in_flight_states": [
+    "planned",
+    "done",
+    "failed"
+  ],
+  "unit_closure": {
+    "terminal": [
+      "Done"
+    ],
+    "handoff": [
+      "Ready",
+      "Ready (unverified)"
+    ],
+    "handoff_next": "none"
+  },
+  "sections": [
+    "Units",
+    "Checkpoints",
+    "Decisions",
+    "Open findings",
+    "In-flight",
+    "Operator"
+  ],
+  "defaults": {
+    "stall_window": 3,
+    "checkpoint_base": 0
+  },
+  "patterns": {
+    "run_id": "^[a-z0-9][a-z0-9-]{2,63}$",
+    "unit_id": "^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$",
+    "date": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+    "timestamp": "^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}:[0-9]{2}Z$"
+  },
+  "run_gate": {
+    "required": [
+      "command",
+      "exit",
+      "at",
+      "evidence"
+    ]
+  }
+}

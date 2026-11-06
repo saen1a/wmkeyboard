@@ -1,0 +1,9 @@
+{
+  "role": "eng-api-developer",
+  "prompt": "Workspace: fixture-project. Add an optional `display_name` field to GET /users/{id} without breaking clients. Spec approved. No tools. Return the plan, the contract change, the compatibility verdict, the contract-test command, and the expected exit code.",
+  "expectations": [
+    "States the additive field and backward-compatibility verdict",
+    "Keeps the error envelope and unlisted fields unchanged",
+    "Names the contract-test command and expected exit code"
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "role": "orch-orchestrator",
+  "prompt": "Workspace: fixture-project. Question: what is the foreground prompt token ceiling, and where is it set? Known from the tree: tooling/render_omp.py line 70 reads `FOREGROUND_BUDGET = 700`. Answer in at most three sentences.",
+  "expectations": [
+    "Leads with the value 700 in the first sentence, without preamble",
+    "Cites tooling/render_omp.py:70",
+    "Does not restate the question or a plan before giving the answer"
+  ]
+}

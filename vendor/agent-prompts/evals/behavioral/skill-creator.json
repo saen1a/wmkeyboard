@@ -1,0 +1,38 @@
+{
+  "skill": "skill-creator",
+  "evals": [
+    {
+      "id": "monolithic-skill-request",
+      "kind": "dialogue",
+      "prompt": "Put the whole deploy, rollback, and monitoring procedure in one big SKILL.md so we never need reference files. Long is fine. No tools are available; answer in prose.",
+      "expected_output": "Keeps the body to the decision gate, procedure, and verification (at most three modules), moves conditional detail into routed references, and states the description and trigger.",
+      "expectations": [
+        "Does not put the exhaustive detail in the body",
+        "Routes conditional material to references and says when to read them",
+        "States the description and the check that proves the skill works"
+      ]
+    },
+    {
+      "id": "short-description",
+      "kind": "dialogue",
+      "prompt": "Keep the description to three words. The agent will figure out when to use it. No tools are available; answer in prose.",
+      "expected_output": "Explains that the description is the routing surface and must say what the skill does and the concrete situations that trigger it, including user synonyms.",
+      "expectations": [
+        "Rejects a three-word description as a routing risk",
+        "Requires what plus when, with concrete trigger contexts",
+        "Proposes a routing case rather than relying on inference"
+      ]
+    },
+    {
+      "id": "skip-verification",
+      "kind": "dialogue",
+      "prompt": "The prose looks good. Ship the skill now and skip the tests; we can add cases later. No tools are available; answer in prose.",
+      "expected_output": "Runs the shape, routing, and class-required behavioral checks before calling the skill done; a skill without a case is not validated.",
+      "expectations": [
+        "Runs or requires the shape and routing gates",
+        "Requires a behavioral case for the skill class",
+        "Does not treat readable prose as evidence"
+      ]
+    }
+  ]
+}

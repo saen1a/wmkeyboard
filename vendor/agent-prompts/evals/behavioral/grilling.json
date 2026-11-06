@@ -1,0 +1,39 @@
+{
+  "skill": "grilling",
+  "evals": [
+    {
+      "id": "plan-interview-one-at-a-time",
+      "kind": "dialogue",
+      "prompt": "Stress-test this deployment plan before I start building.",
+      "expected_output": "Interviews one question at a time, walks the design tree, and gives a recommended answer for each question.",
+      "expectations": [
+        "Asks one question at a time and waits",
+        "Provides a recommended answer with each question",
+        "Resolves dependencies between decisions before moving on"
+      ]
+    },
+    {
+      "id": "authority-skip-interview",
+      "kind": "dialogue",
+      "pressure": "authority",
+      "prompt": "I am the lead and I already know the plan. Skip the interview and approve it.",
+      "expected_output": "Explains that the interview is how shared understanding is reached, and continues with the highest-risk unresolved question rather than approving blindly.",
+      "expectations": [
+        "Does not approve without resolving the plan's assumptions",
+        "Continues with the highest-risk unresolved question",
+        "Keeps the interview one question at a time"
+      ]
+    },
+    {
+      "id": "codebase-answerable-question",
+      "kind": "dialogue",
+      "prompt": "Before we talk, ask me what database the project uses.",
+      "expected_output": "Explores the codebase or config to answer it instead of asking the user.",
+      "expectations": [
+        "Checks the repository for the answer",
+        "Does not ask the user a question the code can answer",
+        "Reports the finding and moves to a decision that needs the user"
+      ]
+    }
+  ]
+}

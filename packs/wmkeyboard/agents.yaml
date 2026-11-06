@@ -1,0 +1,396 @@
+schema: agent-pack/1
+project: wmkeyboard
+library_commit: 801c3f7424ecc96956f9fe88a3ca78bd44595711
+library_version: 2.12.0
+agents:
+- name: orchestrator
+  template: agents/orchestration/orch-orchestrator.md
+  output: packs/wmkeyboard/rendered/orchestrator.md
+  mode: primary
+  permission: orchestrator
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    HANDOFF_TARGETS: code-explorer, fixer, reviewer, review-lead, wmk-native-engineer, wmk-kotlin-engineer, docs-writer
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+- name: councillor
+  template: agents/orchestration/orch-councillor.md
+  output: packs/wmkeyboard/rendered/councillor.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    MUTATION_POLICY: Mutation policy
+- name: council-synthesizer
+  template: agents/orchestration/orch-council-synthesizer.md
+  output: packs/wmkeyboard/rendered/council-synthesizer.md
+  mode: subagent
+  permission: synthesizer
+  slots:
+    PROJECT_ID: wmkeyboard
+    MUTATION_POLICY: Mutation policy
+- name: code-explorer
+  template: agents/engineering/eng-explorer.md
+  output: packs/wmkeyboard/rendered/code-explorer.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    MUTATION_POLICY: Mutation policy
+- name: oracle
+  template: agents/engineering/eng-oracle.md
+  output: packs/wmkeyboard/rendered/oracle.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    MUTATION_POLICY: Mutation policy
+- name: fixer
+  template: agents/engineering/eng-fixer.md
+  output: packs/wmkeyboard/rendered/fixer.md
+  mode: subagent
+  permission: write-general
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+- name: backend-developer
+  template: agents/engineering/eng-backend-developer.md
+  output: packs/wmkeyboard/rendered/backend-developer.md
+  mode: subagent
+  permission: write-general
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+    HANDOFF_TARGETS: the requesting session
+    ROLLBACK_COMMAND: git restore --source=HEAD -- <changed paths>
+- name: frontend-developer
+  template: agents/engineering/eng-frontend-developer.md
+  output: packs/wmkeyboard/rendered/frontend-developer.md
+  mode: subagent
+  permission: write-general
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    ACCESSIBILITY_STANDARD: Android accessibility guidance and Compose semantics; touch targets in feature/ime
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+    HANDOFF_TARGETS: the requesting session
+    ROLLBACK_COMMAND: git restore --source=HEAD -- <changed paths>
+- name: api-developer
+  template: agents/engineering/eng-api-developer.md
+  output: packs/wmkeyboard/rendered/api-developer.md
+  mode: subagent
+  permission: write-general
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    API_CONVENTIONS: Kotlin public APIs under core/** stay source-compatible; a breaking change needs a migration note in release-notes/
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+    HANDOFF_TARGETS: the requesting session
+    ROLLBACK_COMMAND: git restore --source=HEAD -- <changed paths>
+- name: database-developer
+  template: agents/engineering/eng-database-developer.md
+  output: packs/wmkeyboard/rendered/database-developer.md
+  mode: subagent
+  permission: write-general
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+    HANDOFF_TARGETS: the requesting session
+    ROLLBACK_COMMAND: git restore --source=HEAD -- <changed paths>
+- name: test-author
+  template: agents/engineering/eng-test-author.md
+  output: packs/wmkeyboard/rendered/test-author.md
+  mode: subagent
+  permission: write-tests
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+    HANDOFF_TARGETS: the requesting session
+    ROLLBACK_COMMAND: git restore --source=HEAD -- <changed paths>
+- name: ui-reviewer
+  template: agents/design/design-ui-reviewer.md
+  output: packs/wmkeyboard/rendered/ui-reviewer.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    DESIGN_STANDARD: Material 3 + Jetpack Compose; review against .github/media/shots and the feature/ime surface
+    MUTATION_POLICY: Mutation policy
+- name: docs-writer
+  template: agents/documentation/doc-doc-writer.md
+  output: packs/wmkeyboard/rendered/docs-writer.md
+  mode: subagent
+  permission: write-docs
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_DOCS_LAYOUT_RULE: docs/CONTENT_GUIDE.md
+    PROJECT_DOC_SCOPE: docs/**, README.md, SETTINGS_REDESIGN.md, release-notes/**
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+    HANDOFF_TARGETS: the requesting session
+- name: ci-implementer
+  template: agents/operations/ops-ci-implementer.md
+  output: packs/wmkeyboard/rendered/ci-implementer.md
+  mode: subagent
+  permission: write-ci
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    PROJECT_CI_ALLOWLIST: .github/workflows/** and scripts/**
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+  overlay: packs/wmkeyboard/overlays/ci-implementer.md
+- name: ops-executor
+  template: agents/operations/ops-executor.md
+  output: packs/wmkeyboard/rendered/ops-executor.md
+  mode: subagent
+  permission: write-general
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    PROJECT_EXCEPTION_REGISTRY: none
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+  overlay: packs/wmkeyboard/overlays/ops-executor.md
+- name: format-normalizer
+  template: agents/operations/ops-format-normalizer.md
+  output: packs/wmkeyboard/rendered/format-normalizer.md
+  mode: subagent
+  permission: write-batch
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_NORMALIZER_TOOLING: detekt and Android Lint through ./gradlew staticAnalysis
+    MUTATION_POLICY: Mutation policy
+- name: librarian
+  template: agents/research/res-librarian.md
+  output: packs/wmkeyboard/rendered/librarian.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+    HANDOFF_TARGETS: the requesting session
+- name: researcher
+  template: agents/research/res-researcher.md
+  output: packs/wmkeyboard/rendered/researcher.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+    HANDOFF_TARGETS: the requesting session
+- name: research-merger
+  template: agents/research/res-research-merger.md
+  output: packs/wmkeyboard/rendered/research-merger.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+    HANDOFF_TARGETS: the requesting session
+- name: reviewer
+  template: agents/review/rev-reviewer.md
+  output: packs/wmkeyboard/rendered/reviewer.md
+  mode: subagent
+  permission: read-bash
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_CI_GATES: .github/workflows/ci.yml and .github/workflows/agent-pack.yml (cargo test, unitTests, assemble, dex-limits, licenses, docs, agent pack)
+- name: review-lead
+  template: agents/review/rev-review-lead.md
+  output: packs/wmkeyboard/rendered/review-lead.md
+  mode: primary
+  permission: read-task
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_REVIEW_CONTRACT: vendor/agent-prompts/standards/code-review-contract.md
+    PROJECT_CI_GATES: .github/workflows/ci.yml and .github/workflows/agent-pack.yml (cargo test, unitTests, assemble, dex-limits, licenses, docs, agent pack)
+    HANDOFF_TARGETS: the operator or the requesting session that owns the authorized fix
+- name: code-skeptic
+  template: agents/review/rev-code-skeptic.md
+  output: packs/wmkeyboard/rendered/code-skeptic.md
+  mode: subagent
+  permission: read-bash
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+- name: consistency-reviewer
+  template: agents/review/rev-consistency-reviewer.md
+  output: packs/wmkeyboard/rendered/consistency-reviewer.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+- name: security-reviewer
+  template: agents/review/rev-security-reviewer.md
+  output: packs/wmkeyboard/rendered/security-reviewer.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_CI_GATES: .github/workflows/ci.yml and .github/workflows/agent-pack.yml (cargo test, unitTests, assemble, dex-limits, licenses, docs, agent pack)
+- name: review-business-logic
+  template: agents/review/review-tracks/rev-track-correctness.md
+  output: packs/wmkeyboard/rendered/review-business-logic.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_CI_GATES: .github/workflows/ci.yml and .github/workflows/agent-pack.yml (cargo test, unitTests, assemble, dex-limits, licenses, docs, agent pack)
+- name: review-dead-code
+  template: agents/review/review-tracks/rev-track-dead-code.md
+  output: packs/wmkeyboard/rendered/review-dead-code.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_CI_GATES: .github/workflows/ci.yml and .github/workflows/agent-pack.yml (cargo test, unitTests, assemble, dex-limits, licenses, docs, agent pack)
+- name: review-deploy-safety
+  template: agents/review/review-tracks/rev-track-deploy-safety.md
+  output: packs/wmkeyboard/rendered/review-deploy-safety.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_CI_GATES: .github/workflows/ci.yml and .github/workflows/agent-pack.yml (cargo test, unitTests, assemble, dex-limits, licenses, docs, agent pack)
+- name: review-duplication
+  template: agents/review/review-tracks/rev-track-duplication.md
+  output: packs/wmkeyboard/rendered/review-duplication.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_CI_GATES: .github/workflows/ci.yml and .github/workflows/agent-pack.yml (cargo test, unitTests, assemble, dex-limits, licenses, docs, agent pack)
+- name: review-quality
+  template: agents/review/review-tracks/rev-track-quality.md
+  output: packs/wmkeyboard/rendered/review-quality.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_CI_GATES: .github/workflows/ci.yml and .github/workflows/agent-pack.yml (cargo test, unitTests, assemble, dex-limits, licenses, docs, agent pack)
+    PROJECT_COMMENT_STANDARD: English, explain why not what; no plan-internal IDs; follow config/detekt/detekt.yml
+- name: review-security
+  template: agents/review/review-tracks/rev-track-security.md
+  output: packs/wmkeyboard/rendered/review-security.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_CI_GATES: .github/workflows/ci.yml and .github/workflows/agent-pack.yml (cargo test, unitTests, assemble, dex-limits, licenses, docs, agent pack)
+- name: review-simplicity
+  template: agents/review/review-tracks/rev-track-simplicity.md
+  output: packs/wmkeyboard/rendered/review-simplicity.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_CI_GATES: .github/workflows/ci.yml and .github/workflows/agent-pack.yml (cargo test, unitTests, assemble, dex-limits, licenses, docs, agent pack)
+- name: review-structure
+  template: agents/review/review-tracks/rev-track-structure.md
+  output: packs/wmkeyboard/rendered/review-structure.md
+  mode: subagent
+  permission: read
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    PROJECT_CI_GATES: .github/workflows/ci.yml and .github/workflows/agent-pack.yml (cargo test, unitTests, assemble, dex-limits, licenses, docs, agent pack)
+    PROJECT_DOCS_LAYOUT_RULE: docs/CONTENT_GUIDE.md
+- name: wmk-native-engineer
+  template: agents/engineering/eng-fixer.md
+  output: packs/wmkeyboard/rendered/wmk-native-engineer.md
+  mode: subagent
+  permission: write-native
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+  overlay: packs/wmkeyboard/overlays/wmk-native-engineer.md
+  description: Implement one approved change in the Rust text engine and its JNI bridge, keeping the engine Android-free and both builds green.
+- name: wmk-kotlin-engineer
+  template: agents/engineering/eng-fixer.md
+  output: packs/wmkeyboard/rendered/wmk-kotlin-engineer.md
+  mode: subagent
+  permission: write-kotlin
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+  overlay: packs/wmkeyboard/overlays/wmk-kotlin-engineer.md
+  description: Implement one approved change in the Kotlin and Compose surfaces, preserving the module layering and both channel source sets.
+- name: wmk-glide-researcher
+  template: agents/research/res-researcher.md
+  output: packs/wmkeyboard/rendered/wmk-glide-researcher.md
+  mode: subagent
+  permission: read-bash
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+    HANDOFF_TARGETS: the requesting session
+  overlay: packs/wmkeyboard/overlays/wmk-glide-researcher.md
+  description: Investigate one glide, context-model, or engine-measurement question with citations and a reproduction command.
+- name: wmk-release-engineer
+  template: agents/operations/ops-ci-implementer.md
+  output: packs/wmkeyboard/rendered/wmk-release-engineer.md
+  mode: subagent
+  permission: write-release
+  slots:
+    PROJECT_ID: wmkeyboard
+    PROJECT_RULES: AGENTS.md
+    VERIFICATION_COMMANDS: the verification commands in AGENTS.md
+    PROJECT_CI_ALLOWLIST: .github/workflows/** and scripts/**
+    MUTATION_POLICY: Mutation policy
+    SAFETY_RULE: Safety rule
+  overlay: packs/wmkeyboard/overlays/wmk-release-engineer.md
+  description: Prepare one approved release note and store metadata, with the matching gate evidence.

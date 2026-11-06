@@ -1,0 +1,35 @@
+{
+  "skill": "operator-setup-interview",
+  "positive": [
+    {
+      "prompt": "Help me set this up on my machine - you drive, just ask me the few things you need, one at a time.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Install this with me and keep it short: one question per message, each with a default I can accept in one word.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Walk me through configuring it, and only ask what you cannot find out from the environment yourself.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Set up this CLI with me without a wall of questions - one decision at a time, recommend a default for each.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Grill me on this design until we share a clear understanding of every branch.",
+      "owner": "grilling"
+    },
+    {
+      "prompt": "The request is vague - what do you need to know before you write code?",
+      "owner": "ask-questions-if-underspecified"
+    },
+    {
+      "prompt": "Run this migration overnight and report progress in the morning.",
+      "owner": "long-horizon-run"
+    }
+  ]
+}

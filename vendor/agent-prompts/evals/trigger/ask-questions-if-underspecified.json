@@ -1,0 +1,27 @@
+{
+  "skill": "ask-questions-if-underspecified",
+  "positive": [
+    {
+      "prompt": "This request is ambiguous and I have serious doubts about the scope - ask me the clarifying questions you need before you start implementing.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Before doing the work, tell me what requirements are unclear and ask the minimum questions to avoid building the wrong thing.",
+      "top_k": 3
+    },
+    {
+      "prompt": "The requirements are unclear and I have serious doubts; ask me the clarifying questions before you implement anything.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Interview me one question at a time about my plan until we resolve every open design decision.",
+      "owner": "grilling"
+    },
+    {
+      "prompt": "Give this proposal a first-principles review and challenge the assumptions behind it.",
+      "owner": "first-principles-review"
+    }
+  ]
+}

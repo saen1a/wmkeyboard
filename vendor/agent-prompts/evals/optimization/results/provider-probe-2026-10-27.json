@@ -1,0 +1,174 @@
+{
+  "schema": "optimization-provider-probe/1",
+  "date": "2026-10-27",
+  "purpose": "WP-08 provider matrix: which executor/grader configurations can run a paired benchmark.",
+  "probes": [
+    {
+      "provider": "deepseek-canonical",
+      "url": "https://api.deepseek.com/v1/chat/completions",
+      "model": "deepseek-flash",
+      "request": {
+        "model": "deepseek-flash",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Say OK"
+          }
+        ],
+        "max_tokens": 8,
+        "temperature": 0
+      },
+      "at_utc": "2026-10-27T12:51:48+00:00",
+      "http": 402,
+      "seconds": 0.726,
+      "error": "{\"error\":{\"message\":\"Insufficient Balance (request_id: 0022975a-30b5-4b4c-a31f-700048763247)\",\"type\":\"insufficient_balance_error\",\"param\":null,\"code\":\"invalid_request_error\"}}"
+    },
+    {
+      "provider": "openai-direct",
+      "url": "https://api.openai.com/v1/chat/completions",
+      "model": "gpt-6-luna",
+      "request": {
+        "model": "gpt-6-luna",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Say OK"
+          }
+        ],
+        "max_tokens": 16,
+        "temperature": 0
+      },
+      "at_utc": "2026-10-27T12:51:48+00:00",
+      "http": 401,
+      "seconds": 0.191,
+      "error": "{\n    \"error\": {\n        \"message\": \"You didn't provide an API key. You need to provide your API key in an Authorization header using Bearer auth (i.e. Authorization: Bearer YOUR_KEY), or as the password field (with blank username) if you're accessing the API from your browser and are prompted for a username and password. You can obtain an API key from https://platform.openai.com/account/api-keys."
+    },
+    {
+      "provider": "kilo-free",
+      "url": "https://api.kilocode.ai/api/gateway/v1/chat/completions",
+      "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+      "request": {
+        "model": "nvidia/nemotron-3-ultra-550b-a55b:free",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Say OK"
+          }
+        ],
+        "max_tokens": 16,
+        "temperature": 0
+      },
+      "at_utc": "2026-10-27T12:51:49+00:00",
+      "http": 200,
+      "seconds": 0.921,
+      "usage": {
+        "prompt_tokens": 18,
+        "completion_tokens": 12,
+        "total_tokens": 30,
+        "cost": 0,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "cache_write_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 0,
+          "upstream_inference_prompt_cost": 0,
+          "upstream_inference_completions_cost": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 8,
+          "image_tokens": 0,
+          "audio_tokens": 0
+        }
+      },
+      "reply": "OK"
+    },
+    {
+      "provider": "kilo-anthropic",
+      "url": "https://api.kilocode.ai/api/gateway/v1/chat/completions",
+      "model": "anthropic/claude-haiku-5.5",
+      "request": {
+        "model": "anthropic/claude-haiku-5.5",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Say OK"
+          }
+        ],
+        "max_tokens": 16,
+        "temperature": 0
+      },
+      "at_utc": "2026-10-27T12:51:49+00:00",
+      "http": 200,
+      "seconds": 2.683,
+      "usage": {
+        "prompt_tokens": 12,
+        "completion_tokens": 4,
+        "total_tokens": 16,
+        "cost": 3e-06,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 3.2e-06,
+          "upstream_inference_prompt_cost": 0,
+          "upstream_inference_completions_cost": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 0,
+          "image_tokens": 0
+        },
+        "cache_creation_input_tokens": 0
+      },
+      "reply": "OK"
+    },
+    {
+      "provider": "kilo-openai",
+      "url": "https://api.kilocode.ai/api/gateway/v1/chat/completions",
+      "model": "openai/gpt-6-luna",
+      "request": {
+        "model": "openai/gpt-6-luna",
+        "messages": [
+          {
+            "role": "user",
+            "content": "Say OK"
+          }
+        ],
+        "max_tokens": 16,
+        "temperature": 0
+      },
+      "at_utc": "2026-10-27T12:51:52+00:00",
+      "http": 200,
+      "seconds": 1.406,
+      "usage": {
+        "prompt_tokens": 8,
+        "completion_tokens": 16,
+        "total_tokens": 24,
+        "cost": 9e-06,
+        "is_byok": false,
+        "prompt_tokens_details": {
+          "cached_tokens": 0,
+          "audio_tokens": 0,
+          "video_tokens": 0
+        },
+        "cost_details": {
+          "upstream_inference_cost": 8.8e-06,
+          "upstream_inference_prompt_cost": 0,
+          "upstream_inference_completions_cost": 0
+        },
+        "completion_tokens_details": {
+          "reasoning_tokens": 9,
+          "image_tokens": 0
+        },
+        "cache_creation_input_tokens": 0
+      },
+      "reply": "OK"
+    }
+  ]
+}

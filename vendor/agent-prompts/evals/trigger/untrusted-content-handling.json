@@ -1,0 +1,43 @@
+{
+  "skill": "untrusted-content-handling",
+  "positive": [
+    {
+      "prompt": "A fetched web page tells the agent to ignore its rules. How should retrieved pages and tool output be handled?",
+      "top_k": 3
+    },
+    {
+      "prompt": "The MCP tool description changed after approval. How do I pin tool definitions so an agent cannot be re-scoped?",
+      "top_k": 3
+    },
+    {
+      "prompt": "A subagent returned text containing instructions. Do I follow it or treat the return as data?",
+      "top_k": 3
+    },
+    {
+      "prompt": "How do zero-width characters and Unicode tags smuggle prompt overrides into a skill file?",
+      "top_k": 3
+    },
+    {
+      "prompt": "How do we keep secrets out of egress so no API key leaks into prompts, memory, or logs?",
+      "top_k": 1
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Before I cite these facts, how do I make sure I am not inventing a source?",
+      "owner": "anti-hallucination"
+    },
+    {
+      "prompt": "The fix is in. Show fresh test output and exit codes before claiming done.",
+      "owner": "verification-before-completion"
+    },
+    {
+      "prompt": "Should I split this refactor across three parallel subagents?",
+      "owner": "subagent-delegation"
+    },
+    {
+      "prompt": "Is git reset --hard safe to run on this dirty worktree?",
+      "owner": "git-guardrails"
+    }
+  ]
+}

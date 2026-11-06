@@ -1,0 +1,115 @@
+{
+  "api_key_env": "KILO_API_KEY",
+  "attempts": 9,
+  "base_url": "https://api.kilocode.ai/api/gateway/v1",
+  "below_minimum": false,
+  "cold_over_warm_cost_ratio": 6.52,
+  "coverage": {
+    "requests_failed": 0,
+    "requests_ok": 9,
+    "seeds_complete": 3,
+    "seeds_requested": 3
+  },
+  "failures": [],
+  "generated_utc": "2026-10-27T14:52:37Z",
+  "harness": "kilo-gateway",
+  "limits": [
+    "One prefix, one model, one harness: this is not a general cache gain.",
+    "The warm leg repeats an identical body, so the hit rate is an upper bound for a session that edits its stable prefix between turns.",
+    "Cold and warm differ only in cache state; the model is deterministic and each seed is a repetition, not a sampling draw.",
+    "Turn 2 is measured warm only; no cold continuation is recorded.",
+    "Cost is the gateway's reported usage.cost, not a decomposed price table."
+  ],
+  "max_cacheable_block_observed": 1508,
+  "mode": "live",
+  "model": "anthropic/claude-haiku-5.5",
+  "per_kind": {
+    "cold": {
+      "cache_creation_tokens_mean": 1487,
+      "cached_tokens_mean": 0,
+      "cost_usd_mean": 0.000202,
+      "cost_usd_total": 0.000606,
+      "failed": 0,
+      "hit_rate": 0.0,
+      "latency_ms_mean": 2807,
+      "latency_ms_median": 2892,
+      "ok": 3,
+      "output_tokens_mean": 32,
+      "prompt_tokens_mean": 1491,
+      "requests": 3,
+      "seconds_since_last_request_max": null
+    },
+    "continuation": {
+      "cache_creation_tokens_mean": 21,
+      "cached_tokens_mean": 1487,
+      "cost_usd_mean": 3.4e-05,
+      "cost_usd_total": 0.000102,
+      "failed": 0,
+      "hit_rate": 0.983466,
+      "latency_ms_mean": 1660,
+      "latency_ms_median": 1638,
+      "ok": 3,
+      "output_tokens_mean": 32,
+      "prompt_tokens_mean": 1512,
+      "requests": 3,
+      "seconds_since_last_request_max": 0.0
+    },
+    "warm": {
+      "cache_creation_tokens_mean": 0,
+      "cached_tokens_mean": 1487,
+      "cost_usd_mean": 3.1e-05,
+      "cost_usd_total": 9.3e-05,
+      "failed": 0,
+      "hit_rate": 0.997317,
+      "latency_ms_mean": 2119,
+      "latency_ms_median": 2371,
+      "ok": 3,
+      "output_tokens_mean": 32,
+      "prompt_tokens_mean": 1491,
+      "requests": 3,
+      "seconds_since_last_request_max": 2.001
+    }
+  },
+  "prefix": {
+    "chars": 3760,
+    "estimated_tokens": 940,
+    "sha256": "912dc186d5b511083c15a4ccf2a34290d791ee8c26a9c1e44b1c13e52d5deb32",
+    "source": "agents/tabletop/tt-lore-keeper.md"
+  },
+  "prefix_tokens_observed": 1487,
+  "profile": "anthropic-5m",
+  "profile_consistency": {
+    "cold_reads_zero": true,
+    "cold_writes_cache": true,
+    "warm_reads_cache": true,
+    "warm_writes_zero": true
+  },
+  "profile_row": {
+    "claim": "stated",
+    "evidence": "T1",
+    "id": "anthropic-5m",
+    "min_tokens": 512,
+    "read_multiplier": 0.1,
+    "ttl": "5m",
+    "vendor": "anthropic",
+    "write_multiplier": 1.25
+  },
+  "provider": "kilo",
+  "rate_limited": 0,
+  "requests": 9,
+  "retries": 0,
+  "schema": "agent-prompts-cache-baseline/1",
+  "seeds_complete": [
+    401,
+    409,
+    419
+  ],
+  "seeds_requested": [
+    401,
+    409,
+    419
+  ],
+  "started_utc": "2026-10-27T14:40:51Z",
+  "ttl_wait_seconds": 340.0,
+  "turns_per_seed": 2
+}

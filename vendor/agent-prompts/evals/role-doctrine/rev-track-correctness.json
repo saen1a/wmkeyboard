@@ -1,0 +1,9 @@
+{
+  "role": "rev-track-correctness",
+  "prompt": "Review this loop for edge cases: `for i in range(len(items)): total += items[i+1]`. Do not edit. Cite the failure.",
+  "expectations": [
+    "Identifies the out-of-range access",
+    "Names an empty or single-item case",
+    "Does not edit"
+  ]
+}

@@ -1,0 +1,52 @@
+{
+  "schema": "agent-mandate/1",
+  "mandate_id": "wave12-adoption-autonomy",
+  "policy_version": "2.10.0",
+  "strength": "explicit",
+  "basis": {
+    "via": "addressed",
+    "source": "omp console session",
+    "sender": "operator",
+    "scope_key": "session:<session-id>",
+    "addressed": true,
+    "listed_sender": true
+  },
+  "scope": {
+    "unit": "Implement the Wave 12 adoption plan end to end, then audit and test it",
+    "surface": [
+      "standards/",
+      "tooling/",
+      "skills/",
+      "docs/",
+      "packs/",
+      "provenance/",
+      "exemplars/",
+      "evals/",
+      "README.md",
+      "CATALOG.md",
+      "CHANGELOG.md"
+    ],
+    "notes": "The instruction named the adoption plan and its audit and tests; it did not authorize a wider product or runtime decision."
+  },
+  "actor": {
+    "kind": "person",
+    "name": "operator",
+    "source": "omp console session"
+  },
+  "granted_at": "2026-11-01T21:10:00Z",
+  "state": "active",
+  "history": [
+    {
+      "at": "2026-11-01T21:10:00Z",
+      "event": "granted",
+      "policy_version": "2.10.0",
+      "note": "Addressed instruction in the session console: implement the adoption plan end to end and audit and test it."
+    },
+    {
+      "at": "2026-11-01T23:40:00Z",
+      "event": "revalidated",
+      "policy_version": "2.10.0",
+      "note": "The request still covered the work: the recorded basis still listens to this conversation and the scope still names only the adoption plan implementation and audit, so nothing was widened or re-derived."
+    }
+  ]
+}

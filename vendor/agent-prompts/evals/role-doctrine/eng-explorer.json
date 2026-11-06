@@ -1,0 +1,9 @@
+{
+  "role": "eng-explorer",
+  "prompt": "Map the code path that handles user login in this repository. Do not edit files. Return the entry points, the files that carry the behavior, and the highest-risk unknown.",
+  "expectations": [
+    "Names the entry point(s) before listing files",
+    "Cites specific files or symbols",
+    "Calls out an unknown or risk instead of guessing"
+  ]
+}

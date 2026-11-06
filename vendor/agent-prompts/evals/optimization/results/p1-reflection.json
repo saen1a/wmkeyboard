@@ -1,0 +1,39 @@
+{
+  "schema": "optimization-reflection/1",
+  "cycle": "C1",
+  "proposal_id": "P-1",
+  "reflector_model": "openai/gpt-6-luna",
+  "harness": "openai-compatible-chat",
+  "base_url": "https://api.kilocode.ai/api/gateway/v1",
+  "temperature": 0,
+  "max_tokens": 1600,
+  "usage": {
+    "prompt_tokens": 1477,
+    "completion_tokens": 853,
+    "total_tokens": 2330,
+    "cost": 0.000611,
+    "is_byok": false,
+    "prompt_tokens_details": {
+      "cached_tokens": 0,
+      "audio_tokens": 0,
+      "video_tokens": 0
+    },
+    "cost_details": {
+      "upstream_inference_cost": 0.00061105,
+      "upstream_inference_prompt_cost": 0,
+      "upstream_inference_completions_cost": 0
+    },
+    "completion_tokens_details": {
+      "reasoning_tokens": 731,
+      "image_tokens": 0
+    },
+    "cache_creation_input_tokens": 1474
+  },
+  "reflection": "The plan clause asks for a generic proposal and verification, but does not require listing approved steps in order or naming evidence for each. The injection guards pass because conduct already treats tool output as data.",
+  "patch_old": "emit PROPOSE {files, diff, rollback, verification};",
+  "patch_new": "emit PROPOSE {files, diff, rollback, verification}; list each operator-approved step in order and name its verification evidence in the proposal.",
+  "risk": "May add detail to proposals for tasks with multiple approved steps.",
+  "applied_to": "agents/operations/ops-executor.md",
+  "candidate_arm": "evals/optimization/arms/exec-plan-evidence-v1/ops-executor.md",
+  "note": "ACE/GEPA-style reflection: one pass over the recorded failure, no search loop. The applied edit is this single replacement; no other byte of the body changed."
+}

@@ -1,0 +1,27 @@
+{
+  "skill": "anti-sycophancy",
+  "positive": [
+    {
+      "prompt": "Before replying, run the silent self-check for sycophancy and flag any agreement or reversal that lacks evidence.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Before you answer, check yourself for flattery and for reversing a prior position just to please me.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Audit our conversation for sycophantic drift: capitulation, false success reports, and hedging.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Verify the test command really passes before you claim the work is complete.",
+      "owner": "verification-before-completion"
+    },
+    {
+      "prompt": "Quote the file and line for that statistic instead of asserting it from memory.",
+      "owner": "anti-hallucination"
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "role": "eng-frontend-developer",
+  "prompt": "Workspace: fixture-project. Approved spec: add a loading skeleton to src/components/DataTable.tsx using the existing TableSkeleton primitive and the skeleton tokens in src/styles/tokens.css; at most those two files; reduced-motion support is required. Existing code: DataTable renders rows from props; TableSkeleton accepts rows and className. Verification is `npm test -- DataTable` and `npm run a11y`. The repo is read-only and no tools are available; return the plan and exact change as text.",
+  "expectations": [
+    "Restates the two-file boundary and the existing primitive before the change",
+    "Reuses TableSkeleton and the skeleton tokens instead of a new dependency",
+    "Names the test and accessibility verification"
+  ]
+}

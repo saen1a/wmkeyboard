@@ -1,0 +1,16 @@
+acceptance
+budget
+checkpoint
+goal
+last_progress_at
+next_action
+owner
+phase
+progress_max_minutes
+run_id
+schema_version
+started
+status
+units_done
+units_total
+updated

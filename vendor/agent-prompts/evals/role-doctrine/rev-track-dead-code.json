@@ -1,0 +1,9 @@
+{
+  "role": "rev-track-dead-code",
+  "prompt": "Find dead code in this diff: a new helper is added but the only caller was deleted. Do not edit. Cite the path.",
+  "expectations": [
+    "Identifies the uncalled helper",
+    "Cites the removed caller or path",
+    "Recommends deletion or a recorded reason to keep"
+  ]
+}

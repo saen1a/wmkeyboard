@@ -1,0 +1,546 @@
+{
+  "schema": "role-ab-summary/3",
+  "experiment": "workflow-loop-2026-10",
+  "protocol": {
+    "seeds": [
+      501,
+      509,
+      519
+    ],
+    "max_tokens": 16384,
+    "temperature": 0,
+    "executor_model": "deepseek-v4.1-flash",
+    "grader_model": "deepseek-v4-pro",
+    "harness": "openai-compatible-chat",
+    "doctrine_version": "1.3.0",
+    "current_ref": "0223eae",
+    "current_arm": "doctrine 1.3.0 loop, template 2.0.0",
+    "candidate_arm": "doctrine 1.1.0 linear (pinned at evals/role-ab/arms/linear-v1.1)",
+    "excluded_roles": {
+      "ops-format-normalizer": "tool-dependent task; text-only 0.33/0.33 vs tool-enabled 1.0/1.0"
+    },
+    "raw_results": [
+      "evals/results/loop-ab-oc-501",
+      "evals/results/loop-ab-oc-509",
+      "evals/results/loop-ab-oc-519"
+    ],
+    "note": "Pre-registered 2.0.0 OpenCode Go protocol; model changed, cache reset, not comparable to DeepSeek 1.3.0. Executor deepseek-v4.1-flash; grader deepseek-v4-pro."
+  },
+  "arm_hashes": {
+    "eng-api-developer": {
+      "current": {
+        "sha256": "51e566450fd6ba595e7af18a10bbc6aac37a69291f8eee7dfc8098c871ab15ef",
+        "chars": 4935
+      },
+      "candidate": {
+        "sha256": "1a3307c8a149c5c0ccabdfb3cc23d4b1d3d4b5cdc24e1caa03112aee3b5446ca",
+        "chars": 4966
+      }
+    },
+    "eng-backend-developer": {
+      "current": {
+        "sha256": "d87cceef6bfa78a8768fdc63e8bd7db8c69a39ff1b10c38ddcf015ac65ccf470",
+        "chars": 4948
+      },
+      "candidate": {
+        "sha256": "ed0dcf5b7746c8b8128d6e533ca407752f413cf49c5e2fb7d8777d2031a16be9",
+        "chars": 4979
+      }
+    },
+    "eng-database-developer": {
+      "current": {
+        "sha256": "0ab1e16399b862e19b818ca0913c4ba667f76a654c54e6a301d4c155ce3399f0",
+        "chars": 4956
+      },
+      "candidate": {
+        "sha256": "4ab5d911430f8813ccfc1c83a07726a12f280a25dd41ef761d1ba1afd7e8e830",
+        "chars": 4987
+      }
+    },
+    "eng-frontend-developer": {
+      "current": {
+        "sha256": "053773049156369d5ff921c0823aa368ab6b891aa4f451d86a0d23ee6a3ac921",
+        "chars": 5060
+      },
+      "candidate": {
+        "sha256": "9dc62c940840c04883986348369fd89c6488167d92adc6bb02e1012532d2aa6a",
+        "chars": 5038
+      }
+    },
+    "eng-test-author": {
+      "current": {
+        "sha256": "2c5a01c515378db245c063c1f376e1e841d50f91b83d77e500cf04ecfd5354d3",
+        "chars": 4877
+      },
+      "candidate": {
+        "sha256": "30654b1ddf46fdf3ff32d6f8c0c176c00b348f6ae6c001b92e8a7292028d101c",
+        "chars": 4908
+      }
+    },
+    "net-network-architect": {
+      "current": {
+        "sha256": "da87e6ffbdb95d03de647e575d8511930bd6eeb50035b2fb73fe129e3a247e88",
+        "chars": 4988
+      },
+      "candidate": {
+        "sha256": "ca88478f1f85a2aa88f7a5f028635524b523da05945994e286bd1b64bb705c49",
+        "chars": 5011
+      }
+    },
+    "ops-ci-implementer": {
+      "current": {
+        "sha256": "1a6ac99c3695eb27003a7119da0c4e86d2c291205470aae727435e7429217559",
+        "chars": 4979
+      },
+      "candidate": {
+        "sha256": "64b896e885e5af705bca21c48f4bfb6977ec588efd6e35a4373711757bbe3803",
+        "chars": 4765
+      }
+    },
+    "ops-executor": {
+      "current": {
+        "sha256": "f4ddc1ade9deef8664dbf700087adaa5d297a3637ca21c20e4f1ed6422dd727b",
+        "chars": 4650
+      },
+      "candidate": {
+        "sha256": "348d6131f1f9cecea243b2a7953e4a010c06586ab96c27924651d8654e2e203c",
+        "chars": 4641
+      }
+    },
+    "orch-orchestrator": {
+      "current": {
+        "sha256": "dac3fd2263b8579de8ed41d9646a03100d0c79dc330a03e5fd0a13bbedd9048a",
+        "chars": 5414
+      },
+      "candidate": {
+        "sha256": "2516b625ac786976b88daba4277a36b442023e697f7919cb35eb486bdfa68b61",
+        "chars": 5340
+      }
+    },
+    "rev-code-skeptic": {
+      "current": {
+        "sha256": "1deabda59b70ce9e3166bd564995dc39d0b1950646a4e7f9ed1073c2e6294f16",
+        "chars": 4715
+      },
+      "candidate": {
+        "sha256": "b160bec1d9efc743b3ea622f577139d89335991bf6317cbee6bea3f9057f7205",
+        "chars": 4738
+      }
+    },
+    "rev-review-lead": {
+      "current": {
+        "sha256": "de9aeaeb5b2552885f33ba143ab2fb11266de04e39485764949f7667e8978f41",
+        "chars": 5036
+      },
+      "candidate": {
+        "sha256": "dfd91bb95addbcd1704ac4fc8f76a6f2f0a2e3a6d1be3f02c4701b8987e40390",
+        "chars": 5064
+      }
+    },
+    "rev-reviewer": {
+      "current": {
+        "sha256": "ecd2c1bbb07ee799bb3183d024ca6f514c692f9a080ffd76caf43432935d6ead",
+        "chars": 4289
+      },
+      "candidate": {
+        "sha256": "0a10faa166b57f1036289f0876ca8fb9b52102998f006455ef8f9185cd6363b2",
+        "chars": 4317
+      }
+    }
+  },
+  "per_role": {
+    "eng-api-developer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "501": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "eng-backend-developer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "501": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "eng-database-developer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "501": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "eng-frontend-developer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "501": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "eng-test-author": {
+      "current": {
+        "mean": 0.8889,
+        "passed": 2,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 0.8889,
+        "passed": 2,
+        "runs": 3
+      },
+      "501": {
+        "current": 0.6667,
+        "candidate": 1.0,
+        "delta": -0.3333,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 0.6667,
+        "delta": 0.3333,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "net-network-architect": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "501": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": true
+      }
+    },
+    "ops-ci-implementer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "501": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "ops-executor": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "501": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "orch-orchestrator": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "501": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "rev-code-skeptic": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "501": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "rev-review-lead": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 0.89,
+        "passed": 2,
+        "runs": 3
+      },
+      "501": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 0.67,
+        "delta": 0.33,
+        "truncated": false
+      }
+    },
+    "rev-reviewer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "501": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "509": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "519": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    }
+  },
+  "truncated_pairs": [
+    {
+      "role": "net-network-architect",
+      "seed": 519
+    }
+  ],
+  "overall_all": {
+    "current_mean": 0.9907,
+    "candidate_mean": 0.9816,
+    "delta": 0.0092,
+    "wins": 2,
+    "ties": 33,
+    "losses": 1,
+    "pairs": 36
+  },
+  "overall_complete": {
+    "current_mean": 0.9905,
+    "candidate_mean": 0.981,
+    "delta": 0.0094,
+    "wins": 2,
+    "ties": 32,
+    "losses": 1,
+    "pairs": 35
+  },
+  "post_run_changes": {
+    "measured_doctrine_version": "1.3.0",
+    "measured_ref": "0223eae",
+    "doctrine_changed_at": "31952d9",
+    "current_doctrine_version": "1.3.1",
+    "current_body_ref": "ecc04ca",
+    "current_body_hashes_match": false,
+    "note": "The doctrine text changed after this run (31952d9). These results measure the pre-change body and are not evidence for the current doctrine 1.3.1 body; a new run is required for that claim."
+  }
+}

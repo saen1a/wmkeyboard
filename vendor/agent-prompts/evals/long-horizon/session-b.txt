@@ -1,0 +1,23 @@
+== session B (pid 3891097) ==
+cold start: the only inputs are evals/long-horizon/run-state.md and evals/long-horizon/events.jsonl
+step 1: workspace /workspace/agent-prompts, run id lh-contract-exercise
+step 2: replayed the journal: 5 events, 2 checkpoints
+replay: 5 events, 2 checkpoints
+replay: committed U1 at Verify (gate pass)
+replay: next_action = Resume in a new session and execute U2
+view:   checkpoint 2, units_done 1/3
+view:   next_action = Resume in a new session and execute U2
+hash:   view 9915aee07e6b..., last checkpoint seq 5 records 9915aee07e6b...
+AGREE
+step 3: every committed artifact path from the replay exists on disk
+step 4: cheapest baseline check that detects a broken environment
+  check_run_journal --state exit 0: run-journal: 5 events, 0 violation(s)
+step 5: the view and the journal agree; nothing to reconcile
+step 6: execute next_action: Resume in a new session and execute U2
+journal seq 6: note (resume; the contract has no resume event kind)
+gate U2 pass: evals/long-horizon/work/journal-kinds.txt matches the contract derivation (8 lines)
+journal seq 9: checkpoint 3 (U2 verified)
+gate U3 pass: evals/long-horizon/work/sections.txt matches the contract derivation (6 lines)
+journal seq 12: checkpoint 4 (U3 verified)
+journal seq 13: checkpoint 5 (finalize)
+journal seq 14: done

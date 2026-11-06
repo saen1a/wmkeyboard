@@ -1,0 +1,9 @@
+{
+  "role": "rev-review-lead",
+  "prompt": "Triage a 400-line diff across 12 files for review. Do not edit. Choose the review tier, the children to dispatch, and the merge rule.",
+  "expectations": [
+    "Chooses a tier based on size and risk",
+    "Names the review children or tracks",
+    "States how findings are merged"
+  ]
+}

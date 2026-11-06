@@ -1,0 +1,131 @@
+{
+  "schema": "agent-gate-verdict/1",
+  "verdict_id": "PR-loop-hardening-r0",
+  "unit": "loop-hardening",
+  "gate": "plan-review",
+  "verdict": "fix",
+  "mode": "block",
+  "attempt": 0,
+  "implementer": "library-maintainer",
+  "verifier": "wl-15-checklist",
+  "verifier_kind": "mechanical",
+  "fresh_context": true,
+  "artifacts": [
+    {
+      "path": "provenance/plan-loop-hardening-2026-11.md",
+      "sha256": "1b6c40490eaf12735da1a18f9d8a00328b5e2c5ee075d0de96975ddfcaf81313",
+      "bytes": 5303,
+      "non_whitespace_chars": 4445,
+      "shape": "ok"
+    }
+  ],
+  "checks": [],
+  "criteria": [
+    {
+      "id": "goal",
+      "severity": "MUST",
+      "criterion": "One decidable goal with the scope boundaries stated",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "request-coverage",
+      "severity": "MUST",
+      "criterion": "Every request item maps to a unit and every unit traces back",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "acceptance",
+      "severity": "MUST",
+      "criterion": "Every unit carries a checkable MUST/SHOULD criterion taken from the request",
+      "state": "unmet",
+      "evidence": "provenance/findings-loop-hardening.md"
+    },
+    {
+      "id": "verification",
+      "severity": "MUST",
+      "criterion": "Every MUST criterion names a check that is runnable as written",
+      "state": "unmet",
+      "evidence": "provenance/findings-loop-hardening.md"
+    },
+    {
+      "id": "ownership-order",
+      "severity": "MUST",
+      "criterion": "One writer per surface and units ordered by dependency",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    },
+    {
+      "id": "risk-halt",
+      "severity": "MUST",
+      "criterion": "Unsafe or unresolvable items name the HALT path and the operator question",
+      "state": "met",
+      "evidence": "provenance/plan-loop-hardening-2026-11.md"
+    }
+  ],
+  "coverage": {
+    "measured": 100,
+    "floor": 95,
+    "basis": "all 7 sections of the spec and all 6 unit rows were read; the 4 tables were parsed row by row"
+  },
+  "findings": [
+    {
+      "id": "F-1",
+      "severity": "high",
+      "state": "open",
+      "file_line": "provenance/plan-loop-hardening-2026-11.md:56",
+      "evidence": "U2's verification passes one verdict file, but the unit produces two rounds; the round ordering the gate must read is undefined"
+    },
+    {
+      "id": "F-2",
+      "severity": "high",
+      "state": "open",
+      "file_line": "provenance/plan-loop-hardening-2026-11.md:58",
+      "evidence": "U2 verifies with a test module that U2 itself creates, so 'the check exists today' is false as written and the plan-review check would reject every self-referential plan"
+    },
+    {
+      "id": "F-3",
+      "severity": "medium",
+      "state": "open",
+      "file_line": "provenance/plan-loop-hardening-2026-11.md:57",
+      "evidence": "U3 requires a loop statement in every OMP foreground module, but the modules compose one pinned policy with a 700-token cap; duplication is the failure mode"
+    },
+    {
+      "id": "F-4",
+      "severity": "medium",
+      "state": "open",
+      "file_line": "provenance/plan-loop-hardening-2026-11.md:59",
+      "evidence": "U4 and U5 change tool, test, and record counts, but no unit acceptance names the measured-state refresh that the gate enforces"
+    },
+    {
+      "id": "F-5",
+      "severity": "low",
+      "state": "open",
+      "file_line": "provenance/plan-loop-hardening-2026-11.md:55",
+      "evidence": "the effective date is stated in the spec header but not as the default value the ordering gate applies, so a consumer cannot tell what grandfathering it gets"
+    }
+  ],
+  "degraded": [],
+  "claims": [
+    {
+      "claim": "The spec is decidable and every request item has a unit",
+      "evidence": [
+        "goal",
+        "request-coverage"
+      ]
+    },
+    {
+      "claim": "The plan is not ready for Implement: two high findings are open",
+      "evidence": [
+        "F-1",
+        "F-2"
+      ]
+    }
+  ],
+  "notes": "Round 0 of the plan review, run against the six WL-15 checks on the spec alone.",
+  "verification_provenance": {
+    "defined_by": "standards/workflow-loop.md",
+    "authored_in_this_attempt": false
+  }
+}

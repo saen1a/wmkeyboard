@@ -1,0 +1,9 @@
+{
+  "role": "eng-frontend-developer",
+  "prompt": "Implement a loading state for the dashboard table. Keep the change minimal and do not edit files. Return a short plan, the patch approach, and the exact verification command.",
+  "expectations": [
+    "States a plan before describing the change",
+    "Describes the smallest sufficient change",
+    "Names a concrete verification command or check"
+  ]
+}

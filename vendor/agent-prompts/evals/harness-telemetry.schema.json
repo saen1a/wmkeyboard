@@ -1,0 +1,366 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "agent-prompts harness telemetry",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "run",
+    "turn",
+    "usage",
+    "outcome"
+  ],
+  "properties": {
+    "schema": {
+      "enum": [
+        "agent-prompts-harness/1",
+        "agent-prompts-harness/2"
+      ]
+    },
+    "run": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "model",
+        "provider",
+        "harness",
+        "seed",
+        "timestamp_utc"
+      ],
+      "properties": {
+        "model": {
+          "type": "string",
+          "minLength": 1
+        },
+        "provider": {
+          "type": "string",
+          "minLength": 1
+        },
+        "harness": {
+          "type": "string",
+          "minLength": 1
+        },
+        "seed": {
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "timestamp_utc": {
+          "type": "string",
+          "minLength": 10
+        },
+        "skill_versions": {
+          "type": "object"
+        },
+        "prompt_version": {
+          "type": "string"
+        },
+        "cache_epoch": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "model",
+            "harness",
+            "toolset_sha256",
+            "doctrine_version"
+          ],
+          "properties": {
+            "model": {
+              "type": "string",
+              "minLength": 1
+            },
+            "harness": {
+              "type": "string",
+              "minLength": 1
+            },
+            "toolset_sha256": {
+              "type": "string",
+              "pattern": "^[0-9a-f]{8,64}$"
+            },
+            "doctrine_version": {
+              "type": "string",
+              "minLength": 1
+            },
+            "template_version": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    },
+    "turn": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "gate",
+        "gate_reasons",
+        "files",
+        "lines",
+        "verification"
+      ],
+      "properties": {
+        "gate": {
+          "enum": [
+            "fast-path",
+            "full-stopp",
+            "halt",
+            "none"
+          ]
+        },
+        "gate_reasons": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "files": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "lines": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "verification": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "command",
+            "exit_code"
+          ],
+          "properties": {
+            "command": {
+              "type": "string"
+            },
+            "exit_code": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            }
+          }
+        },
+        "prefix_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8,64}$"
+        },
+        "first_divergent_layer": {
+          "enum": [
+            "tools",
+            "system",
+            "skills",
+            "messages"
+          ]
+        },
+        "seconds_since_last_request": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "usage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "input_tokens",
+        "output_tokens",
+        "reasoning_tokens",
+        "cache_hit_tokens",
+        "cache_miss_tokens"
+      ],
+      "properties": {
+        "input_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "output_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "reasoning_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_hit_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_miss_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_read_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_write_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cache_write_ttl_class": {
+          "enum": [
+            "5m",
+            "1h",
+            "30m",
+            "12h",
+            "implicit",
+            "best-effort",
+            "lru",
+            "unknown"
+          ]
+        }
+      }
+    },
+    "outcome": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "status",
+        "escaped_defect",
+        "operator_interventions",
+        "duration_ms"
+      ],
+      "properties": {
+        "status": {
+          "enum": [
+            "pass",
+            "fail",
+            "halted",
+            "error"
+          ]
+        },
+        "escaped_defect": {
+          "type": "boolean"
+        },
+        "operator_interventions": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "duration_ms": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "cost_usd": {
+          "type": "number",
+          "minimum": 0
+        }
+      }
+    },
+    "cache": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "prefix_hash",
+        "breakpoints",
+        "ttl",
+        "tool_set_version"
+      ],
+      "properties": {
+        "prefix_hash": {
+          "type": "string",
+          "pattern": "^[0-9a-f]{8,64}$"
+        },
+        "breakpoints": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 4
+        },
+        "ttl": {
+          "enum": [
+            "5m",
+            "1h",
+            "30m",
+            "12h",
+            "implicit",
+            "best-effort",
+            "lru",
+            "none"
+          ]
+        },
+        "tool_set_version": {
+          "type": "string",
+          "minLength": 1
+        },
+        "layer_hashes": {
+          "type": "object",
+          "propertyNames": {
+            "enum": [
+              "tools",
+              "system",
+              "skills",
+              "messages"
+            ]
+          },
+          "additionalProperties": {
+            "type": "string",
+            "pattern": "^[0-9a-f]{8,64}$"
+          }
+        },
+        "min_tokens": {
+          "type": "integer",
+          "minimum": 0
+        },
+        "compaction": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "reason",
+            "before_tokens",
+            "after_tokens",
+            "hit_rate_before",
+            "hit_rate_after"
+          ],
+          "properties": {
+            "reason": {
+              "type": "string",
+              "minLength": 1
+            },
+            "before_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "after_tokens": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "hit_rate_before": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            },
+            "hit_rate_after": {
+              "type": "number",
+              "minimum": 0,
+              "maximum": 1
+            }
+          }
+        }
+      }
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "schema": {
+            "const": "agent-prompts-harness/2"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "cache"
+        ],
+        "properties": {
+          "usage": {
+            "required": [
+              "cache_read_tokens",
+              "cache_write_tokens"
+            ]
+          }
+        }
+      }
+    }
+  ]
+}

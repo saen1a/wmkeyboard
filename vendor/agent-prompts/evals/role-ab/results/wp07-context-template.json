@@ -1,0 +1,489 @@
+{
+  "schema": "role-ab-summary/3",
+  "experiment": "wp07-context-template",
+  "protocol": {
+    "seeds": [
+      311,
+      313,
+      317
+    ],
+    "max_tokens": 2048,
+    "temperature": 0,
+    "executor_model": "anthropic/claude-haiku-5.5",
+    "grader_model": "openai/gpt-6-luna",
+    "harness": "openai-compatible-chat",
+    "doctrine_version": null,
+    "current_ref": "02e2ac2",
+    "current_arm": "role alone",
+    "candidate_arm": "same role plus evals/context-template/router-v1.md, an instance of docs/AGENTS-TEMPLATE.md",
+    "excluded_roles": {},
+    "raw_results": [
+      "evals/results/wp07-context-311",
+      "evals/results/wp07-context-313",
+      "evals/results/wp07-context-317"
+    ],
+    "note": "Pre-registered protocol: evals/role-ab/pre-registrations/wp-07-context-template.md; original role-ab tasks; Kilo gateway, executor anthropic/claude-haiku-5.5, grader openai/gpt-6-luna; 18-pair pilot, not the full CF-08 set."
+  },
+  "arm_hashes": {
+    "eng-backend-developer": {
+      "current": {
+        "sha256": "bda2884314cfd94288c45ba40ad253e34467653d45b82c83fb905b0686e91910",
+        "chars": 4961
+      },
+      "candidate": {
+        "sha256": "f1af09768decf3ac13fc9abc1cde6d7c628befd690f50e6f53443c1380a8c5d2",
+        "chars": 5965
+      }
+    },
+    "eng-frontend-developer": {
+      "current": {
+        "sha256": "e8c956979a1b83e63ed77d9605a9a7ae2638db27019a5eb6b688e082adc9f55a",
+        "chars": 5073
+      },
+      "candidate": {
+        "sha256": "06ce027c6b8135e97737d45847e1b809cc41f4d53ad734884da63b932cbc730c",
+        "chars": 6077
+      }
+    },
+    "ops-executor": {
+      "current": {
+        "sha256": "57bcca9bad647705925d4b2bb246a4cdf1582f0b32b0b6ad4ed66e7a5db8e20b",
+        "chars": 4663
+      },
+      "candidate": {
+        "sha256": "4211da3ea6a0b384f9db3320fb41fb83ef375ecf6e0b6d253cc6c2a3d90ef206",
+        "chars": 5667
+      }
+    },
+    "orch-orchestrator": {
+      "current": {
+        "sha256": "a3ac776c91f185fce5b3b753c60cb16f3ecb96ab01072f9d84c6fe95ff6e10ea",
+        "chars": 5468
+      },
+      "candidate": {
+        "sha256": "a93402df6b4b4d54f8f706bc56e44f2d4e74f630330d38a4f394104c0be82028",
+        "chars": 6472
+      }
+    },
+    "rev-code-skeptic": {
+      "current": {
+        "sha256": "16c68919355eef93da759c1fdb01e533128e62077f8fdd1308be915a12e9f6c7",
+        "chars": 4728
+      },
+      "candidate": {
+        "sha256": "981c2f0f571030ad9e83bcf17824825f66314f4a7a9274ec1ba8f237493fb2c0",
+        "chars": 5732
+      }
+    },
+    "rev-reviewer": {
+      "current": {
+        "sha256": "da715da1bbcacd1617fd7eeb9ffbf2ff51ff59d4987ab72c8bb537fb684b3a46",
+        "chars": 4302
+      },
+      "candidate": {
+        "sha256": "f57e2e35d4880fb659d5d1eb10e9b7e7edf8ec77fe30b5d44e03b5b96211629e",
+        "chars": 5306
+      }
+    }
+  },
+  "usage": {
+    "current": {
+      "runs": 18,
+      "input_tokens_total": 36723,
+      "input_tokens_mean": 2040.17,
+      "output_tokens_total": 28437,
+      "output_tokens_mean": 1579.83
+    },
+    "candidate": {
+      "runs": 18,
+      "input_tokens_total": 43851,
+      "input_tokens_mean": 2436.17,
+      "output_tokens_total": 26893,
+      "output_tokens_mean": 1494.06
+    }
+  },
+  "expectations": {
+    "current": {
+      "checked": 54,
+      "met": 48,
+      "by_expectation": {
+        "Assigns a severity and explains the failure mode": {
+          "checked": 3,
+          "met": 3
+        },
+        "Delegates both units and states whether each gate is proceed or hold": {
+          "checked": 3,
+          "met": 1
+        },
+        "Describes the smallest handler/service change": {
+          "checked": 3,
+          "met": 3
+        },
+        "Does not claim DONE": {
+          "checked": 3,
+          "met": 3
+        },
+        "Does not claim to edit the code": {
+          "checked": 3,
+          "met": 3
+        },
+        "Emits a PROPOSE and waits for explicit go instead of applying": {
+          "checked": 3,
+          "met": 3
+        },
+        "Flags the missing attempt cap or the zero timeout with file/line evidence": {
+          "checked": 3,
+          "met": 2
+        },
+        "Keeps the response contract stable": {
+          "checked": 3,
+          "met": 3
+        },
+        "Marks the claim unverified without command output": {
+          "checked": 3,
+          "met": 3
+        },
+        "Names a config or health verification command": {
+          "checked": 3,
+          "met": 3
+        },
+        "Names a rollback to app:1.4.2 and the affected file": {
+          "checked": 3,
+          "met": 3
+        },
+        "Names a test and exit code": {
+          "checked": 3,
+          "met": 3
+        },
+        "Names the missing evidence or gate": {
+          "checked": 3,
+          "met": 3
+        },
+        "Names the test and accessibility verification": {
+          "checked": 3,
+          "met": 2
+        },
+        "Restates the two-file boundary and the existing primitive before the change": {
+          "checked": 3,
+          "met": 3
+        },
+        "Reuses TableSkeleton and the skeleton tokens instead of a new dependency": {
+          "checked": 3,
+          "met": 3
+        },
+        "Stops at the operator Push gate instead of committing": {
+          "checked": 3,
+          "met": 1
+        },
+        "Writes a spec with goal, units, acceptance, and verification": {
+          "checked": 3,
+          "met": 3
+        }
+      }
+    },
+    "candidate": {
+      "checked": 54,
+      "met": 47,
+      "by_expectation": {
+        "Assigns a severity and explains the failure mode": {
+          "checked": 3,
+          "met": 3
+        },
+        "Delegates both units and states whether each gate is proceed or hold": {
+          "checked": 3,
+          "met": 1
+        },
+        "Describes the smallest handler/service change": {
+          "checked": 3,
+          "met": 3
+        },
+        "Does not claim DONE": {
+          "checked": 3,
+          "met": 3
+        },
+        "Does not claim to edit the code": {
+          "checked": 3,
+          "met": 3
+        },
+        "Emits a PROPOSE and waits for explicit go instead of applying": {
+          "checked": 3,
+          "met": 3
+        },
+        "Flags the missing attempt cap or the zero timeout with file/line evidence": {
+          "checked": 3,
+          "met": 3
+        },
+        "Keeps the response contract stable": {
+          "checked": 3,
+          "met": 3
+        },
+        "Marks the claim unverified without command output": {
+          "checked": 3,
+          "met": 3
+        },
+        "Names a config or health verification command": {
+          "checked": 3,
+          "met": 3
+        },
+        "Names a rollback to app:1.4.2 and the affected file": {
+          "checked": 3,
+          "met": 3
+        },
+        "Names a test and exit code": {
+          "checked": 3,
+          "met": 3
+        },
+        "Names the missing evidence or gate": {
+          "checked": 3,
+          "met": 3
+        },
+        "Names the test and accessibility verification": {
+          "checked": 3,
+          "met": 2
+        },
+        "Restates the two-file boundary and the existing primitive before the change": {
+          "checked": 3,
+          "met": 3
+        },
+        "Reuses TableSkeleton and the skeleton tokens instead of a new dependency": {
+          "checked": 3,
+          "met": 1
+        },
+        "Stops at the operator Push gate instead of committing": {
+          "checked": 3,
+          "met": 1
+        },
+        "Writes a spec with goal, units, acceptance, and verification": {
+          "checked": 3,
+          "met": 3
+        }
+      }
+    }
+  },
+  "per_role": {
+    "eng-backend-developer": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "311": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "313": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "317": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "eng-frontend-developer": {
+      "current": {
+        "mean": 0.8889,
+        "passed": 2,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 0.6667,
+        "passed": 1,
+        "runs": 3
+      },
+      "311": {
+        "current": 1.0,
+        "candidate": 0.3333,
+        "delta": 0.6667,
+        "truncated": true
+      },
+      "313": {
+        "current": 0.6667,
+        "candidate": 0.6667,
+        "delta": 0.0,
+        "truncated": true
+      },
+      "317": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": true
+      }
+    },
+    "ops-executor": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "311": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "313": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "317": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "orch-orchestrator": {
+      "current": {
+        "mean": 0.5555,
+        "passed": 1,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 0.5556,
+        "passed": 0,
+        "runs": 3
+      },
+      "311": {
+        "current": 0.3333,
+        "candidate": 0.3333,
+        "delta": 0.0,
+        "truncated": true
+      },
+      "313": {
+        "current": 0.3333,
+        "candidate": 0.6667,
+        "delta": -0.3334,
+        "truncated": true
+      },
+      "317": {
+        "current": 1.0,
+        "candidate": 0.6667,
+        "delta": 0.3333,
+        "truncated": true
+      }
+    },
+    "rev-code-skeptic": {
+      "current": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "311": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "313": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "317": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    },
+    "rev-reviewer": {
+      "current": {
+        "mean": 0.89,
+        "passed": 2,
+        "runs": 3
+      },
+      "candidate": {
+        "mean": 1.0,
+        "passed": 3,
+        "runs": 3
+      },
+      "311": {
+        "current": 0.67,
+        "candidate": 1.0,
+        "delta": -0.33,
+        "truncated": false
+      },
+      "313": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      },
+      "317": {
+        "current": 1.0,
+        "candidate": 1.0,
+        "delta": 0.0,
+        "truncated": false
+      }
+    }
+  },
+  "truncated_pairs": [
+    {
+      "role": "eng-frontend-developer",
+      "seed": 311
+    },
+    {
+      "role": "eng-frontend-developer",
+      "seed": 313
+    },
+    {
+      "role": "eng-frontend-developer",
+      "seed": 317
+    },
+    {
+      "role": "orch-orchestrator",
+      "seed": 311
+    },
+    {
+      "role": "orch-orchestrator",
+      "seed": 313
+    },
+    {
+      "role": "orch-orchestrator",
+      "seed": 317
+    }
+  ],
+  "overall_all": {
+    "current_mean": 0.8891,
+    "candidate_mean": 0.8704,
+    "delta": 0.0187,
+    "wins": 2,
+    "ties": 14,
+    "losses": 2,
+    "pairs": 18
+  },
+  "overall_complete": {
+    "current_mean": 0.9725,
+    "candidate_mean": 1.0,
+    "delta": -0.0275,
+    "wins": 0,
+    "ties": 11,
+    "losses": 1,
+    "pairs": 12
+  }
+}

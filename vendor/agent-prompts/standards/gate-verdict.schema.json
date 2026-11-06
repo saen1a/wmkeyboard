@@ -1,0 +1,122 @@
+{
+  "version": "1.1.0",
+  "contract": "agent-gate-verdict/1",
+  "title": "agent-prompts gate verdict",
+  "note": "Declarative contract, not JSON Schema. tooling/check_gate_verdict.py implements it. Vocabulary follows standards/workflow-loop.md WL-09 and standards/verification-integrity.md VI-01..VI-13.",
+  "required": [
+    "schema",
+    "verdict_id",
+    "unit",
+    "gate",
+    "verdict",
+    "mode",
+    "attempt",
+    "implementer",
+    "verifier",
+    "verifier_kind",
+    "fresh_context",
+    "artifacts",
+    "checks",
+    "criteria",
+    "coverage",
+    "findings",
+    "degraded",
+    "claims"
+  ],
+  "optional": [
+    "budget_summary",
+    "exemption",
+    "floor_rationale",
+    "halt_reason",
+    "hold_reason",
+    "notes",
+    "verification_provenance"
+  ],
+  "enums": {
+    "gate": [
+      "plan-review",
+      "review",
+      "verify",
+      "acceptance",
+      "run"
+    ],
+    "verdict": [
+      "pass",
+      "fix",
+      "hold",
+      "halt"
+    ],
+    "mode": [
+      "block",
+      "warn",
+      "off"
+    ],
+    "criterion_state": [
+      "met",
+      "unmet",
+      "unverified"
+    ],
+    "criterion_severity": [
+      "MUST",
+      "SHOULD"
+    ],
+    "artifact_shape": [
+      "ok",
+      "stub",
+      "narration",
+      "unreadable"
+    ],
+    "finding_state": [
+      "open",
+      "fixed",
+      "waived"
+    ],
+    "severity": [
+      "high",
+      "medium",
+      "low"
+    ],
+    "check_status": [
+      "ran",
+      "skipped",
+      "budget"
+    ],
+    "halt_reason": [
+      "blocked",
+      "unsafe",
+      "unresolvable",
+      "over-bound",
+      "budget",
+      "stalled",
+      "drift",
+      "operator-declined"
+    ],
+    "verifier_kind": [
+      "human",
+      "agent",
+      "mechanical"
+    ],
+    "hold_reason": [
+      "skipped-check",
+      "degraded",
+      "mode-off",
+      "exemption",
+      "operator-wait"
+    ]
+  },
+  "limits": {
+    "substance_floor_chars": 200,
+    "default_coverage_floor": 95
+  },
+  "rules": {
+    "verifier": "must be non-empty and differ from implementer; 'self' requires an exemption and cannot carry pass; verifier_kind 'mechanical' requires verification_provenance with defined_by and authored_in_this_attempt=false (VI-02)",
+    "pass": "requires mode!=off, no open or waived high/medium finding, every check ran with exit 0 and fresh output, no stub artifact, every MUST criterion met, empty degraded, coverage.measured>=coverage.floor, at least one substantive capture",
+    "fix": "requires at least one open finding, an unmet or unverified MUST criterion, or a failing check",
+    "hold": "requires hold_reason from the enum: skipped-check, degraded, mode-off, exemption, or operator-wait (WL-09 `hold` = waiting for the operator or missing input)",
+    "halt": "requires halt_reason from the enum",
+    "attempt": "required, an integer; 0 or 1 at gate review, verify, acceptance or run (WL-08, VI-13); the round number at gate plan-review, where the bound is progress not a count (WL-15); above 1 elsewhere only on a halt with reason over-bound",
+    "claims": "each claim names an evidence id present in checks[].name, criteria[].id, artifacts[].path, or findings[].id",
+    "checks": "a skipped check carries skip_reason; a budget-killed check does not record exit 0; a pass needs a capture: command + exit + output_digest, or an ok artifact (VI-07)",
+    "plan-review": "requires the six WL-15 checks as criteria with a state each, a verifier that did not write the spec, coverage of every spec section the record declares, and no open or waived high/medium finding for a pass; a round whose CHANGED line repeats the previous one is halt with reason stalled"
+  }
+}

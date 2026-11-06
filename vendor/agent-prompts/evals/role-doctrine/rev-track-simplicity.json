@@ -1,0 +1,9 @@
+{
+  "role": "rev-track-simplicity",
+  "prompt": "Simplify this function without changing behavior: it branches on three feature flags that are always true. Do not edit. Name the smallest change.",
+  "expectations": [
+    "Identifies the always-true branches",
+    "Proposes the smallest simplification",
+    "Preserves the behavior or names the risk"
+  ]
+}

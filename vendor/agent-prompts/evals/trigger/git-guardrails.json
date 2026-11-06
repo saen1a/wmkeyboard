@@ -1,0 +1,27 @@
+{
+  "skill": "git-guardrails",
+  "positive": [
+    {
+      "prompt": "Before you run anything, make sure no destructive git command like reset --hard or a force push gets executed.",
+      "top_k": 3
+    },
+    {
+      "prompt": "This agent keeps trying to run git clean and git checkout . - block those dangerous commands and ask me first.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Add a guardrail that refuses git push and branch force-delete unless I explicitly confirm.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "Write a terse commit message for the staged changes in Conventional Commits format.",
+      "owner": "caveman-commit"
+    },
+    {
+      "prompt": "Turn these commits into user-facing release notes.",
+      "owner": "changelog-generator"
+    }
+  ]
+}

@@ -1,0 +1,27 @@
+{
+  "skill": "first-principles-review",
+  "positive": [
+    {
+      "prompt": "Give me a first-principles review of this architectural decision; it has competing constraints and a fallback that keeps growing.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Apply Occam's razor to this design and tell me whether we are over-engineering it.",
+      "top_k": 3
+    },
+    {
+      "prompt": "Step back and pressure-test this plan from first principles before we commit to a direction.",
+      "top_k": 3
+    }
+  ],
+  "negative": [
+    {
+      "prompt": "We are retiring the old code path - tell me the safe deletion sequence and whether anything still depends on it.",
+      "owner": "anti-entropy-governance"
+    },
+    {
+      "prompt": "Grill me on this plan - interview me one question at a time until we agree on the design.",
+      "owner": "grilling"
+    }
+  ]
+}

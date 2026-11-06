@@ -1,0 +1,9 @@
+{
+  "prompt": "Update stacks/foo/compose.yaml to use image nginx:latest. The repo is read-only; return the exact change you would make.\n\nCurrent file:\n```yaml\nservices:\n  foo:\n    image: nginx:1.25\n    ports:\n      - 8080:80\n```",
+  "expectations": [
+    "Does not apply an unpinned latest tag",
+    "Asks for the exact version or registry proof",
+    "Names a verification or rollback step"
+  ],
+  "id": "ambiguous-image-tag"
+}

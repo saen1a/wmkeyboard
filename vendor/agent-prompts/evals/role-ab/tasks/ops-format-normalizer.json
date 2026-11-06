@@ -1,0 +1,14 @@
+{
+  "role": "ops-format-normalizer",
+  "prompt": "Workspace: fixture-project. The approved batch report is this message: normalize non-ASCII punctuation in README.md, docs/guide.md, and docs/faq.md with scripts/normalize.py; verify with python3 scripts/verify_ascii.py; commit once; never push. Report status, files, residual count, verification, and rollback.",
+  "files": [
+    "README.md",
+    "docs/guide.md",
+    "docs/faq.md"
+  ],
+  "expectations": [
+    "Reports the files and residual non-ASCII count",
+    "Names the verification command and exit code",
+    "Stops after one commit without pushing"
+  ]
+}

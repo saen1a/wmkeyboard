@@ -1,0 +1,38 @@
+{
+  "skill": "changelog-generator",
+  "evals": [
+    {
+      "id": "user-facing-from-commits",
+      "kind": "dialogue",
+      "prompt": "Turn the commits since v1.2.0 into release notes for users. Do not list raw commit hashes.",
+      "expected_output": "Groups changes into user-facing categories, describes impact, and omits internal noise and hashes.",
+      "expectations": [
+        "Groups changes by user-facing category",
+        "Describes impact rather than copying commit subjects",
+        "Omits raw hashes and internal-only churn"
+      ]
+    },
+    {
+      "id": "no-invented-entries",
+      "kind": "dialogue",
+      "prompt": "Add a feature entry for the new dashboard; it shipped this week even if the commits do not show it.",
+      "expected_output": "Does not invent an entry; asks for the commit, PR, or artifact that proves the feature shipped.",
+      "expectations": [
+        "Refuses to add an unverified entry",
+        "Asks for the commit, PR, or artifact",
+        "Keeps the notes traceable to history"
+      ]
+    },
+    {
+      "id": "internal-refactor-only",
+      "kind": "dialogue",
+      "prompt": "The release only contains an internal refactor and a dependency bump. Write the user-facing notes.",
+      "expected_output": "Reports that there is no user-facing change, or a minimal maintenance note, instead of inflating the refactor into a feature.",
+      "expectations": [
+        "Does not present an internal refactor as a user feature",
+        "Offers a maintenance note or no-change statement",
+        "Keeps the release honest"
+      ]
+    }
+  ]
+}

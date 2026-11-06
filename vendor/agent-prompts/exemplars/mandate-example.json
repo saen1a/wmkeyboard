@@ -1,0 +1,43 @@
+{
+  "schema": "agent-mandate/1",
+  "mandate_id": "fix-date-format",
+  "policy_version": "policy-7",
+  "strength": "explicit",
+  "basis": {
+    "via": "addressed",
+    "source": "repository",
+    "sender": "octo-dev",
+    "scope_key": "issue:412",
+    "addressed": true,
+    "listed_sender": true,
+    "trigger_id": "repository-issue:412:comment:9931"
+  },
+  "scope": {
+    "unit": "Change the date formatter in the reporting view",
+    "surface": [
+      "reporting/format",
+      "reporting/components"
+    ],
+    "notes": "Internal change; no public interface, no product decision."
+  },
+  "actor": {
+    "kind": "person",
+    "name": "octo-dev",
+    "source": "repository"
+  },
+  "granted_at": "2026-10-30T09:12:44Z",
+  "state": "active",
+  "history": [
+    {
+      "at": "2026-10-30T09:12:44Z",
+      "event": "granted",
+      "policy_version": "policy-7"
+    },
+    {
+      "at": "2026-10-31T07:40:02Z",
+      "event": "revalidated",
+      "policy_version": "policy-8",
+      "note": "source still listens to the conversation; sender still listed"
+    }
+  ]
+}

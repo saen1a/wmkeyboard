@@ -1,0 +1,9 @@
+{
+  "role": "rev-track-structure",
+  "prompt": "Review the module boundary: `ui/` imports `db/models.py` directly. Do not edit. Name the dependency-direction issue and the owner.",
+  "expectations": [
+    "Identifies the layering violation",
+    "Names the correct owner or interface",
+    "Does not edit"
+  ]
+}

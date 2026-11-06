@@ -1,0 +1,11 @@
+== session A (pid 3891096) ==
+workspace: /workspace/agent-prompts
+run id: lh-contract-exercise
+plan: 3 units, budget 20000 tokens / 40 tool calls / 120 minutes
+journal seq 1: start
+journal seq 2: checkpoint 1 (Plan)
+journal seq 3: action_started a-01 (U1)
+gate U1 pass: evals/long-horizon/work/frontmatter-keys.txt matches the contract derivation (16 lines)
+journal seq 4: action_result a-01
+journal seq 5: checkpoint 2 (U1 verified)
+session A ends at checkpoint 2; the next session must resume from disk

@@ -1,0 +1,29 @@
+{
+  "fragments": {
+    "agent-conduct.dsh-ha.md": {
+      "sha256": "7c447e53cad8194a75fdba5f6940dbcde6f2bcaf47343024504195a3c8f58eb7",
+      "version": "1.1.0"
+    },
+    "agent-conduct.dsh-preset.md": {
+      "sha256": "7e2ea11b760c2e044c5508fd1aa0240c16d9d9307fe3cac632d13e01cf754475",
+      "version": "1.1.0"
+    },
+    "agent-conduct.md": {
+      "sha256": "d61bc11310e8a6951229115d99da2ac3c651c3c9d7f88ed22d6a0d18fb5f3dce",
+      "version": "1.1.0"
+    },
+    "agent-conduct.omp.md": {
+      "sha256": "fc9d3114958a4b6af739adaca5a4c9aa682131c71059ff4a86624ad6e2527013",
+      "version": "1.1.0"
+    },
+    "agent-doctrine.md": {
+      "sha256": "9eb691313244a504b0e107c898625f59578ba1c8cf0647452c0579ea9878ec09",
+      "version": "1.5.0"
+    }
+  },
+  "note": "Pinned fragment hashes; consumers check via tooling/check_fragments.py (manifest mode).",
+  "shared_conduct_rules": {
+    "A stated rule is not an enforced one": "WA-11 instruction versus enforcement"
+  },
+  "version": "1.5.0"
+}
