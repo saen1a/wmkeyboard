@@ -97,11 +97,11 @@ classDiagram
 
 | Store | File | What it keeps | Caps | Writer | Reader |
 |---|---|---|---|---|---|
-| `GlideShapeStore` | `learning/glide_shapes.json` (binary v1; reads JSON v2) | Up to three ways this hand draws each word, per layout | 10,000 words, 3 per word by default, 20 at most; merge radius 0.35 key widths, reject radius 0.60 | Keyboard thread, after a word settles | Decode thread, from an immutable snapshot |
+| `GlideShapeStore` | `learning/glide_shapes.json` (binary v1; reads JSON v2) | Up to a few ways this hand draws each word, per layout; [testing budgets](/development/glide-engine/testing/#budgets) own the caps | Merge radius 0.35 key widths, reject radius 0.60 | Keyboard thread, after a word settles | Decode thread, from an immutable snapshot |
 | `KeyOffsets` | `learning/key_offsets.json` | Where the hand lands relative to key centers, per cell and globally | 40 observations per cell, 200 global, 512 cells, shift at most 0.9 key widths | Keyboard thread | Decode thread, through a shifted key map |
 | `GlideOutcomes` | `learning/glide_outcomes.json` | Pairwise corrections and undone words as score nudges | Lift at most +1.2 nats, drop at most -0.4, undo 0.10; decays every 64 observations | Keyboard thread | Decode thread, from a published view |
 | `GlideSandboxLadder` | `learning/glide_sandbox.json` | The accepted rung, declined rungs and a hit-rate window | Promotes at 800 lexicon words; second rung after 200 strokes at 95 percent | Keyboard thread | Settings and decode |
-| `GlideCheckup` | `learning/glide_checkup.json` | Replayed strokes, a proposal and its confirmation window | 200 records, 30 strokes minimum, 40-stroke confirmation window | Keyboard thread and settings | Settings screen |
+| `GlideCheckup` | `learning/glide_checkup.json` | Replayed strokes, a proposal and its confirmation window | 200 records, 30 strokes minimum, 40-stroke confirmation window | Keyboard thread, check-up replay and settings | Settings screen |
 | `GlideReadings` | none | The other readings of a recent glided word, tied to its caret anchor | 500 entries; the newest 24 keep their path | Keyboard thread | Keyboard thread |
 
 `GlideShapeStore` is the only store whose size grows with the user's vocabulary.
@@ -127,7 +127,7 @@ Both loads apply one shape-limit selector
 (`topShapeIndices` over the arena arrays, `readable` over the mutable list), so
 they cannot keep a different subset of a word's shapes. The IME constructs the
 store with `autoLoad = false` and calls `loadNow()` on `Dispatchers.Default`, so
-the service thread does not wait for a 10,000-word snapshot; the shape channel
+the service thread does not wait for the shape snapshot; the shape channel
 is empty until the swap lands.
 
 Every file-backed store follows the same contract. The file is nullable, so
@@ -178,7 +178,7 @@ same reason: a key map change rebuilds the fitted frame.
 | Session values | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:26824` |
 | Gate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27710` |
 | Shape format | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideShapeBinary.kt:65` |
-| Shape caps | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideShapeStore.kt:869` |
+| Shape caps | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideShapeStore.kt:810` |
 | Outcome bounds | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/GlideOutcomes.kt:326` |
 | Sandbox thresholds | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/GlideSandbox.kt:322` |
 | Check-up limits | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/GlideCheckup.kt:427` |

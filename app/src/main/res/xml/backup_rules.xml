@@ -21,4 +21,9 @@
     <exclude domain="file" path="kdeconnect" />
     <exclude domain="file" path="homeassistant" />
     <exclude domain="file" path="netlog" />
+    <!-- Shape-store recovery copies: the live snapshot is backed up, these
+         would only double its size and can push the whole backup over quota. -->
+    <exclude domain="file" path="learning/glide_shapes.json.bak" />
+    <exclude domain="file" path="learning/glide_shapes.json.part" />
+    <exclude domain="file" path="learning/glide_shapes.json.corrupt" />
 </full-backup-content>

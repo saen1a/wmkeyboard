@@ -208,8 +208,9 @@ records why.
 
 The ideal path through a word's key centers is not how a hand draws it. A thumb
 cuts corners, overshoots one key and undershoots the next, and does it the same
-way every time. `GlideShapeStore` keeps up to three such shapes per word by
-default, twenty at most, for the layout the stroke was drawn on.
+way every time. `GlideShapeStore` keeps a few such shapes per word for the
+layout the stroke was drawn on; the
+[testing budgets](/development/glide-engine/testing/#budgets) own the caps.
 
 The channel has two jobs.
 

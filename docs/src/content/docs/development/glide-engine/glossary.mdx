@@ -28,7 +28,7 @@ English. **Not covered:** general keyboard terms, which the
 | **Runner-up** | The second candidate. The gap to the leader is what the ambiguity picker measures. |
 | **Close call** | A stroke whose leader is less than the selected margin ahead of its runner-up. The default margin is 1.1 nats. |
 | **Guess** | A candidate with `ahead > 0`: it carries letters the stroke has not drawn. A guess is not a reading of the stroke. |
-| **Shape** | A resampled, quantized stroke the user kept for a word. The store keeps up to three per word by default. |
+| **Shape** | A resampled, quantized stroke the user kept for a word. The [testing budgets](/development/glide-engine/testing/#budgets) own how many the store keeps. |
 | **Shape channel** | The part of the decoder that compares the drawn stroke with a word's stored shapes and may lower the word's cost. |
 | **Seeding** | Letting a stored shape name a word the trie walk did not reach. Off by default. |
 | **Loop** | A small circle drawn on a key, read as a doubled letter. `loopExtent` decides the widest loop that still counts. |

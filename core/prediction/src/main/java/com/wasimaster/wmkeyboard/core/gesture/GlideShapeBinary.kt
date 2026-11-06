@@ -37,7 +37,6 @@ internal class BinaryShapeData(
 )
 
 internal class BinaryWordData(
-    val display: String,
     val tick: Long,
     val shapes: List<BinaryShapeData>,
 )
@@ -294,11 +293,6 @@ internal object BinaryCodec {
         return BinarySnapshot(tick, bytes, layouts)
     }
 
-    /**
-     * SHA-256 over every header byte outside the digest field, plus the whole
-     * payload. Extension bytes between [DIGEST_OFFSET] + 32 and [headerSize]
-     * are covered, so a future header cannot hide data from the digest.
-     */
     /** Strict UTF-8: a malformed byte sequence is corruption, not a replacement. */
     private fun decodeUtf8(bytes: ByteArray, offset: Int, length: Int): String =
         Charsets.UTF_8.newDecoder()
@@ -307,6 +301,11 @@ internal object BinaryCodec {
             .decode(ByteBuffer.wrap(bytes, offset, length))
             .toString()
 
+    /**
+     * SHA-256 over every header byte outside the digest field, plus the whole
+     * payload. Extension bytes between [DIGEST_OFFSET] + 32 and [headerSize]
+     * are covered, so a future header cannot hide data from the digest.
+     */
     private fun digestOf(bytes: ByteArray, headerSize: Int): ByteArray {
         val digest = MessageDigest.getInstance("SHA-256")
         digest.update(bytes, 0, DIGEST_OFFSET)
@@ -351,21 +350,9 @@ internal class BinaryArenaLayout(
     }
 
     private val byStart: Map<Int, IntArray> by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        val counts = HashMap<Int, Int>()
-        shapePoints.forEach { offset ->
-            val cell = GlideShapeStore.cellOf(bytes, offset)
-            counts[cell] = (counts[cell] ?: 0) + 1
+        GlideShapeSeeding.bucketByStart(shapePoints.size) {
+            GlideShapeStore.cellOf(bytes, shapePoints[it])
         }
-        val out = HashMap<Int, IntArray>(counts.size)
-        val fill = HashMap<Int, Int>()
-        shapePoints.forEachIndexed { index, offset ->
-            val cell = GlideShapeStore.cellOf(bytes, offset)
-            val at = fill[cell] ?: 0
-            val bucket = out.getOrPut(cell) { IntArray(counts.getValue(cell)) }
-            bucket[at] = index
-            fill[cell] = at + 1
-        }
-        out
     }
 
     init {
@@ -406,37 +393,21 @@ internal class BinaryArenaLayout(
         return GlideShapeStore.distanceAt(bytes, shapePoints[wordStart[at] + index], drawn)
     }
 
-    override fun wordsNear(drawn: ByteArray, radius: Float, limit: Int): List<String> {
-        if (limit <= 0 || shapePoints.isEmpty()) return emptyList()
-        val found = ArrayList<Pair<String, Float>>()
-        val x = Math.floorDiv(drawn[0].toInt(), GlideShapeStore.CELL)
-        val y = Math.floorDiv(drawn[1].toInt(), GlideShapeStore.CELL)
-        var total = 0
-        for (dx in -1..1) for (dy in -1..1) total += byStart[GlideShapeStore.cellKey(x + dx, y + dy)]?.size ?: 0
-        if (total == 0) {
-            for (i in shapePoints.indices) consider(i, drawn, radius, found)
-        } else {
-            for (dx in -1..1) {
-                for (dy in -1..1) {
-                    val bucket = byStart[GlideShapeStore.cellKey(x + dx, y + dy)] ?: continue
-                    for (i in bucket) consider(i, drawn, radius, found)
-                }
-            }
-        }
-        found.sortWith(compareBy({ it.second }, { it.first }))
-        return found.take(limit).map { it.first }
-    }
+    override fun wordsNear(drawn: ByteArray, radius: Float, limit: Int): List<String> =
+        GlideShapeSeeding.wordsNear(
+            count = shapePoints.size,
+            drawn = drawn,
+            radius = radius,
+            limit = limit,
+            byStart = byStart,
+            wordAt = { layout.words[shapeWord[it]] },
+            distanceOf = { i, stroke, bound ->
+                GlideShapeStore.distanceAt(bytes, shapePoints[i], stroke, bound)
+            },
+        )
 
     override fun prepareWordsNear() {
         byStart
-    }
-
-    private fun consider(i: Int, drawn: ByteArray, radius: Float, found: ArrayList<Pair<String, Float>>) {
-        val d = GlideShapeStore.distanceAt(bytes, shapePoints[i], drawn, radius)
-        if (d > radius) return
-        val word = layout.words[shapeWord[i]]
-        val at = found.indexOfFirst { it.first == word }
-        if (at < 0) found.add(word to d) else if (d < found[at].second) found[at] = word to d
     }
 
     private companion object {
