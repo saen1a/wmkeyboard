@@ -530,6 +530,8 @@ import com.wasimaster.wmkeyboard.ime.DictionaryChip
 import com.wasimaster.wmkeyboard.ime.DictionaryKind
 import com.wasimaster.wmkeyboard.ime.GlideExpansion
 import com.wasimaster.wmkeyboard.ime.KeyboardUiState
+import com.wasimaster.wmkeyboard.ime.FIRST_GLIDE_SEGMENT
+import com.wasimaster.wmkeyboard.ime.SIGNAL_GLIDE_SEGMENT
 import com.wasimaster.wmkeyboard.ime.shiftCased
 import com.wasimaster.wmkeyboard.ime.FlickGlideArbiter
 import com.wasimaster.wmkeyboard.ime.FlickGlideVerdict
@@ -1311,7 +1313,8 @@ fun KeyboardScreen(
     onText: (String) -> Unit = {},
     onGesture: (List<GesturePoint>, List<KeyCenter>, Float, GlideVerdict) -> Unit =
         { _, _, _, _ -> },
-    onGesturePreview: (List<GesturePoint>, List<KeyCenter>, Float, GlideCase) -> Unit = { _, _, _, _ -> },
+    onGesturePreview: (List<GesturePoint>, List<KeyCenter>, Float, GlideCase, Long) -> Unit =
+        { _, _, _, _, _ -> },
     onGestureWords: (List<List<GesturePoint>>, List<KeyCenter>, Float, GlideVerdict) -> Unit =
         { _, _, _, _ -> },
     onKeyTouch: (Float, Float, Long) -> Unit = { _, _, _ -> },
@@ -13761,7 +13764,7 @@ private fun KeyboardBody(
     onKey: (Key) -> Unit,
     onText: (String) -> Unit,
     onGesture: (List<GesturePoint>, List<KeyCenter>, Float, GlideVerdict) -> Unit,
-    onGesturePreview: (List<GesturePoint>, List<KeyCenter>, Float, GlideCase) -> Unit,
+    onGesturePreview: (List<GesturePoint>, List<KeyCenter>, Float, GlideCase, Long) -> Unit,
     onGestureWords: (List<List<GesturePoint>>, List<KeyCenter>, Float, GlideVerdict) -> Unit,
     onKeyTouch: (Float, Float, Long) -> Unit = { _, _, _ -> },
     onTouchKeys: (List<KeyCenter>) -> Unit = {},
@@ -14074,7 +14077,9 @@ private fun KeyboardBody(
             fun BarRowSlot(row: BarRow) {
                 Column(
                     modifier = Modifier.barRowFill(if (row == BarRow.TOOLS) toolsFill else barFill)
-                        .duetBarTouch(state, onGesturePreview)
+                        .duetBarTouch(state) { points, keys, width, case ->
+                            onGesturePreview(points, keys, width, case, SIGNAL_GLIDE_SEGMENT)
+                        }
                         // The all-thumbs-up pause, shrinking along the strip (#747).
                         .then(
                             if (row == BarRow.TOPBAR) {
@@ -18153,7 +18158,8 @@ private fun KeyRows(
     onText: (String) -> Unit,
     onGesture: (List<GesturePoint>, List<KeyCenter>, Float, GlideVerdict) -> Unit =
         { _, _, _, _ -> },
-    onGesturePreview: (List<GesturePoint>, List<KeyCenter>, Float, GlideCase) -> Unit = { _, _, _, _ -> },
+    onGesturePreview: (List<GesturePoint>, List<KeyCenter>, Float, GlideCase, Long) -> Unit =
+        { _, _, _, _, _ -> },
     onCursorMove: (Int) -> Unit = {},
     onLayoutSelect: (String) -> Unit = {},
     onGestureWords: (List<List<GesturePoint>>, List<KeyCenter>, Float, GlideVerdict) -> Unit =
@@ -18516,6 +18522,7 @@ private fun KeyRows(
     // settings and the haptic switch can change under a finger too.
     val glideChoices = rememberUpdatedState(state.glideChoices)
     val glideCloseCall = rememberUpdatedState(state.glideCloseCall)
+    val glidePreviewSegment = rememberUpdatedState(state.glidePreviewSegment)
     val glideSettings = rememberUpdatedState(state.settings.gesture)
     val hapticOn = rememberUpdatedState(state.settings.haptics.enabled)
     val kbTheme = LocalKbTheme.current
@@ -19382,6 +19389,10 @@ private fun KeyRows(
                     // it on the previous stroke's words — or the previous
                     // word's, after a spacebar crossing.
                     var previewedSeg = false
+                    // Which segment of a chained stroke is being drawn. The
+                    // service echoes it on each published preview, so a late
+                    // preview from the previous segment cannot arm the picker.
+                    var segmentId = FIRST_GLIDE_SEGMENT - 1
                     // How far below the anchor the finger has to drop before a
                     // lift cancels the stroke: the anchor key's height, read
                     // when the picker opens.
@@ -19389,6 +19400,7 @@ private fun KeyRows(
                     // The letter grid, built once per stroke rather than per
                     // preview: it cannot change while a finger is down.
                     var keyList: List<KeyCenter>? = null
+                    segmentId += 1
                     seg.add(GesturePoint(down.position.x, down.position.y, down.uptimeMillis))
                     dwell.reset(down.position.x, down.position.y, down.uptimeMillis)
                     // The finger has held still long enough: freeze the stroke
@@ -19479,8 +19491,10 @@ private fun KeyRows(
                     }
                     while (true) {
                         val dwellMs = glideSettings.value.pickerDwellMs.toLong()
-                        val closeCall = previewedSeg && glideCloseCall.value
-                        val holdToAsk = previewedSeg && glideSettings.value.ambiguityPicker &&
+                        val previewedThisSegment =
+                            previewedSeg && glidePreviewSegment.value == segmentId
+                        val closeCall = previewedThisSegment && glideCloseCall.value
+                        val holdToAsk = previewedThisSegment && glideSettings.value.ambiguityPicker &&
                             glideSettings.value.pickerHoldToAsk
                         // Only an unfrozen stroke off the spacebar is on a
                         // clock: a finger resting on the spacebar mid-phrase
@@ -19504,8 +19518,20 @@ private fun KeyRows(
                         }
                         if (event == null) {
                             val now = SystemClock.uptimeMillis()
-                            val choices = glideChoices.value.size
-                            when (dwell.onTimeout(now, closeCall, holdToAsk, dwellMs, choices)) {
+                            // Re-check at the deadline: a late preview from
+                            // the previous segment may have arrived while the
+                            // timer was waiting.
+                            val currentSegment = glidePreviewSegment.value == segmentId
+                            val choices = if (currentSegment) glideChoices.value.size else 0
+                            when (
+                                dwell.onTimeout(
+                                    now,
+                                    closeCall && currentSegment,
+                                    holdToAsk && currentSegment,
+                                    dwellMs,
+                                    choices,
+                                )
+                            ) {
                                 GlideDwell.Action.OPEN -> askHere()
                                 GlideDwell.Action.REARM -> dwell.reset(dwell.stillX, dwell.stillY, now)
                                 GlideDwell.Action.WAIT -> Unit
@@ -19632,6 +19658,7 @@ private fun KeyRows(
                                     shiftCuts = ArrayList()
                                     seg = ArrayList()
                                     previewedSeg = false
+                                    segmentId += 1
                                 }
                                 SpacebarCrossings.Step.HELD -> Unit
                                 SpacebarCrossings.Step.KEEP -> if (!overShift) seg.add(point)
@@ -19685,6 +19712,7 @@ private fun KeyRows(
                                     onGesturePreview(
                                         points, keys, keyWidth.value,
                                         wordCaseOr(case, letterGlide.value, shiftCrossings),
+                                        segmentId,
                                     )
                                 }
                             }
@@ -22094,7 +22122,7 @@ private suspend fun PointerInputScope.twoThumbGlide(
     nearLetter: (Offset) -> Boolean,
     grid: () -> List<KeyCenter>,
     onGesture: (List<GesturePoint>, List<KeyCenter>, Float, GlideVerdict) -> Unit,
-    onGesturePreview: (List<GesturePoint>, List<KeyCenter>, Float, GlideCase) -> Unit,
+    onGesturePreview: (List<GesturePoint>, List<KeyCenter>, Float, GlideCase, Long) -> Unit,
     swipeClaimed: () -> Boolean,
     /** A key's alternates popup is open: the finger that opened it is choosing in it. */
     alternatesOpen: () -> Boolean,
@@ -22149,7 +22177,7 @@ private suspend fun PointerInputScope.twoThumbGlide(
         heldThroughBy(id)
         if (allUpSent) {
             allUpSent = false
-            onGesturePreview(emptyList(), emptyList(), DUET_PING_DOWN, GlideCase.None)
+            onGesturePreview(emptyList(), emptyList(), DUET_PING_DOWN, GlideCase.None, SIGNAL_GLIDE_SEGMENT)
         }
         stroke.keys = grid()
         stroke.points.add(stroke.firstPoint())
@@ -22191,7 +22219,7 @@ private suspend fun PointerInputScope.twoThumbGlide(
                     if (live.isEmpty() || allUpSent) {
                         if (live.isEmpty()) restGate.clear()
                         allUpSent = false
-                        onGesturePreview(emptyList(), emptyList(), DUET_PING_DOWN, GlideCase.None)
+                        onGesturePreview(emptyList(), emptyList(), DUET_PING_DOWN, GlideCase.None, SIGNAL_GLIDE_SEGMENT)
                     }
                     val judge = flickJudge(change.position)
                     val stroke = ThumbStroke(
@@ -22357,7 +22385,7 @@ private suspend fun PointerInputScope.twoThumbGlide(
                 ) {
                     stroke.lastPreviewMs = change.uptimeMillis
                     stroke.previewed = true
-                    onGesturePreview(ArrayList(stroke.points), keys, keyWidth.value, GlideCase.None)
+                    onGesturePreview(ArrayList(stroke.points), keys, keyWidth.value, GlideCase.None, SIGNAL_GLIDE_SEGMENT)
                 }
             }
             // An ignored finger still down holds nothing open.
@@ -22367,7 +22395,7 @@ private suspend fun PointerInputScope.twoThumbGlide(
                 // After this event's dispatch, so a tap's own lift has typed
                 // first. Not twice: the resting thumbs' lifts add nothing.
                 if (!allUpSent) {
-                    scope.launch { onGesturePreview(emptyList(), emptyList(), DUET_PING_ALL_UP, GlideCase.None) }
+                    scope.launch { onGesturePreview(emptyList(), emptyList(), DUET_PING_ALL_UP, GlideCase.None, SIGNAL_GLIDE_SEGMENT) }
                 }
                 allUpSent = false
                 continue
@@ -22390,7 +22418,7 @@ private suspend fun PointerInputScope.twoThumbGlide(
                     delay(waitMs)
                     restPing = null
                     allUpSent = true
-                    onGesturePreview(emptyList(), emptyList(), DUET_PING_ALL_UP, GlideCase.None)
+                    onGesturePreview(emptyList(), emptyList(), DUET_PING_ALL_UP, GlideCase.None, SIGNAL_GLIDE_SEGMENT)
                 }
             }
         }
