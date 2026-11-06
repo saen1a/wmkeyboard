@@ -120,8 +120,9 @@ object FutoSwipe {
     /** Closes the programs; the next [model] opens them again. */
     fun release() {
         synchronized(this) {
-            loaded?.close()
+            val model = loaded
             loaded = null
+            model?.close()
         }
     }
 
@@ -178,14 +179,15 @@ object FutoSwipe {
 
     private suspend fun download(filesDir: File) {
         val dir = dir(filesDir).apply { mkdirs() }
-        // An older revision's folder is dead weight once this one is complete.
-        dir.parentFile?.listFiles()?.filter { it != dir }?.forEach { it.deleteRecursively() }
         var done = 0L
         for (f in files) {
             val target = File(dir, f.name)
             if (!(target.isFile && target.length() == f.bytes)) fetch(f, target, done)
             done += f.bytes
         }
+        // Delete an older revision only after this one is complete, so a
+        // failed update leaves a working model for a rollback.
+        dir.parentFile?.listFiles()?.filter { it != dir }?.forEach { it.deleteRecursively() }
     }
 
     private suspend fun fetch(f: ModelFile, target: File, base: Long) {
@@ -226,48 +228,56 @@ class FutoSwipeModel internal constructor(
         }
     }
     private val mask = ByteArray(MAX_KEYS) { if (it < LETTERS) 1 else 0 }
+    private var closed = false
 
     /**
      * Log-probabilities over a..z and the blank, [FutoSwipe.CLASSES] per step,
      * for [features]: the stroke in the unit square, [FutoSwipe.POINTS] x
-     * values then as many y values. Null when the runtime refused it.
+     * values then as many y values. Null when the runtime refused it or the
+     * model was released while this call was waiting for the lock.
      */
     @Synchronized
-    fun emissions(features: FloatArray): FloatArray? = runCatching {
-        require(features.size == 2 * FutoSwipe.POINTS)
-        val out = encoder.run(
-            "forward",
-            listOf(
-                Tensor(longArrayOf(1, 2, FutoSwipe.POINTS.toLong()), features),
-                Tensor(longArrayOf(1, MAX_KEYS.toLong(), 2), keys),
-                Tensor(longArrayOf(1, MAX_KEYS.toLong()), mask),
-            ),
-        )
-        val logits = out[0].floats
-        val coefficients = out[1].floats
-        val gate = out[2].floats
-        val steps = out[0].shape[1].toInt()
-        val width = out[0].shape[2].toInt()
-        val coeffDim = out[1].shape[2].toInt()
-        val inputDim = FutoSwipe.CLASSES + coeffDim + 1
-        // The decoder's input per step: the letters' and blank's emissions,
-        // the spectral coefficients, then the intention gate.
-        val input = FloatArray(steps * inputDim)
-        for (t in 0 until steps) {
-            val at = t * inputDim
-            System.arraycopy(logits, t * width, input, at, LETTERS)
-            input[at + LETTERS] = logits[t * width + width - 1]
-            System.arraycopy(coefficients, t * coeffDim, input, at + FutoSwipe.CLASSES, coeffDim)
-            input[at + inputDim - 1] = gate[t]
-        }
-        val decoded = decoder.run(
-            "forward",
-            listOf(Tensor(longArrayOf(1, steps.toLong(), inputDim.toLong()), input)),
-        )[0]
-        decoded.floats.copyOf(steps * FutoSwipe.CLASSES)
-    }.getOrNull()
+    fun emissions(features: FloatArray): FloatArray? {
+        if (closed) return null
+        return runCatching {
+            require(features.size == 2 * FutoSwipe.POINTS)
+            val out = encoder.run(
+                "forward",
+                listOf(
+                    Tensor(longArrayOf(1, 2, FutoSwipe.POINTS.toLong()), features),
+                    Tensor(longArrayOf(1, MAX_KEYS.toLong(), 2), keys),
+                    Tensor(longArrayOf(1, MAX_KEYS.toLong()), mask),
+                ),
+            )
+            val logits = out[0].floats
+            val coefficients = out[1].floats
+            val gate = out[2].floats
+            val steps = out[0].shape[1].toInt()
+            val width = out[0].shape[2].toInt()
+            val coeffDim = out[1].shape[2].toInt()
+            val inputDim = FutoSwipe.CLASSES + coeffDim + 1
+            // The decoder's input per step: the letters' and blank's emissions,
+            // the spectral coefficients, then the intention gate.
+            val input = FloatArray(steps * inputDim)
+            for (t in 0 until steps) {
+                val at = t * inputDim
+                System.arraycopy(logits, t * width, input, at, LETTERS)
+                input[at + LETTERS] = logits[t * width + width - 1]
+                System.arraycopy(coefficients, t * coeffDim, input, at + FutoSwipe.CLASSES, coeffDim)
+                input[at + inputDim - 1] = gate[t]
+            }
+            val decoded = decoder.run(
+                "forward",
+                listOf(Tensor(longArrayOf(1, steps.toLong(), inputDim.toLong()), input)),
+            )[0]
+            decoded.floats.copyOf(steps * FutoSwipe.CLASSES)
+        }.getOrNull()
+    }
 
+    @Synchronized
     override fun close() {
+        if (closed) return
+        closed = true
         encoder.close()
         decoder.close()
     }
