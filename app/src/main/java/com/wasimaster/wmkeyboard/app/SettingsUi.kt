@@ -1,5 +1,7 @@
 package com.wasimaster.wmkeyboard.app
 
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.combinedClickable
 import com.wasimaster.wmkeyboard.app.share.ShareSheetRoute
 import android.os.Build
 import android.view.HapticFeedbackConstants
@@ -126,6 +128,7 @@ import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onPlaced
 import androidx.compose.ui.layout.positionInParent
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -444,6 +447,7 @@ internal val SettingsRouteColors: Map<String, Color> = mapOf(
     "selection_macros" to Color(0xFF5E6BC0),
     "selection_macros/actions" to Color(0xFF5E6BC0),
     "selection_macros/ai" to Color(0xFF5E6BC0),
+    "selection_macros/icons" to Color(0xFF5E6BC0),
     "selection_macros/zones" to Color(0xFF5E6BC0),
     "advanced" to Color(0xFF8D6E63),
     "extensions" to Color(0xFF26A69A),
@@ -462,6 +466,9 @@ internal val SettingsRouteColors: Map<String, Color> = mapOf(
     "egg_game" to Color(0xFF90A4AE),
     "debug_log" to Color(0xFF607D8B),
     "storage" to Color(0xFF546E7A),
+    "resources" to Color(0xFF546E7A),
+    "feature_libraries" to Color(0xFF90A4AE),
+    "import_hub" to Color(0xFF546E7A),
     "statistics" to Color(0xFF9CCC65),
     "dictionary" to Color(0xFF26A69A),
     "customdictionaries" to Color(0xFF26A69A),
@@ -1185,6 +1192,7 @@ internal fun Modifier.focusOncePlaced(
  * [disabledReason] is what a long press on the row says while [enabled] is
  * off; see [DisabledReason]. Ignored while the row is enabled.
  */
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 internal fun WmRow(
     title: String,
@@ -1206,6 +1214,8 @@ internal fun WmRow(
     @StringRes highlightKey: Int = 0,
     swipeActions: List<SwipeAction> = emptyList(),
     fullSwipe: SwipeAction? = null,
+    /** A long press: picking the row in a list that acts on several at once. */
+    onLongClick: (() -> Unit)? = null,
     onClick: (() -> Unit)? = null,
 ) {
     if (swipeActions.isNotEmpty()) {
@@ -1232,6 +1242,7 @@ internal fun WmRow(
                 enabled = enabled,
                 disabledReason = disabledReason,
                 highlightKey = highlightKey,
+                onLongClick = onLongClick,
                 onClick = onClick,
             )
         }
@@ -1259,6 +1270,7 @@ internal fun WmRow(
                 flightTo = flightTo,
                 subtitleFlies = subtitleFlies,
                 enabled = enabled,
+                onLongClick = onLongClick,
                 onClick = onClick,
             )
         }
@@ -1327,10 +1339,20 @@ internal fun WmRow(
         modifier = modifier
             .fillMaxWidth()
             .then(
-                if (onClick == null) Modifier
-                else Modifier.clickable(enabled = enabled) {
-                    if (flightTo != null) FlightOrigin.leaving(screen)
-                    onClick()
+                when {
+                    onClick == null && onLongClick == null -> Modifier
+                    onLongClick == null -> Modifier.clickable(enabled = enabled) {
+                        if (flightTo != null) FlightOrigin.leaving(screen)
+                        onClick?.invoke()
+                    }
+                    else -> Modifier.combinedClickable(
+                        enabled = enabled,
+                        onLongClickLabel = stringResource(R.string.pick_select_label),
+                        onLongClick = onLongClick,
+                    ) {
+                        if (flightTo != null) FlightOrigin.leaving(screen)
+                        onClick?.invoke()
+                    }
                 },
             )
             // Inside the click target, so the ripple keeps the row's own bounds.
@@ -1564,7 +1586,13 @@ internal fun ReflowingText(
 ) {
     val resolved = style ?: LocalTextStyle.current
     val words = remember(text) { text.split(' ').filter { it.isNotEmpty() } }
-    if (LocalReduceMotion.current || words.size < 2) {
+    // The flow places words in the layout's direction, so an English name in
+    // an app laid out right to left read "name app Short" (Telegram 5306).
+    // Text whose own direction is not the layout's is left to [Text], which
+    // orders its words by the text.
+    val rtlText = remember(text) { firstStrongIsRtl(text) }
+    val crossDirection = rtlText != null && rtlText != (LocalLayoutDirection.current == LayoutDirection.Rtl)
+    if (LocalReduceMotion.current || words.size < 2 || crossDirection) {
         Text(text, modifier = modifier, style = resolved)
         return
     }
@@ -1580,6 +1608,22 @@ internal fun ReflowingText(
             Text(word, style = resolved, softWrap = false, modifier = Modifier.animatePlacement())
         }
     }
+}
+
+/**
+ * Whether [text]'s first letter with a direction of its own is right to left:
+ * null when it has none (digits and punctuation only).
+ */
+internal fun firstStrongIsRtl(text: String): Boolean? {
+    for (ch in text) {
+        when (Character.getDirectionality(ch)) {
+            Character.DIRECTIONALITY_LEFT_TO_RIGHT -> return false
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT,
+            Character.DIRECTIONALITY_RIGHT_TO_LEFT_ARABIC,
+            -> return true
+        }
+    }
+    return null
 }
 
 // ---- reset to default ----
@@ -2622,9 +2666,12 @@ internal fun WmScreen(
                 val hasChat = LocalAiChatFab.current != null && LocalScreenRoute.current !in NoChatFabRoutes
                 // Each small button stacked above the bottom one adds a step.
                 val buttons = listOf(hasFab, hasPreview, hasChat).count { it }
+                // The new settings bar floats over the foot of every page;
+                // a row under it has to be able to scroll out from under it.
+                val bar = with(LocalDensity.current) { NewSettings.barHeight.toDp() }
                 Spacer(
                     Modifier.height(
-                        if (buttons == 0) 24.dp else FAB_TAIL + PREVIEW_FAB_STEP * (buttons - 1),
+                        maxOf(bar, if (buttons == 0) 24.dp else FAB_TAIL + PREVIEW_FAB_STEP * (buttons - 1)),
                     ),
                 )
             }
@@ -2743,6 +2790,7 @@ private fun WmScreenFrame(
     val preview = LocalKeyboardPreview.current?.takeIf { slots.dock == null }
     val chatFab = LocalAiChatFab.current
     val scope = rememberCoroutineScope()
+    val depthReveal = rememberDepthReveal()
     // One per screen, published for everything it draws — see [SettingsSnackbar].
     val snackbarHost = remember { SnackbarHostState() }
     val snackbar = remember(snackbarHost, scope) { SettingsSnackbar(snackbarHost, scope) }
@@ -2766,6 +2814,7 @@ private fun WmScreenFrame(
         LocalFlightOrigin provides origin,
         LocalScreenSlots provides slots,
         LocalSettingsSnackbar provides snackbar,
+        LocalDepthReveal provides depthReveal,
     ) {
         // A settings row is a name on the left and a control on the right, and
         // on a window wider than a phone the two end up a hand's width apart
@@ -2839,6 +2888,9 @@ private fun WmScreenFrame(
                         // pinned block costs no arithmetic here and stays put
                         // while the collapsing title above it does its thing.
                         (pinned ?: slots.pinned)?.invoke()
+                        // Here for the same reason, and because the row it talks
+                        // about may be scrolled to anywhere on the page.
+                        DepthRevealNotice(depthReveal)
                     }
                 },
                 floatingActionButton = {

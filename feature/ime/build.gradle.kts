@@ -164,6 +164,7 @@ dependencies {
     api(project(":core:feedback"))
     api(project(":core:plugins"))
     api(project(":core:intelligence"))
+    api(project(":core:shell"))
     api(project(":feature:tools"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.kotlinx.coroutines.android)
@@ -205,6 +206,9 @@ dependencies {
     // bundled one depends on the unbundled one). Without Play services those
     // scripts read with Paddle or Tesseract instead (OcrLanguages).
     if (googleSdks) {
+        // PairDrop's data channels. Only the Java API stays in the APK: the
+        // library is the `webrtc` gate's (native/gates.json).
+        implementation(libs.webrtc.android)
         implementation(libs.mlkit.text.recognition.chinese.unbundled)
         implementation(libs.mlkit.text.recognition.japanese.unbundled)
         implementation(libs.mlkit.text.recognition.korean.unbundled)

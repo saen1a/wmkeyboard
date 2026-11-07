@@ -3,6 +3,7 @@ package com.wasimaster.wmkeyboard.app
 import android.content.Context
 import android.net.ConnectivityManager
 import android.widget.Toast
+import androidx.annotation.StringRes
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -13,6 +14,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material3.AlertDialog
+import com.wasimaster.wmkeyboard.core.gesture.GlideTolerances
 import com.wasimaster.wmkeyboard.core.icons.symbols.outlined.Close
 import com.wasimaster.wmkeyboard.core.icons.symbols.outlined.Delete
 import com.wasimaster.wmkeyboard.core.icons.symbols.outlined.Search
@@ -45,6 +47,7 @@ import androidx.compose.ui.unit.dp
 import com.wasimaster.wmkeyboard.R
 import com.wasimaster.wmkeyboard.common.R as CommonR
 import com.wasimaster.wmkeyboard.core.layout.resolveLayoutKeyman
+import com.wasimaster.wmkeyboard.core.layout.resolveLayoutName
 import com.wasimaster.wmkeyboard.core.transliteration.BijoyAnsi
 import com.wasimaster.wmkeyboard.core.transliteration.KhiproSpecs
 import com.wasimaster.wmkeyboard.core.dictionaries.AvroDictionaryDownloads
@@ -67,6 +70,12 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import com.wasimaster.wmkeyboard.core.input.composer.CjkDictCatalog
 import com.wasimaster.wmkeyboard.core.input.composer.FlexLanguagePack
+import com.wasimaster.wmkeyboard.core.input.BrailleContracted
+import com.wasimaster.wmkeyboard.core.input.composer.ArabicTashkeel
+import com.wasimaster.wmkeyboard.core.input.composer.HebrewNikud
+import com.wasimaster.wmkeyboard.core.input.composer.KoreanSpacing
+import com.wasimaster.wmkeyboard.core.modules.FeatureModules
+import com.wasimaster.wmkeyboard.core.modules.ModuleState
 import com.wasimaster.wmkeyboard.core.input.composer.CjkDictDownloadManager
 import com.wasimaster.wmkeyboard.core.input.composer.CjkDictPack
 import com.wasimaster.wmkeyboard.core.input.composer.CjkDictStore
@@ -84,8 +93,10 @@ import com.wasimaster.wmkeyboard.core.layout.composerType
 import com.wasimaster.wmkeyboard.core.layout.language
 import com.wasimaster.wmkeyboard.core.layout.isShippedLayoutId
 import com.wasimaster.wmkeyboard.core.layout.resolveLayout
+import com.wasimaster.wmkeyboard.core.netlog.InternetPermission
 import com.wasimaster.wmkeyboard.core.prediction.DivvunRuntime
 import com.wasimaster.wmkeyboard.core.prediction.PhoneticSchemes
+import com.wasimaster.wmkeyboard.core.prediction.HunspellRuntime
 import com.wasimaster.wmkeyboard.core.prediction.VoikkoRuntime
 import com.wasimaster.wmkeyboard.core.prediction.PhoneticStripSource
 import com.wasimaster.wmkeyboard.core.prediction.PhoneticCandidateList
@@ -103,6 +114,9 @@ import com.wasimaster.wmkeyboard.core.script.ScriptRegistry
 import com.wasimaster.wmkeyboard.core.script.SuggestedLanguage
 import com.wasimaster.wmkeyboard.core.script.SuggestionReason
 import com.wasimaster.wmkeyboard.core.script.resolveNumeralDigits
+import com.wasimaster.wmkeyboard.core.settings.DefaultSpaceAfterSuggestionOffLangs
+import com.wasimaster.wmkeyboard.core.settings.GlideRadiusRange
+import com.wasimaster.wmkeyboard.core.settings.LetterSwipeAction
 import com.wasimaster.wmkeyboard.core.settings.KeyboardSettings
 import com.wasimaster.wmkeyboard.core.settings.ReadingOnSwitch
 import com.wasimaster.wmkeyboard.core.settings.SettingsDefaults
@@ -1039,12 +1053,83 @@ private fun setLayoutEnabled(
         // keys produce Latin letters is the outcome this exists to prevent.
         if (enable) {
             val spec = resolveLayout(settings.customLayouts, layoutId)
-            spec.keyman?.let { promptForRules(it, spec.name) }
+            // From the index: a Keyman grid whose pack is still on its way
+            // resolves to the default, which has no rules to offer.
+            resolveLayoutKeyman(settings.customLayouts, layoutId)
+                ?.let { promptForRules(it, resolveLayoutName(settings.customLayouts, layoutId)) }
             CjkDictCatalog.forComposer(spec.composerType())?.let { promptForPack(it, spec.name) }
         }
     }
     if (enable) enableGate(layoutId) { write() } else write()
 }
+
+/**
+ * The three glide radii for one language (#1136): Japanese on Kana JIS wants a
+ * tighter path than English on QWERTY, and one global value made the reporter
+ * choose. Each slider shows what the language decodes with, its own value or
+ * the global one; moving it pins the language's own, and the row's reset is
+ * shown only for a value it has, and clears it rather than pinning the global
+ * number. Hidden with the Advanced tuning fold's own condition: glide typing
+ * on and swipes typing words.
+ */
+@Composable
+private fun LanguageGlideRadiiGroup(
+    langId: String,
+    languageName: String,
+    settings: LiveSettings,
+    repository: SettingsRepository,
+    scope: CoroutineScope,
+) {
+    val glideOn = settings.watch { it.gestureTyping && it.letterSwipeAction == LetterSwipeAction.TYPE_WORDS }
+    val own = settings.watch { it.gesture.tolerancesByLanguage[langId] } ?: GlideTolerances.NONE
+    val globalStart = settings.watch { it.gesture.startRadius }
+    val globalEnd = settings.watch { it.gesture.endRadius }
+    val globalNear = settings.watch { it.gesture.nearRadius }
+    val valueFormat = stringResource(R.string.typing_value_multiplier_suffix)
+    val ownSubtitle = stringResource(R.string.languages_glide_radius_own, languageName)
+    val globalSubtitle = stringResource(R.string.languages_glide_radius_global)
+    val info = stringResource(R.string.languages_glide_radius_info, languageName)
+    val write: (GlideTolerances) -> Unit = { next ->
+        scope.launch { repository.setGlideTolerancesForLanguage(langId, next) }
+    }
+    // One row per radius, all three built alike: the language's value where it
+    // has one, the global one where it follows.
+    val rows = listOf(
+        GlideRadiusRow(R.string.typing_glide_start_radius_title, own.startRadius, globalStart) {
+            own.copy(startRadius = it)
+        },
+        GlideRadiusRow(R.string.typing_glide_end_radius_title, own.endRadius, globalEnd) {
+            own.copy(endRadius = it)
+        },
+        GlideRadiusRow(R.string.typing_glide_near_radius_title, own.nearRadius, globalNear) {
+            own.copy(nearRadius = it)
+        },
+    )
+    SettingsGroup(stringResource(R.string.languages_glide_group)) {
+        for ((title, mine, fallback, edit) in rows) {
+            item(visible = glideOn, level = SettingLevel.ADVANCED) {
+                SliderSetting(
+                    title,
+                    subtitle = if (mine != null) ownSubtitle else globalSubtitle,
+                    value = mine ?: fallback,
+                    range = GlideRadiusRange,
+                    display = { valueFormat.format("%.1f".format(it)) },
+                    info = info,
+                    default = fallback,
+                    onReset = if (mine != null) ({ write(edit(null)) }) else null,
+                ) { write(edit(it)) }
+            }
+        }
+    }
+}
+
+/** One slider of [LanguageGlideRadiiGroup]: the language's value, the global one, and how to write it. */
+private data class GlideRadiusRow(
+    @StringRes val title: Int,
+    val own: Float?,
+    val global: Float,
+    val edit: (Float?) -> GlideTolerances,
+)
 
 /**
  * One language: toggle its layouts on/off (at least one layout overall must stay
@@ -1144,10 +1229,12 @@ internal fun LanguageDetailScreen(
                 stringResource(R.string.languages_space_after_suggestion_subtitle),
                 settings.watch { langId !in it.suggestionStrip.spaceAfterSuggestionOffLangs },
                 info = stringResource(R.string.languages_space_after_suggestion_info, lang.englishName),
-                default = true,
+                default = langId !in DefaultSpaceAfterSuggestionOffLangs,
             ) { scope.launch { repository.setAutoSpaceAfterSuggestionForLanguage(langId, it) } }
         }
     }
+
+    LanguageGlideRadiiGroup(langId, lang.englishName, settings, repository, scope)
 
     // Fancy Text: the style the one fancy layout draws and types. The strip
     // over the keys switches it too; this row makes it discoverable from
@@ -1155,6 +1242,9 @@ internal fun LanguageDetailScreen(
     if (langId == "fancy") {
         SettingsGroup(stringResource(R.string.languages_fancy_style_title)) {
             item(level = SettingLevel.STANDARD) {
+                // Read so the options are drawn again when a font of the
+                // user's own is added; the table itself is not snapshot state.
+                settings.watch { it.layoutBehavior.customFancyFonts }
                 ChoiceSetting(
                     R.string.languages_fancy_style_row_title,
                     subtitle = stringResource(R.string.languages_fancy_style_row_subtitle),
@@ -1166,6 +1256,7 @@ internal fun LanguageDetailScreen(
                 ) { scope.launch { repository.setFancyStyle(it.id) } }
             }
         }
+        CustomFancyFontsGroup(repository, settings)
     }
 
     // Vietnamese tone marking. One answer for both boards: Telex and VNI are
@@ -1318,7 +1409,7 @@ internal fun LanguageDetailScreen(
         }
     }
     val khipro = ComposerType.KHIPRO in composers || ComposerType.KHIPRO_DARK in composers
-    val transliterating = phonetic || rulesMethod || khipro
+    val transliterating = phonetic || rulesMethod || khipro || ComposerType.BORNO_PHONETIC in composers
     if (transliterating) {
         SettingsGroup(stringResource(R.string.languages_translit_hints_title)) {
             item(level = SettingLevel.STANDARD) {
@@ -1676,7 +1767,7 @@ internal fun EmojiDictRow(entry: EmojiDictEntry) {
                     }
                 EmojiDictDownloadManager.DownloadStatus.NotDownloaded,
                 is EmojiDictDownloadManager.DownloadStatus.Failed,
-                -> TextButton(
+                -> if (InternetPermission.granted) TextButton(
                     onClick = {
                         EmojiDictDownloadManager.start(filesDir, entry)
                         notifyDownload(
@@ -1716,11 +1807,11 @@ internal fun EmojiDictRow(entry: EmojiDictEntry) {
 }
 
 /**
- * The packs a FlorisBoard language pack can fill: the two shape-based schemes
- * this app has composers for. Wubi, Zhengma and the rest are in those files
- * too and have nowhere to go here.
+ * The packs a FlorisBoard language pack can fill: the shape-based schemes this
+ * app has composers for. Zhengma and the rest are in those files too and have
+ * nowhere to go here.
  */
-private val FLEX_FILLABLE_PACKS = setOf("cangjie", "stroke")
+private val FLEX_FILLABLE_PACKS = setOf("cangjie", "stroke", "wubi")
 
 /**
  * Download/delete rows for a language's [CjkDictCatalog] packs, driven by the
@@ -1729,6 +1820,9 @@ private val FLEX_FILLABLE_PACKS = setOf("cangjie", "stroke")
  * on the next field focus). A pack with no hosting URL yet shows "Not available
  * yet" with its download disabled.
  */
+/** Languages whose packs convert nothing as you type, so the candidate rows have nothing to do. */
+private val NO_CONVERSION_LANGUAGES = setOf("ko", "braille", "he", "ar", "tr", "ru")
+
 @Composable
 private fun CjkDictPackManager(
     langId: String,
@@ -1795,9 +1889,22 @@ private fun CjkDictPackManager(
     val fuzzyPairsChanged = settings.watch { it.cjk.pinyinFuzzyPairs != PinyinFuzzy.ALL_PAIRS }
     SettingsGroup(
         groupTitle,
-        info = stringResource(R.string.languages_cjk_download_info),
+        info = stringResource(
+            when (langId) {
+                "braille" -> R.string.languages_braille_download_info
+                "he" -> R.string.languages_nikud_download_info
+                "ar" -> R.string.languages_tashkeel_download_info
+                "tr" -> R.string.languages_hunspell_tr_download_info
+                "ru" -> R.string.languages_ru_yo_download_info
+                else -> R.string.languages_cjk_download_info
+            },
+        ),
     ) {
         for (pack in CjkDictCatalog.forLang(langId)) {
+            // A model for a library this phone can't have is 88 MB of nothing.
+            if (pack.id == KoreanSpacing.PACK_ID && !KoreanSpacing.supported) continue
+            if (pack.id == HebrewNikud.PACK_ID && !HebrewNikud.supported) continue
+            if (pack.id == ArabicTashkeel.PACK_ID && !ArabicTashkeel.supported) continue
             item {
                 val status = states[pack.id] ?: CjkDictDownloadManager.DownloadStatus.NotDownloaded
                 val packName = stringResource(pack.displayNameRes)
@@ -1842,7 +1949,7 @@ private fun CjkDictPackManager(
                             is CjkDictDownloadManager.DownloadStatus.Paused,
                             is CjkDictDownloadManager.DownloadStatus.Failed,
                             -> TextButton(
-                                enabled = pack.available && !CjkDictDownloadManager.isBusy,
+                                enabled = pack.available && InternetPermission.granted && !CjkDictDownloadManager.isBusy,
                                 onClick = {
                                     CjkDictDownloadManager.start(filesDir, pack)
                                     notifyDownload(
@@ -1867,7 +1974,7 @@ private fun CjkDictPackManager(
         }
 
         // A FlorisBoard language pack holds the same shape-based tables the
-        // Cangjie and stroke packs above do, so somebody arriving with one can
+        // Cangjie, stroke and Wubi packs above do, so somebody arriving with one can
         // fill them without a download. Only offered for the language whose
         // packs those are.
         item(visible = CjkDictCatalog.forLang(langId).any { it.id in FLEX_FILLABLE_PACKS }, level = SettingLevel.STANDARD) {
@@ -1961,6 +2068,98 @@ private fun CjkDictPackManager(
             ) { on -> scope.launch { repository.setJyutpingLazy(on) } }
         }
 
+        // Korean-only: the library behind Fix spacing, beside the model row above.
+        item(visible = langId == "ko" && KoreanSpacing.supported) {
+            val module by FeatureModules.kiwi.state.collectAsState()
+            WmRow(
+                title = stringResource(R.string.languages_kiwi_library_title),
+                subtitle = stringResource(
+                    when (module) {
+                        ModuleState.Installed -> R.string.languages_kiwi_library_ready
+                        is ModuleState.Installing -> R.string.languages_kiwi_library_installing
+                        is ModuleState.Missing -> R.string.languages_kiwi_library_missing
+                    },
+                ),
+                trailing = {
+                    if (module is ModuleState.Missing && InternetPermission.granted) {
+                        TextButton(onClick = { FeatureModules.kiwi.requestInstall() }) {
+                            Text(stringResource(CommonR.string.common_download))
+                        }
+                    }
+                },
+            )
+        }
+
+        // Korean-only: Hanja is a second writing of the word, so it is asked for
+        // rather than taking strip slots from everyone typing Hangul.
+        item(visible = langId == "ko") {
+            ToggleSetting(
+                R.string.languages_cjk_hanja_title,
+                stringResource(R.string.languages_cjk_hanja_subtitle),
+                settings.watch { it.cjk.hanjaSuggestions },
+                info = stringResource(R.string.languages_cjk_hanja_info),
+                default = SettingsDefaults.cjk.hanjaSuggestions,
+            ) { on -> scope.launch { repository.setHanjaSuggestions(on) } }
+        }
+
+        // Turkish-only: the library that reads the rules, beside their row above.
+        item(visible = langId == "tr" && HunspellRuntime.shipped) {
+            val module by HunspellRuntime.moduleState.collectAsState()
+            WmRow(
+                title = stringResource(R.string.languages_hunspell_tr_library_title),
+                subtitle = stringResource(
+                    when (module) {
+                        ModuleState.Installed -> R.string.languages_hunspell_tr_library_ready
+                        is ModuleState.Installing -> R.string.languages_kiwi_library_installing
+                        is ModuleState.Missing -> R.string.languages_hunspell_tr_library_missing
+                    },
+                ),
+                trailing = {
+                    if (module is ModuleState.Missing && InternetPermission.granted) {
+                        TextButton(onClick = { HunspellRuntime.requestModule() }) {
+                            Text(stringResource(CommonR.string.common_download))
+                        }
+                    }
+                },
+            )
+        }
+
+        // Hebrew and Arabic: the runtime behind adding their marks, beside the model row above.
+        item(visible = (langId == "he" && HebrewNikud.supported) || (langId == "ar" && ArabicTashkeel.supported)) {
+            val module by FeatureModules.onnx.state.collectAsState()
+            WmRow(
+                title = stringResource(R.string.languages_nikud_library_title),
+                subtitle = stringResource(
+                    when (module) {
+                        ModuleState.Installed ->
+                            if (langId == "ar") R.string.languages_tashkeel_library_ready else R.string.languages_nikud_library_ready
+                        is ModuleState.Installing -> R.string.languages_kiwi_library_installing
+                        is ModuleState.Missing ->
+                            if (langId == "ar") R.string.languages_tashkeel_library_missing else R.string.languages_nikud_library_missing
+                    },
+                ),
+                trailing = {
+                    if (module is ModuleState.Missing && InternetPermission.granted) {
+                        TextButton(onClick = { FeatureModules.onnx.requestInstall() }) {
+                            Text(stringResource(CommonR.string.common_download))
+                        }
+                    }
+                },
+            )
+        }
+
+        // Braille-only: which contractions a word's cells are read with.
+        item(visible = langId == "braille") {
+            val uncontracted = stringResource(R.string.languages_braille_table_uncontracted)
+            ChoiceSetting(
+                R.string.languages_braille_table_title,
+                subtitle = stringResource(R.string.languages_braille_table_subtitle),
+                options = listOf("" to uncontracted) + BrailleContracted.tables.map { it.id to it.label },
+                selected = settings.watch { it.cjk.brailleTable },
+                default = SettingsDefaults.cjk.brailleTable,
+            ) { table -> scope.launch { repository.setBrailleTable(table) } }
+        }
+
         // Japanese-only: on the flick pad every ゛, ゜ and small kana is an extra
         // key, so かつこう is how がっこう gets typed. Romaji never sees this.
         item(visible = langId == "ja", level = SettingLevel.STANDARD) {
@@ -1976,7 +2175,7 @@ private fun CjkDictPackManager(
         // Issue #341: Japanese and Chinese are spaced with the ideographic
         // space, twice the width of an ASCII one. Per language, since the two
         // conventions differ, and off until asked for.
-        item(level = SettingLevel.ADVANCED) {
+        item(visible = langId !in NO_CONVERSION_LANGUAGES, level = SettingLevel.ADVANCED) {
             ToggleSetting(
                 R.string.languages_cjk_full_width_space_title,
                 stringResource(R.string.languages_cjk_full_width_space_subtitle),
@@ -1990,7 +2189,7 @@ private fun CjkDictPackManager(
         // bar and type the highlighted one with Enter. Per language, and off
         // until asked for, since space committing the top pick is the habit
         // everyone typing here already has.
-        item(level = SettingLevel.ADVANCED) {
+        item(visible = langId !in NO_CONVERSION_LANGUAGES, level = SettingLevel.ADVANCED) {
             ToggleSetting(
                 R.string.languages_cjk_space_steps_title,
                 stringResource(R.string.languages_cjk_space_steps_subtitle),
@@ -2340,6 +2539,9 @@ private fun KhiproSpecsGroup() {
     val subtitle = when {
         !ready -> null
         date == null -> stringResource(R.string.languages_khipro_specs_unsupported)
+        // The build with no internet: a check could only fail, and the reason
+        // it gave was whichever gate stopped it first, data saving's included.
+        !InternetPermission.granted -> stringResource(R.string.languages_khipro_specs_no_internet, date)
         state.checking -> stringResource(R.string.languages_khipro_specs_checking)
         state.failure != null -> stringResource(R.string.languages_khipro_specs_failed, date, state.failure.orEmpty())
         state.downloaded -> stringResource(R.string.languages_khipro_specs_downloaded, date)
@@ -2348,7 +2550,7 @@ private fun KhiproSpecsGroup() {
     SettingsGroup(stringResource(R.string.languages_khipro_specs_group)) {
         item(level = SettingLevel.STANDARD) {
             NavRow(R.string.languages_khipro_specs_title, subtitle = subtitle) {
-                if (date == null || state.checking) return@NavRow
+                if (date == null || state.checking || !InternetPermission.granted) return@NavRow
                 scope.launch {
                     val message = when (val outcome = withContext(Dispatchers.IO) { KhiproSpecs.refresh() }) {
                         is KhiproSpecs.Outcome.Installed -> context.getString(

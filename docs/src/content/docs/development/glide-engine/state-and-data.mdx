@@ -12,7 +12,7 @@ import Mermaid from '@components/Mermaid.astro';
 persisted stores and their threading. **Not covered:** the settings model, which
 the [integration page](/development/glide-engine/integration/) covers.
 
-**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+**Verified against** the merged `github/main` at `69e87afa4` plus this branch's glide-engine improvements, on 2026-11-07. See [Version and sync](/development/glide-engine/#version-and-sync).
 
 ## Session state
 
@@ -97,7 +97,7 @@ classDiagram
 
 | Store | File | What it keeps | Caps | Writer | Reader |
 |---|---|---|---|---|---|
-| `GlideShapeStore` | `learning/glide_shapes.json` (binary v1; reads JSON v2) | Up to a few ways this hand draws each word, per layout; [testing budgets](/development/glide-engine/testing/#budgets) own the caps | Merge radius 0.35 key widths, reject radius 0.60 | Keyboard thread, after a word settles | Decode thread, from an immutable snapshot |
+| `GlideShapeStore` | `learning/glide_shapes.bin` (binary v1; reads JSON v2) | Up to a few ways this hand draws each word, per layout; [testing budgets](/development/glide-engine/testing/#budgets) own the caps | Merge radius 0.35 key widths, reject radius 0.60 | Keyboard thread, after a word settles | Decode thread, from an immutable snapshot |
 | `KeyOffsets` | `learning/key_offsets.json` | Where the hand lands relative to key centers, per cell and globally | 40 observations per cell, 200 global, 512 cells, shift at most 0.9 key widths | Keyboard thread | Decode thread, through a shifted key map |
 | `GlideOutcomes` | `learning/glide_outcomes.json` | Pairwise corrections and undone words as score nudges | Lift at most +1.2 nats, drop at most -0.4, undo 0.10; decays every 64 observations | Keyboard thread | Decode thread, from a published view |
 | `GlideSandboxLadder` | `learning/glide_sandbox.json` | The accepted rung, declined rungs and a hit-rate window | Promotes at 800 lexicon words; second rung after 200 strokes at 95 percent | Keyboard thread | Settings and decode |
@@ -105,30 +105,27 @@ classDiagram
 | `GlideReadings` | none | The other readings of a recent glided word, tied to its caret anchor | 500 entries; the newest 24 keep their path | Keyboard thread | Keyboard thread |
 
 `GlideShapeStore` is the only store whose size grows with the user's vocabulary.
-Its decoder view is an immutable per-layout snapshot: `forLayout` is constant
-time, `shapeDistance` compares one stored shape in place at its arena offset,
-`shapesOf` is proportional to the shapes for one word and copies them for the
-JNI `byte[][]`, and `wordsNear` uses the 3x3 start-cell index. A learn or
-reject rebuilds only the changed layout and shares point arrays; the start-cell
-index is lazy and is warmed on the keyboard thread when shape seeding is
-enabled. The file is a compact binary v1 arena with a JSON v2 read fallback.
-Its 80-byte header carries a SHA-256 digest over the header and the whole
-payload, so a damaged tick, count, offset or point fails the load; the file is
-written through a `.part`, fsync'd, then renamed, and the previous live file is
-kept as `.bak` for one generation. A bad live file is copied to `.corrupt` and
-the `.bak` is tried before the store starts empty. Backup and export convert
-the verified file back to v2 JSON on demand, so older builds can restore it; a
-restored JSON file becomes binary again on the next save. A file written by
-0.6.4 is that same JSON v2: 0.6.4 omitted fields that held their defaults,
-including `v` itself, and the reader supplies the same default values, so such
-a file loads directly and converts on the next save. A direct downgrade after a
-binary save cannot read the runtime file; export a backup before downgrading.
-Both loads apply one shape-limit selector
-(`topShapeIndices` over the arena arrays, `readable` over the mutable list), so
-they cannot keep a different subset of a word's shapes. The IME constructs the
-store with `autoLoad = false` and calls `loadNow()` on `Dispatchers.Default`, so
-the service thread does not wait for the shape snapshot; the shape channel
-is empty until the swap lands.
+Its decoder view is an immutable per-layout snapshot of flat arrays:
+`forLayout` is constant time, `minDistance` compares a drawn shape against the
+stored points, `shapesOf` copies one word's shapes for the JNI `byte[][]`, and
+`wordsNear` uses the 3x3 start-cell index built with the snapshot. A learn or
+reject rebuilds only the changed layout. The file is a compact binary v1 arena
+with a JSON v2 read fallback. Its 80-byte header carries a SHA-256 digest over
+the header and the whole payload, so a damaged tick, count, offset or point
+fails the load; the file is written through a `.part`, fsync'd, then renamed,
+and the previous live file is kept as `.bak` for one generation. A bad live
+file is copied to `.corrupt` and the `.bak` is tried before the store starts
+empty. Backup and export convert the verified file back to v2 JSON on demand,
+so older builds can restore it; a restored JSON file becomes binary again on
+the next save. A file written by 0.6.4 is that same JSON v2: 0.6.4 omitted
+fields that held their defaults, including `v` itself, and the reader supplies
+the same default values, so such a file loads directly and converts on the
+next save. A direct downgrade after a binary save cannot read the runtime file;
+export a backup before downgrading. Both loads apply the same `readable`
+shape-limit selector, so they cannot keep a different subset of a word's
+shapes. The store loads its snapshot in its constructor; a large store pays
+that read on the service thread at startup (the lazy-arena, off-thread
+`loadNow` variant from the research branch was not upstreamed).
 
 Every file-backed store follows the same contract. The file is nullable, so
 direct boot runs memory only. A mutation marks the store dirty and saves on a

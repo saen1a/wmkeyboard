@@ -35,6 +35,7 @@ import com.wasimaster.wmkeyboard.core.settings.GlobeTypingGuardMsRange
 import com.wasimaster.wmkeyboard.core.settings.BoardCorner
 import com.wasimaster.wmkeyboard.core.settings.BoardCornerRadiusRange
 import com.wasimaster.wmkeyboard.core.settings.SidePadScaleRange
+import com.wasimaster.wmkeyboard.core.settings.ToolbarHeightRange
 import com.wasimaster.wmkeyboard.core.addons.AddonType
 import com.wasimaster.wmkeyboard.core.icons.IconPackStore
 import com.wasimaster.wmkeyboard.ime.ui.KeyboardFonts
@@ -47,6 +48,8 @@ import com.wasimaster.wmkeyboard.core.settings.FloatingHandlePosition
 import com.wasimaster.wmkeyboard.core.settings.floatingFor
 import com.wasimaster.wmkeyboard.core.script.NumeralCommitScope
 import com.wasimaster.wmkeyboard.core.settings.DefaultToolbarTools
+import com.wasimaster.wmkeyboard.core.settings.ToolbarTool
+import com.wasimaster.wmkeyboard.core.settings.isSupportedTool
 import com.wasimaster.wmkeyboard.core.settings.KeyFontScaleRange
 import com.wasimaster.wmkeyboard.core.settings.OneHandedMode
 import com.wasimaster.wmkeyboard.core.settings.OneHandedSide
@@ -346,6 +349,7 @@ internal fun AppearanceToolbarSettings(
             s.suggestionStrip.textScale != d.suggestionStrip.textScale ||
             s.suggestionStrip.chipPadding != d.suggestionStrip.chipPadding ||
             s.suggestionStrip.primaryColor != d.suggestionStrip.primaryColor ||
+            s.suggestionStrip.newWordColor != d.suggestionStrip.newWordColor ||
             s.toolCircleRadiusDp != d.toolCircleRadiusDp ||
             s.toolShape != d.toolShape
     }
@@ -651,6 +655,17 @@ internal fun AppearanceToolbarSettings(
                 info = stringResource(R.string.appearance_suggestion_primary_color_info),
             ) { scope.launch { repository.setSuggestionPrimaryColor(it) } }
         }
+        // Its twin for the other end of the strip's promises (#1098): not
+        // the word a space will put in, but the word no list knows yet.
+        item(level = SettingLevel.ADVANCED) {
+            ColorSetting(
+                R.string.appearance_suggestion_new_word_color_title,
+                subtitle = stringResource(R.string.appearance_suggestion_new_word_color_subtitle),
+                color = settings.watch { it.suggestionStrip.newWordColor },
+                fallback = MaterialTheme.colorScheme.onSurface.argbLong(),
+                info = stringResource(R.string.appearance_suggestion_new_word_color_info),
+            ) { scope.launch { repository.setSuggestionNewWordColor(it) } }
+        }
         item {
             ResetPinnedToolsSetting(repository, scope)
         }
@@ -857,6 +872,15 @@ internal fun AppearanceToolboxSettings(
         }
         item(level = SettingLevel.STANDARD) {
             ToggleSetting(
+                R.string.appearance_toolbox_back_lowers_title,
+                stringResource(R.string.appearance_toolbox_back_lowers_subtitle),
+                settings.watch { it.toolbox.backLowersKeys },
+                info = stringResource(R.string.appearance_toolbox_back_lowers_info),
+                default = SettingsDefaults.toolbox.backLowersKeys,
+            ) { scope.launch { repository.setToolboxBackLowersKeys(it) } }
+        }
+        item(level = SettingLevel.STANDARD) {
+            ToggleSetting(
                 R.string.appearance_toolbox_search_button_title,
                 stringResource(R.string.appearance_toolbox_search_button_subtitle),
                 settings.watch { it.toolbox.searchButton },
@@ -1051,9 +1075,21 @@ internal fun LayoutSettings(
                 default = SettingsDefaults.layoutBehavior.numberRowOnKeypad,
             ) { scope.launch { repository.setNumberRowOnKeypad(it) } }
         }
+        // The row's keys, once for every layout that has no row of its own.
+        item(visible = numberRow, level = SettingLevel.ADVANCED) {
+            val custom = settings.watch { it.layoutBehavior.customNumberRow != null }
+            NavRow(
+                R.string.layout_custom_number_row_title,
+                subtitle = stringResource(
+                    if (custom) R.string.layout_custom_row_custom_subtitle else R.string.layout_custom_row_builtin_subtitle,
+                ),
+                route = globalRowRoute(GlobalRow.NUMBER),
+            ) { onNavigate(globalRowRoute(GlobalRow.NUMBER)) }
+        }
     }
     // Issue #369: the caret keys as a row of their own under the spacebar.
     val arrowRow = settings.watch { it.layoutBehavior.arrowRow }
+    val customArrowRow = settings.watch { it.layoutBehavior.customArrowRow != null }
     SettingsGroup(stringResource(R.string.layout_arrow_row_title)) {
         item(level = SettingLevel.STANDARD) {
             ToggleSetting(
@@ -1064,7 +1100,27 @@ internal fun LayoutSettings(
                 default = SettingsDefaults.layoutBehavior.arrowRow,
             ) { scope.launch { repository.setArrowRow(it) } }
         }
-        item(visible = arrowRow, level = SettingLevel.ADVANCED) {
+        item(visible = arrowRow, level = SettingLevel.STANDARD) {
+            ToggleSetting(
+                R.string.layout_arrow_row_on_top_title,
+                stringResource(R.string.layout_arrow_row_on_top_subtitle),
+                settings.watch { it.layoutBehavior.arrowRowOnTop },
+                info = stringResource(R.string.layout_arrow_row_on_top_info),
+                default = SettingsDefaults.layoutBehavior.arrowRowOnTop,
+            ) { scope.launch { repository.setArrowRowOnTop(it) } }
+        }
+        item(visible = arrowRow, level = SettingLevel.STANDARD) {
+            NavRow(
+                R.string.layout_custom_arrow_row_title,
+                subtitle = stringResource(
+                    if (customArrowRow) R.string.layout_custom_row_custom_subtitle else R.string.layout_custom_row_builtin_subtitle,
+                ),
+                route = globalRowRoute(GlobalRow.ARROW),
+            ) { onNavigate(globalRowRoute(GlobalRow.ARROW)) }
+        }
+        // The order is of the four built-in arrows: a row of the user's own
+        // keys has its order in the row.
+        item(visible = arrowRow && !customArrowRow, level = SettingLevel.ADVANCED) {
             ControlSetting(
                 R.string.layout_arrow_row_order_title,
                 subtitle = stringResource(R.string.layout_arrow_row_order_subtitle),
@@ -1180,6 +1236,7 @@ internal fun LayoutSettings(
     // The rows that act on the 🌐 key go with it: hidden, it has nothing for
     // them to change.
     val globeShown = settings.watch { it.showGlobeKey }
+    val globeAsEmoji = settings.watch { it.globeAsEmoji }
     SettingsGroup(stringResource(R.string.layout_bottom_row_keys_title)) {
         item(level = SettingLevel.STANDARD) {
             ToggleSetting(
@@ -1260,6 +1317,30 @@ internal fun LayoutSettings(
                 default = SettingsDefaults.globeAsEmoji,
             ) { scope.launch { repository.setGlobeAsEmoji(it) } }
         }
+        // What that key opens (#1126): the emoji panel, or any tool.
+        item(visible = globeShown && globeAsEmoji) {
+            val tool = settings.watch { it.layoutBehavior.globeTool }
+            var picking by remember { mutableStateOf(false) }
+            NavRow(
+                title = R.string.layout_globe_tool_title,
+                subtitle = stringResource(R.string.layout_globe_tool_subtitle),
+                value = stringResource(tool?.let(::toolTitle) ?: R.string.layout_globe_tool_emoji_value),
+            ) { picking = true }
+            if (picking) {
+                ToolPickerDialog(
+                    title = stringResource(R.string.layout_globe_tool_title),
+                    current = tool,
+                    options = ToolbarTool.entries.filter { isSupportedTool(it) && it != ToolbarTool.EMOJI },
+                    onDismiss = { picking = false },
+                    onPick = { picked ->
+                        picking = false
+                        scope.launch { repository.setGlobeTool(picked) }
+                    },
+                    noneTitle = stringResource(R.string.layout_globe_tool_emoji_value),
+                    noneSubtitle = stringResource(R.string.layout_globe_tool_emoji_subtitle),
+                )
+            }
+        }
         item(visible = globeShown, level = SettingLevel.ADVANCED) {
             ToggleSetting(
                 R.string.layout_swap_comma_globe_title,
@@ -1299,6 +1380,12 @@ internal fun LayoutSizeSettings(
         it.layoutBehavior.boardCornerTopDp > 0 || it.layoutBehavior.boardCornerBottomDp > 0
     }
     val narrowed = settings.watch { it.keyboardWidthPercent < 100 }
+    // The keys narrower than the window, by width or by either edge pad: the
+    // only time the toolbar can be wider than them.
+    val keysNarrowed = settings.watch {
+        it.keyboardWidthPercent < 100 || it.layoutBehavior.sidePadLeftScale > 0f ||
+            it.layoutBehavior.sidePadRightScale > 0f
+    }
     val sizingMoved = settings.watch { s ->
         s.keyHeightDp != SettingsDefaults.keyHeightDp ||
             s.numberRowHeightDp != SettingsDefaults.numberRowHeightDp ||
@@ -1312,7 +1399,9 @@ internal fun LayoutSizeSettings(
             s.layoutBehavior.sidePadRightScale !=
             SettingsDefaults.layoutBehavior.sidePadRightScale ||
             s.layoutBehavior.bottomRowHeightDp !=
-            SettingsDefaults.layoutBehavior.bottomRowHeightDp
+            SettingsDefaults.layoutBehavior.bottomRowHeightDp ||
+            s.layoutBehavior.fullWidthBars != SettingsDefaults.layoutBehavior.fullWidthBars ||
+            s.toolbarHeightDp != SettingsDefaults.toolbarHeightDp
     }
     // Only the expanded screen shape draws its rows, so only its values
     // decide which of them are there.
@@ -1322,6 +1411,12 @@ internal fun LayoutSizeSettings(
     val shapeNarrowed = settings.watch { s ->
         (expandedVariant?.let { s.sizingValuesFor(it).keyboardWidthPercent } ?: s.keyboardWidthPercent) < 100
     }
+    val shapeKeysNarrowed = settings.watch { s ->
+        val v = expandedVariant?.let { s.sizingValuesFor(it) }
+        ((v?.keyboardWidthPercent ?: s.keyboardWidthPercent) < 100) ||
+            (v?.sidePadLeftScale ?: s.layoutBehavior.sidePadLeftScale) > 0f ||
+            (v?.sidePadRightScale ?: s.layoutBehavior.sidePadRightScale) > 0f
+    }
     val shapeOverridden = settings.watch { s ->
         expandedVariant?.let { s.sizingOverrides[it] }?.let { !it.isEmpty } == true
     }
@@ -1330,7 +1425,7 @@ internal fun LayoutSizeSettings(
         // The sliders below, dragged on the keyboard itself (#912): opens the
         // test field and puts the keyboard that comes up into resize mode.
         // Needs the test field, so not while its button is switched off.
-        item(visible = preview != null, level = SettingLevel.STANDARD) {
+        item(visible = preview != null) {
             ActionRow(
                 title = R.string.layout_resize_drag_title,
                 subtitle = stringResource(R.string.layout_resize_drag_subtitle),
@@ -1367,6 +1462,22 @@ internal fun LayoutSizeSettings(
                 info = stringResource(R.string.layout_bottom_row_height_info),
                 default = SettingsDefaults.layoutBehavior.bottomRowHeightDp.toFloat(),
             ) { scope.launch { repository.setBottomRowHeightDp(it.toInt()) } }
+        }
+        item(level = SettingLevel.ADVANCED) {
+            // The row above the keys, sized like the rows of keys (Telegram
+            // group, 2026-11-05). A theme may pin it, as it may the key height.
+            val pin = themePin(settings) { it.toolbarHeightDp }
+            SliderSetting(
+                R.string.layout_toolbar_height_title,
+                subtitle = pin?.text ?: stringResource(R.string.layout_toolbar_height_subtitle),
+                value = settings.watch { it.toolbarHeightDp }.toFloat(),
+                range = ToolbarHeightRange.first.toFloat()..ToolbarHeightRange.last.toFloat(),
+                display = { dpFormat.format(it.toInt()) },
+                info = stringResource(R.string.layout_toolbar_height_info),
+                enabled = pin == null,
+                disabledReason = pin,
+                default = SettingsDefaults.toolbarHeightDp.toFloat(),
+            ) { scope.launch { repository.setToolbarHeightDp(it.toInt()) } }
         }
         item(level = SettingLevel.ADVANCED) {
             // The legacy symmetric field pins both edges where a per-edge one
@@ -1422,7 +1533,9 @@ internal fun LayoutSizeSettings(
                 default = SettingsDefaults.layoutBehavior.extendEdgeKeys,
             ) { scope.launch { repository.setExtendEdgeKeys(it) } }
         }
-        item(level = SettingLevel.STANDARD) {
+        item {
+            // Basic: an empty band under the keys is the first thing anyone
+            // resizing the keyboard comes here to fix (#1030).
             val bottomPadding = settings.watch { it.bottomPaddingDp }
             SliderSetting(
                 R.string.layout_bottom_padding_title,
@@ -1522,6 +1635,15 @@ internal fun LayoutSizeSettings(
                 info = stringResource(R.string.layout_keyboard_width_info),
                 default = SettingsDefaults.keyboardWidthPercent.toFloat(),
             ) { scope.launch { repository.setKeyboardWidthPercent(it.toInt()) } }
+        }
+        item(visible = keysNarrowed, level = SettingLevel.STANDARD) {
+            ToggleSetting(
+                R.string.layout_full_width_bars_title,
+                stringResource(R.string.layout_full_width_bars_subtitle),
+                settings.watch { it.layoutBehavior.fullWidthBars },
+                info = stringResource(R.string.layout_full_width_bars_info),
+                default = SettingsDefaults.layoutBehavior.fullWidthBars,
+            ) { scope.launch { repository.setFullWidthBars(it) } }
         }
         item(visible = narrowed, level = SettingLevel.ADVANCED) {
             ChoiceSetting(
@@ -1632,6 +1754,25 @@ internal fun LayoutSizeSettings(
                         range = 50f..100f,
                         display = { percentFormat.format(it.toInt()) },
                     ) { scope.launch { repository.setVariantWidthPercent(variant, it.toInt()) } }
+                }
+                item(visible = shapeKeysNarrowed, level = SettingLevel.STANDARD) {
+                    ToggleSetting(
+                        R.string.layout_full_width_bars_title,
+                        stringResource(R.string.layout_full_width_bars_subtitle),
+                        settings.watch {
+                            it.sizingValuesFor(variant).fullWidthBars ?: it.layoutBehavior.fullWidthBars
+                        },
+                    ) { scope.launch { repository.setVariantFullWidthBars(variant, it) } }
+                }
+                item(level = SettingLevel.ADVANCED) {
+                    SliderSetting(
+                        R.string.layout_toolbar_height_title,
+                        value = settings.watch {
+                            it.sizingValuesFor(variant).toolbarHeightDp ?: it.toolbarHeightDp
+                        }.toFloat(),
+                        range = ToolbarHeightRange.first.toFloat()..ToolbarHeightRange.last.toFloat(),
+                        display = { dpFormat.format(it.toInt()) },
+                    ) { scope.launch { repository.setVariantToolbarHeightDp(variant, it.toInt()) } }
                 }
                 item {
                     SliderSetting(

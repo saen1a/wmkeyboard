@@ -130,6 +130,7 @@ object LanguageRegistry {
             localeTag = "bn-BD",
             layoutIds = listOf(
                 BuiltInLayouts.AVRO_ID,
+                BuiltInLayouts.BORNO_ID,
                 BuiltInLayouts.KHIPRO_ID,
                 BuiltInLayouts.KHIPRO_DARK_ID,
                 BuiltInLayouts.PROBHAT_ID,
@@ -203,7 +204,14 @@ object LanguageRegistry {
                 AssetLayouts.KO_SEBEOLSIK_390_ID,
                 AssetLayouts.KO_SEBEOLSIK_FINAL_ID,
                 AssetLayouts.KO_CHEONJIIN_ID,
+                AssetLayouts.KO_10KEY_ID,
                 AssetLayouts.KO_NARATGEUL_ID,
+                AssetLayouts.KO_NARATGEUL_CENTER_ID,
+                AssetLayouts.KO_CHEONJIIN_PLUS_ID,
+                AssetLayouts.KO_VEGA_ID,
+                AssetLayouts.KO_VEGA_CENTER_ID,
+                AssetLayouts.KO_MOAKEY_ID,
+                AssetLayouts.KO_MOAKEY_TWOHAND_ID,
                 AssetLayouts.KO_PHONETIC_ID,
                 AssetLayouts.KO_DANMOEUM_ID,
                 AssetLayouts.KO_HANDWRITING_ID,
@@ -247,7 +255,7 @@ object LanguageRegistry {
             englishName = "Greek",
             script = ScriptId.GREEK,
             localeTag = "el-GR",
-            layoutIds = listOf(BuiltInLayouts.GREEK_ID, AssetLayouts.EL_T9_ID),
+            layoutIds = listOf(BuiltInLayouts.GREEK_ID, BuiltInLayouts.GREEK_PHONETIC_ID, AssetLayouts.EL_T9_ID),
         ),
         LanguageDef(
             id = "he",
@@ -1274,6 +1282,8 @@ object LanguageRegistry {
                 AssetLayouts.JA_ROMAJI_ID,
                 AssetLayouts.JA_FLICK_ID,
                 AssetLayouts.JA_KANA_JIS_ID,
+                AssetLayouts.JA_GODAN_ID,
+                AssetLayouts.JA_50KEYS_ID,
                 AssetLayouts.JA_HANDWRITING_ID,
             ),
         ),
@@ -1285,11 +1295,15 @@ object LanguageRegistry {
             localeTag = "zh-CN",
             layoutIds = listOf(
                 AssetLayouts.ZH_PINYIN_ID,
+                AssetLayouts.ZH_PINYIN_CLEARFLOW_ID,
                 AssetLayouts.ZH_PINYIN_T9_ID,
                 AssetLayouts.ZH_ZHUYIN_ID,
+                AssetLayouts.ZH_ZHUYIN_T9_ID,
                 AssetLayouts.ZH_CANGJIE_ID,
                 AssetLayouts.ZH_CANGJIE_QUICK_ID,
+                AssetLayouts.ZH_WUBI_ID,
                 AssetLayouts.ZH_STROKE_ID,
+                AssetLayouts.ZH_STROKE_PAD_ID,
                 AssetLayouts.ZH_HANDWRITING_ID,
             ),
         ),
@@ -1299,7 +1313,11 @@ object LanguageRegistry {
             englishName = "Cantonese",
             script = ScriptId.HAN,
             localeTag = "yue-HK",
-            layoutIds = listOf(AssetLayouts.YUE_JYUTPING_ID),
+            layoutIds = listOf(
+                AssetLayouts.YUE_JYUTPING_ID,
+                AssetLayouts.YUE_YALE_ID,
+                AssetLayouts.YUE_CANTONESE_PINYIN_ID,
+            ),
         ),
         LanguageDef(
             id = "ht",
@@ -1970,7 +1988,7 @@ object LanguageRegistry {
             englishName = "Tibetan",
             script = ScriptId.TIBETAN,
             localeTag = "bo-CN",
-            layoutIds = listOf(AssetLayouts.BO_TIBETAN_ID, AssetLayouts.BO_STANDARD_ID),
+            layoutIds = listOf(AssetLayouts.BO_TIBETAN_ID, AssetLayouts.BO_STANDARD_ID, BuiltInLayouts.TIBETAN_WYLIE_ID),
             numeralSystem = NumeralSystem.TIBETAN,
         ),
         // Not a spoken language but a phonetic notation, offered as one so it rides
@@ -3765,11 +3783,33 @@ object LanguageRegistry {
      * say, that the user cannot reach.
      */
     private val handWrittenAll: List<LanguageDef> = (handWritten + handWrittenMore + CorpusLanguages.all).map { lang ->
-        val extra = KeymanLanguages.extraLayoutIds[lang.id]
-        if (extra.isNullOrEmpty()) lang else lang.copy(layoutIds = lang.layoutIds + extra)
+        val extra = KeymanLanguages.extraLayoutIds[lang.id].orEmpty() + GboardLanguages.extraLayoutIds[lang.id].orEmpty() +
+            SamsungExtraLayouts.byLanguage[lang.id].orEmpty() + RomanizedLanguages.extraLayoutIds[lang.id].orEmpty() +
+            HandwritingLanguages.layoutIds(lang.id)
+        if (extra.isEmpty()) lang else lang.copy(layoutIds = lang.layoutIds + extra)
     }
 
-    val all: List<LanguageDef> by lazy { handWrittenAll + KeymanLanguages.all }
+    /**
+     * The generated half: the Keyman languages with whatever Gboard's and
+     * Samsung's keyboards add to them, then the languages only Gboard has, then
+     * the languages only Samsung has.
+     */
+    private val generatedAll: List<LanguageDef> by lazy {
+        ((
+            KeymanLanguages.all.map { lang ->
+                val extra = GboardLanguages.extraLayoutIds[lang.id]
+                if (extra.isNullOrEmpty()) lang else lang.copy(layoutIds = lang.layoutIds + extra)
+            } + GboardLanguages.all
+        ).map { lang ->
+            val extra = SamsungExtraLayouts.byLanguage[lang.id].orEmpty() + RomanizedLanguages.extraLayoutIds[lang.id].orEmpty()
+            if (extra.isEmpty()) lang else lang.copy(layoutIds = lang.layoutIds + extra)
+        } + SamsungLanguages.all + RomanizedLanguages.all).map { lang ->
+            val pad = HandwritingLanguages.layoutIds(lang.id)
+            if (pad.isEmpty()) lang else lang.copy(layoutIds = lang.layoutIds + pad)
+        }
+    }
+
+    val all: List<LanguageDef> by lazy { handWrittenAll + generatedAll }
 
     /** The stand-in for an id this build does not recognise. Never surfaced in UI. */
     val GENERIC: LanguageDef = LanguageDef(
@@ -3806,12 +3846,12 @@ object LanguageRegistry {
      * `LanguageRegistryTest` holds the ids apart.
      */
     private val keymanIndex: Map<String, LanguageDef> by lazy {
-        KeymanLanguages.all.associateBy { it.id }
+        generatedAll.associateBy { it.id }
     }
 
     private val keymanByLayout: Map<String, LanguageDef> by lazy {
         buildMap {
-            for (lang in KeymanLanguages.all) for (layoutId in lang.layoutIds) putIfAbsent(layoutId, lang)
+            for (lang in generatedAll) for (layoutId in lang.layoutIds) putIfAbsent(layoutId, lang)
         }
     }
 
@@ -3831,7 +3871,7 @@ object LanguageRegistry {
         // Hand-written first, which is the order the merged list had, so the
         // answer is unchanged — but a tag one of them matches never builds the
         // generated half.
-        return handWrittenAll.firstOrNull(::match) ?: KeymanLanguages.all.firstOrNull(::match)
+        return handWrittenAll.firstOrNull(::match) ?: generatedAll.firstOrNull(::match)
     }
 
     /**

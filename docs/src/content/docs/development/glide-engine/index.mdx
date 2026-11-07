@@ -13,10 +13,9 @@ the committed word, including the optional neural and imported engines. **Not
 covered:** tap typing, handwriting recognition, the suggestion strip's general
 behavior, themes, or the add-on store.
 
-**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work
-at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see
-[Version and sync](#version-and-sync). Line numbers move; the class and
-function names are the stable reference.
+**Verified against** the merged `github/main` at `69e87afa4` plus this branch's
+glide-engine improvements, on 2026-11-07. See [Version and sync](#version-and-sync).
+Line numbers move; the class and function names are the stable reference.
 
 The glide engine turns a stroke into a word. A person drags a finger across the
 letter keys, the keyboard samples that path, and a search over the active word
@@ -45,17 +44,17 @@ remembers sits on one side or the other of that contract.
 
 ## Version and sync
 
-The glide-engine pages describe the code at commit `8f61dd563` plus the
-uncommitted shape-storage work in this worktree, verified on 2026-11-05. That
-commit is the `v0.6.4` release (`5bd3efa`) plus 22 local commits, not the
-`v0.6.5` tag.
+These pages describe `github/main` at `69e87afa4`, merged into this branch on
+2026-11-07, plus this branch's glide improvements. The merge brought in the
+binary shape store (#1130), the German AOSP wordlist and WMLM catalog (#1118),
+the profile-based glide weights, and the newer preview and check-up work. The
+pre-sync research notes remain under `wmk-glide/`; the branch is local and
+claims nothing upstream beyond `69e87afa4`.
 
-Upstream `v0.6.5` (`f0be26d`) is fetched but deliberately not merged: it is
-396 commits ahead of the common base and conflicts in `ContextModel.kt`,
-`SuggestionEngine.kt` and `native/wm-engine-jni/src/lm.rs`, where this worktree
-keeps its German WMLM work. `v0.6.5` does not touch `GlideShapeStore.kt` or the
-binary shape format, so the storage work described here does not depend on it.
-Re-check the merge decision before claiming `v0.6.5` anywhere.
+The German numbers in these pages are measured on the AOSP German source
+(205,931 words) unless a section names the counted list. The counted 1.15M-word
+source is the other choice; the 300,000 vocabulary cap is inert on the AOSP
+source because the list is shorter than the cap.
 
 ## Reading map
 
@@ -142,9 +141,9 @@ and the engines.
 | Quantity | Value | Where it comes from |
 |---|---|---|
 | Resampled points per built-in stroke | 48 below 40 key widths, 64 at 40, up to 96 for long words | `GlideWorkspace` |
-| Frontier states per built-in decode | 8,192 | `GlideWorkspace.MAX_STATES` |
+| Frontier states per built-in decode | 12,288 | `GlideWorkspace.MAX_STATES` |
 | Longest word the built-in decoder spells | 32 letters | `GlideWorkspace.MAX_WORD_LENGTH` |
-| Pop budget per search | 2,000 | `GlideBeam.MAX_POPS` |
+| Pop budget per search | 4,000 | `GlideBeam.MAX_POPS` |
 | Neural input | 64 points at 60 Hz, 27 classes | `SwipeFrame`, `SwipeEmissions` |
 | Neural beam width | 100, 300 for a deep retry | `NeuralGlide` |
 | Default vocabulary cap | 300,000 words, 0 means all | `GlideVocabulary.LARGE` |

@@ -1,7 +1,6 @@
 package com.wasimaster.wmkeyboard.core.util
 
 import java.io.File
-import java.io.FileOutputStream
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -51,34 +50,38 @@ class SnapshotFile(val file: File) {
      * Returns false only when the write failed, so the store can stay dirty
      * and try again at its next save; a skipped write counts as done.
      */
-    fun write(ticket: Long, text: () -> String): Boolean =
-        writeBytes(ticket) { text().toByteArray() }
-
-    /**
-     * The same ordering and atomic rename as [write], for a binary snapshot.
-     * With [keepBackup] the previous live file is rotated to `.bak` first, so
-     * a later read can recover a good snapshot when the live file is damaged.
-     */
     @Synchronized
-    fun writeBytes(ticket: Long, keepBackup: Boolean = false, bytes: () -> ByteArray): Boolean {
+    fun write(ticket: Long, text: () -> String): Boolean {
         if (ticket <= landed) return true
-        val written = runCatching { writeAtomically(file, bytes(), keepBackup) }.isSuccess
+        val written = runCatching { writeAtomically(file, text()) }.isSuccess
         if (written) landed = ticket
         return written
     }
 
     /**
-     * Deletes the live file, its `.bak` and any `.part` and retires every
-     * ticket drawn so far. Waits for a write already under way, so that write
-     * cannot land after the delete. Returns what [File.delete] did.
-     *
-     * The backup must go too: a delete that leaves `.bak` behind would let the
-     * next load restore the data the user just cleared.
+     * Writes [bytes] for [ticket] the way [write] writes text, synced to disk
+     * before the rename, and with the file it replaces kept as [backupOf] for
+     * a reader whose live copy turns out to be damaged (issue #1130).
+     */
+    @Synchronized
+    fun writeBytes(ticket: Long, bytes: () -> ByteArray): Boolean {
+        if (ticket <= landed) return true
+        val written = runCatching { writeAtomically(file, bytes(), keepBackup = true) }.isSuccess
+        if (written) landed = ticket
+        return written
+    }
+
+    /**
+     * Deletes the file and its sidecars ([backupOf], [corruptOf], the `.part`
+     * a killed write leaves) and retires every ticket drawn so far. Waits for
+     * a write already under way, so that write cannot land after the delete.
+     * Returns what [File.delete] did for the file itself.
      */
     @Synchronized
     fun delete(): Boolean {
         landed = maxOf(landed, issued.get())
-        return deleteWithSidecars(file)
+        for (sidecar in sidecarsOf(file)) sidecar.delete()
+        return file.delete()
     }
 
     /**
@@ -91,20 +94,47 @@ class SnapshotFile(val file: File) {
     }
 
     companion object {
+        /** The previous generation of [file], kept by [writeBytes]. */
+        fun backupOf(file: File): File = File(file.parentFile, file.name + ".bak")
+
+        /** Where a reader moves a copy of [file] it could not trust, for a bug report rather than for reading. */
+        fun corruptOf(file: File): File = File(file.parentFile, file.name + ".corrupt")
+
+        /** Every file besides [file] itself that its writes and readers leave. */
+        fun sidecarsOf(file: File): List<File> =
+            listOf(backupOf(file), corruptOf(file), File(file.parentFile, file.name + ".part"))
+
         /**
-         * Deletes [file] and the `.bak`, `.part` and `.corrupt` siblings a
-         * binary snapshot can leave behind. A caller that has no open
-         * [SnapshotFile] (the settings bulk-delete paths) uses this so a
-         * user-requested delete cannot be undone by a recovery copy.
+         * Deletes [file] and every sidecar [sidecarsOf] names. Returns what
+         * [File.delete] did for [file] itself; a missing sidecar is not an error.
          */
         fun deleteWithSidecars(file: File): Boolean {
-            val parent = file.parentFile
-            if (parent != null) {
-                File(parent, file.name + ".bak").delete()
-                File(parent, file.name + ".part").delete()
-                File(parent, file.name + ".corrupt").delete()
-            }
+            for (sidecar in sidecarsOf(file)) sidecar.delete()
             return file.delete()
+        }
+
+        /**
+         * Replaces [file] with [bytes] in one step, synced before the rename.
+         * With [keepBackup], the file being replaced becomes [backupOf] rather
+         * than being dropped; a missing file leaves the backup as it was.
+         */
+        fun writeAtomically(file: File, bytes: ByteArray, keepBackup: Boolean = false) {
+            file.parentFile?.mkdirs()
+            val part = File(file.parentFile, file.name + ".part")
+            java.io.FileOutputStream(part).use { out ->
+                out.write(bytes)
+                out.flush()
+                out.fd.sync()
+            }
+            if (keepBackup && file.exists()) {
+                val backup = backupOf(file)
+                backup.delete()
+                file.renameTo(backup)
+            }
+            if (!part.renameTo(file)) {
+                part.delete()
+                error("could not replace ${file.name}")
+            }
         }
 
         /**
@@ -112,40 +142,12 @@ class SnapshotFile(val file: File) {
          * renamed over it, which on Android's file systems is atomic.
          */
         fun writeAtomically(file: File, text: String) {
-            writeAtomically(file, text.toByteArray())
-        }
-
-        /**
-         * The one replacement path. The part is fsync'd before the rename, so
-         * a crash cannot leave a half-written live file. With [keepBackup] the
-         * current live file becomes `.bak` first; a failure to rotate it only
-         * costs the extra copy, never the new snapshot.
-         */
-        fun writeAtomically(file: File, bytes: ByteArray, keepBackup: Boolean = false) {
             file.parentFile?.mkdirs()
-            val parent = file.parentFile
-            val part = File(parent, file.name + ".part")
-            FileOutputStream(part).use { out ->
-                out.write(bytes)
-                out.fd.sync()
-            }
-            if (keepBackup && file.isFile) {
-                val backup = File(parent, file.name + ".bak")
-                backup.delete()
-                // If this fails the new snapshot still replaces the live file;
-                // only the one-generation recovery copy is lost.
-                file.renameTo(backup)
-            }
+            val part = File(file.parentFile, file.name + ".part")
+            part.writeText(text)
             if (!part.renameTo(file)) {
-                // Windows cannot rename over an existing target; Android can.
-                // The rest of the store code retries after removing it, and a
-                // JSON file becoming the binary runtime format needs exactly
-                // that replacement path.
-                file.delete()
-                if (!part.renameTo(file)) {
-                    part.delete()
-                    error("could not replace ${file.name}")
-                }
+                part.delete()
+                error("could not replace ${file.name}")
             }
         }
     }

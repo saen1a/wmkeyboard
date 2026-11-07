@@ -296,6 +296,13 @@ data class LayoutSpec(
      */
     val tabletExpand: Boolean = true,
     /**
+     * The layout drawn instead while the screen is sideways, by id: a wider grid
+     * for two thumbs, say. Null, or an id no longer around, draws this one. Only
+     * its keys are used, so what they type stays this layout's: the editor offers
+     * only layouts of the same language and composer.
+     */
+    val landscapeLayoutId: String? = null,
+    /**
      * The Keyman keyboard whose rules decide what this layout's keys type, for
      * a grid converted from one. Null for every layout of ours.
      *
@@ -393,6 +400,32 @@ data class LayoutSpec(
 ) {
     /** The grid for [layer], or null when this layout does not override it. */
     fun layer(layer: LayoutLayer): LayerSpec? = layers[layer.key]
+}
+
+/**
+ * The keys of this layout's further pages: its layers that are neither a
+ * [LayoutLayer] nor a panel, which only a [KeyAction.LayerSwitch] key reaches.
+ * In reading order, so `page2` stays ahead of `page10`.
+ */
+fun LayoutSpec.pageLayerKeys(): List<String> =
+    layers.keys
+        .filter { key -> LayoutLayer.entries.none { it.key == key } && panelKindForLayerKey(key) == null }
+        .sortedWith(compareBy({ it.length }, { it }))
+
+/**
+ * This layout with [page] and the letters trading places, or as it stands for
+ * a null [page]. Its own inverse: the layout editor draws and edits a page
+ * through everything it has for the letters, then swaps the result back.
+ */
+fun LayoutSpec.withLettersSwappedFor(page: String?): LayoutSpec {
+    if (page == null) return this
+    val letters = LayoutLayer.LETTERS.key
+    val swapped = LinkedHashMap(layers)
+    swapped.remove(letters)
+    swapped.remove(page)
+    layers[page]?.let { swapped[letters] = it }
+    layers[letters]?.let { swapped[page] = it }
+    return copy(layers = swapped)
 }
 
 /**

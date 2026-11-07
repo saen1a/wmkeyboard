@@ -414,6 +414,20 @@ data class ThemeSpec(
      */
     val secondarySuggestionScale: Float? = null,
     /**
+     * Fill of the pill under each word on the strip, drawn only while the
+     * user has Coloured suggestions on (#510). Null is the [accent] at 16%
+     * on a dark theme and 10% on a light one, which is all the pills ever
+     * were; a theme that wants them in some other colour than its accent
+     * names one here. Alpha is honoured.
+     */
+    val suggestionPillBackground: Long? = null,
+    /**
+     * The primary word's pill: the one a space commits, drawn deepest. Null
+     * lays [suggestionPillBackground] over itself so it still reads deeper,
+     * or, with that null too, the [accent] at 34% dark and 24% light.
+     */
+    val primarySuggestionPillBackground: Long? = null,
+    /**
      * The quieter text beside the main one: a suggestion's secondary word, a
      * clipboard entry's kind and timestamp, a panel subheading. Null draws
      * [suggestionText] at 65% alpha, which is what this was before the field
@@ -666,6 +680,21 @@ data class ThemeSpec(
      * an older build drops the one key and imports a plain translucent theme.
      */
     val frost: FrostSpec? = null,
+    /**
+     * What the keys are made of: a raised cap, brushed metal, wood, neon and
+     * the rest; see [KeyMaterialSpec]. Null draws the flat keys every theme
+     * had before the field existed. Under a [keySkin] it still dresses the
+     * labels but not the faces, which the skin draws.
+     */
+    val keyMaterial: KeyMaterialSpec? = null,
+    /** Something moving on the board behind the keys; see [BoardEffectSpec]. */
+    val boardEffect: BoardEffectSpec? = null,
+    /** How the keys light up, on their own or as they are pressed; see [KeyLightingSpec]. */
+    val keyLighting: KeyLightingSpec? = null,
+    /** Light from the finger and keys that dip under it; see [TouchBloomSpec]. */
+    val touchBloom: TouchBloomSpec? = null,
+    /** Hand-drawn key art that replaces the key faces; see [KeySkinSpec]. */
+    val keySkin: KeySkinSpec? = null,
     /**
      * The family's display name, when this theme heads one (see [variants]).
      * Null on every variant and on themes with no variants; built-in families
@@ -1185,6 +1214,58 @@ fun groupAsFamily(themes: List<ThemeSpec>, familyName: String?): ThemeSpec =
         variants = themes.drop(1).map { it.copy(variants = emptyList()) },
     )
 
+/**
+ * A change to which looks share a family: the families it replaces, as they
+ * stood, and what goes in their place. Every look keeps its id, so the theme in
+ * use, the auto-theme slots and anything else pointing at a look still find it;
+ * undoing is writing [before] back over [after].
+ */
+data class ThemeRegroup(val before: List<ThemeSpec>, val after: List<ThemeSpec>)
+
+/**
+ * The looks [lookIds] gathered into one family, in that order, the first one
+ * heading it and [familyName] its label. A family that loses only some of its
+ * looks keeps the rest, headed by the first one left. Null when fewer than two
+ * looks are found, which is no family at all.
+ */
+fun List<ThemeSpec>.gatheringLooks(lookIds: List<String>, familyName: String?): ThemeRegroup? {
+    val wanted = lookIds.toSet()
+    val byId = flattenedThemes().associateBy { it.id }
+    val gathered = lookIds.distinct().mapNotNull { byId[it] }
+    if (gathered.size < 2) return null
+    val touched = filter { family -> family.selfAndVariants().any { it.id in wanted } }
+    val left = touched.mapNotNull { it.without(wanted) }
+    return ThemeRegroup(touched, left + groupAsFamily(gathered.map { it.copy(variants = emptyList()) }, familyName))
+}
+
+/**
+ * The looks [lookIds] taken out of their families to stand alone, each renamed
+ * by [nameFor] (a look called "Dark" means little once it is not under its
+ * family's label). What stays of a family stays together. Null when none of
+ * the looks is in a family of more than one.
+ */
+fun List<ThemeSpec>.separatingLooks(
+    lookIds: Collection<String>,
+    nameFor: (family: ThemeSpec, look: ThemeSpec) -> String,
+): ThemeRegroup? {
+    val wanted = lookIds.toSet()
+    val touched = filter { family -> family.variants.isNotEmpty() && family.selfAndVariants().any { it.id in wanted } }
+    if (touched.isEmpty()) return null
+    val after = touched.flatMap { family ->
+        val alone = family.selfAndVariants()
+            .filter { it.id in wanted }
+            .map { it.copy(name = nameFor(family, it), variants = emptyList(), familyName = null) }
+        listOfNotNull(family.without(wanted)) + alone
+    }
+    return ThemeRegroup(touched, after)
+}
+
+/** The family less the looks in [ids], headed by its first look left; null when none is. */
+private fun ThemeSpec.without(ids: Set<String>): ThemeSpec? {
+    val left = selfAndVariants().filter { it.id !in ids }.map { it.copy(variants = emptyList()) }
+    return if (left.isEmpty()) null else groupAsFamily(left, familyName)
+}
+
 private fun Color.argb(): Long = toArgb().toLong() and 0xFFFFFFFFL
 
 /** Readable text color (near-black or near-white) for a solid background. */
@@ -1248,6 +1329,8 @@ fun ThemeSpec.reseeded(seed: Long, dark: Boolean): ThemeSpec {
         toolCircleActiveBackground = null,
         suggestionText = null,
         secondarySuggestionText = null,
+        suggestionPillBackground = null,
+        primarySuggestionPillBackground = null,
         suggestionBarBackground = null,
         toolbarBackground = null,
         navigationBarBackground = null,

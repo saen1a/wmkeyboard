@@ -34,6 +34,21 @@ object ChannelFeatures {
     val SCREEN_CONTEXT: Boolean = !BuildConfig.ENABLE_PLAY_STORE
 
     /**
+     * The app launcher's split-screen helper, behind SplitScreenHelperService.
+     * Same Play rule again. Split screen stays wherever the keyboard's own
+     * launch-adjacent start works, which is stock Android 12L and later.
+     */
+    val SPLIT_SCREEN_HELPER: Boolean = !BuildConfig.ENABLE_PLAY_STORE
+
+    /**
+     * The Screenshot tool and its floating button action (#1148), behind
+     * ScreenshotService. Same Play rule again; there is no other way to take
+     * one without asking for consent on every capture, so the tool is not in
+     * the Play build at all.
+     */
+    val SCREENSHOT: Boolean = !BuildConfig.ENABLE_PLAY_STORE
+
+    /**
      * The clock tool's ring service, a foreground service of type
      * systemExempted that plays an alarm while it rings. Play keeps that type
      * for apps whose core job is an alarm clock, and a keyboard is not one.
@@ -59,6 +74,13 @@ object ChannelFeatures {
      * sends what is picked the same way.
      */
     val GALLERY_BROWSER: Boolean = !BuildConfig.ENABLE_PLAY_STORE
+
+    /**
+     * The keyboard's own file manager, behind All files access, which Play
+     * keeps for apps whose core job is managing files. Without it every tool
+     * that picks a file goes to Android's picker, as it always did.
+     */
+    val FILE_MANAGER: Boolean = !BuildConfig.ENABLE_PLAY_STORE
 
     /**
      * The SupportKori link on About › Supporters. Play's Payments policy lets

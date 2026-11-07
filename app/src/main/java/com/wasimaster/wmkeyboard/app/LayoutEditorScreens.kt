@@ -50,6 +50,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.text.input.KeyboardType
 import java.util.Locale
+import androidx.activity.compose.BackHandler
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -194,8 +196,11 @@ import com.wasimaster.wmkeyboard.core.layout.KeyAlternate
 import com.wasimaster.wmkeyboard.core.layout.PanelFieldKind
 import com.wasimaster.wmkeyboard.core.layout.PanelKind
 import com.wasimaster.wmkeyboard.core.layout.panelKindForLayerKey
+import com.wasimaster.wmkeyboard.core.layout.pageLayerKeys
 import com.wasimaster.wmkeyboard.core.layout.panelLayer
+import com.wasimaster.wmkeyboard.core.layout.withLettersSwappedFor
 import com.wasimaster.wmkeyboard.core.layout.resolvePanelLayout
+import com.wasimaster.wmkeyboard.core.layout.KeyScreen
 import com.wasimaster.wmkeyboard.core.layout.KeyboardLayout
 import com.wasimaster.wmkeyboard.core.layout.LayoutLayer
 import com.wasimaster.wmkeyboard.core.layout.leadsWithDigitRow
@@ -239,6 +244,7 @@ import com.wasimaster.wmkeyboard.core.layout.rowScaledKeyHeight
 import com.wasimaster.wmkeyboard.core.layout.fallbackLabel
 import com.wasimaster.wmkeyboard.core.layout.shiftLabelReplacesIcon
 import com.wasimaster.wmkeyboard.core.layout.resolveLayout
+import com.wasimaster.wmkeyboard.core.layout.composerType
 import com.wasimaster.wmkeyboard.core.layout.findLayout
 import com.wasimaster.wmkeyboard.core.layout.isShippedLayoutId
 import com.wasimaster.wmkeyboard.core.layout.shippedLayoutRank
@@ -440,13 +446,20 @@ private fun composerLabel(type: ComposerType): String = stringResource(
         ComposerType.STROKE -> R.string.layout_editor_composer_stroke
         ComposerType.T9_PINYIN -> R.string.layout_editor_composer_t9_pinyin
         ComposerType.ZHUYIN -> R.string.layout_editor_composer_zhuyin
+        ComposerType.T9_ZHUYIN -> R.string.layout_editor_composer_t9_zhuyin
         ComposerType.CANGJIE -> R.string.layout_editor_composer_cangjie
         ComposerType.CANGJIE_QUICK -> R.string.layout_editor_composer_cangjie_quick
+        ComposerType.WUBI -> R.string.layout_editor_composer_wubi
         ComposerType.JYUTPING -> R.string.layout_editor_composer_jyutping
+        ComposerType.YALE -> R.string.layout_editor_composer_yale
+        ComposerType.CANTONESE_PINYIN -> R.string.layout_editor_composer_cantonese_pinyin
+        ComposerType.BORNO_PHONETIC -> R.string.layout_editor_composer_borno
         ComposerType.KHIPRO -> R.string.layout_editor_composer_khipro
         ComposerType.KHIPRO_DARK -> R.string.layout_editor_composer_khipro_dark
         ComposerType.CHEONJIIN -> R.string.layout_editor_composer_cheonjiin
         ComposerType.NARATGEUL -> R.string.layout_editor_composer_naratgeul
+        ComposerType.VEGA -> R.string.layout_editor_composer_vega
+        ComposerType.MOAKEY -> R.string.layout_editor_composer_moakey
     },
 )
 
@@ -469,13 +482,20 @@ private fun composerDescRes(type: ComposerType?): Int = when (type) {
     ComposerType.STROKE -> R.string.layout_editor_composer_stroke_desc
     ComposerType.T9_PINYIN -> R.string.layout_editor_composer_t9_pinyin_desc
     ComposerType.ZHUYIN -> R.string.layout_editor_composer_zhuyin_desc
+    ComposerType.T9_ZHUYIN -> R.string.layout_editor_composer_t9_zhuyin_desc
     ComposerType.CANGJIE -> R.string.layout_editor_composer_cangjie_desc
     ComposerType.CANGJIE_QUICK -> R.string.layout_editor_composer_cangjie_quick_desc
+    ComposerType.WUBI -> R.string.layout_editor_composer_wubi_desc
     ComposerType.JYUTPING -> R.string.layout_editor_composer_jyutping_desc
+    ComposerType.YALE -> R.string.layout_editor_composer_yale_desc
+    ComposerType.CANTONESE_PINYIN -> R.string.layout_editor_composer_cantonese_pinyin_desc
+    ComposerType.BORNO_PHONETIC -> R.string.layout_editor_composer_borno_desc
     ComposerType.KHIPRO -> R.string.layout_editor_composer_khipro_desc
     ComposerType.KHIPRO_DARK -> R.string.layout_editor_composer_khipro_dark_desc
     ComposerType.CHEONJIIN -> R.string.layout_editor_composer_cheonjiin_desc
     ComposerType.NARATGEUL -> R.string.layout_editor_composer_naratgeul_desc
+    ComposerType.VEGA -> R.string.layout_editor_composer_vega_desc
+    ComposerType.MOAKEY -> R.string.layout_editor_composer_moakey_desc
 }
 
 /**
@@ -631,11 +651,42 @@ internal fun KeyLayoutsScreen(
     // A file of several layouts, read and waiting on the user's answer.
     var confirmBundle by remember { mutableStateOf<List<ImportedLayout>?>(null) }
 
+    // Several files at once: each is read as a layout or a file of several, and
+    // all of them go to the one question the file of several asks. The names of
+    // files that are neither are said after.
+    fun importLayoutFiles(uris: List<android.net.Uri>) {
+        scope.launch {
+            val read = ArrayList<ImportedLayout>()
+            val failed = ArrayList<String>()
+            for (uri in uris) {
+                val text = withContext(Dispatchers.IO) {
+                    runCatching { context.contentResolver.readTextCapped(uri) }.getOrNull()
+                }
+                val one = text?.let { LayoutFile.decode(it) }
+                val several = if (one == null) text?.let { LayoutFile.decodeBundle(it) } else null
+                when {
+                    one != null -> read += one
+                    !several.isNullOrEmpty() -> read += several
+                    else -> failed += withContext(Dispatchers.IO) { WMFileTypes.displayName(context, uri) }
+                }
+            }
+            if (failed.isNotEmpty()) {
+                message = context.getString(R.string.pick_import_failed_files, failed.joinToString(", "))
+            }
+            if (read.isNotEmpty()) confirmBundle = read
+        }
+    }
+
     val importLauncher = rememberLauncherForActivityResult(
-        OpenDocumentAt(PickerPlaces.LAYOUT_IMPORT),
-    ) { uri ->
-        if (uri == null) return@rememberLauncherForActivityResult
-        PickerPlaces.remember(context, PickerPlaces.LAYOUT_IMPORT, uri)
+        OpenMultipleDocumentsAt(PickerPlaces.LAYOUT_IMPORT),
+    ) { uris ->
+        if (uris.isEmpty()) return@rememberLauncherForActivityResult
+        PickerPlaces.remember(context, PickerPlaces.LAYOUT_IMPORT, uris.first())
+        if (uris.size > 1) {
+            importLayoutFiles(uris)
+            return@rememberLauncherForActivityResult
+        }
+        val uri = uris.single()
         scope.launch {
             val text = withContext(Dispatchers.IO) {
                 runCatching {
@@ -838,6 +889,13 @@ internal fun KeyLayoutsScreen(
         expandedLayouts = if (id in expandedLayouts) expandedLayouts - id else expandedLayouts + id
     }
 
+    // Long-pressing a layout of your own starts picking (the theme gallery's
+    // gesture): taps then tick rows, and the dock exports the ticked ones as
+    // one file or deletes them. Read through the rows on screen, so a layout
+    // deleted from under it drops out of the count.
+    var pickedIds by remember { mutableStateOf<Set<String>>(emptySet()) }
+    var confirmBulkDelete by remember { mutableStateOf(false) }
+
     fun duplicateAndEdit(base: LayoutSpec) {
         scope.launch {
             val id = "custom_${System.currentTimeMillis()}"
@@ -904,9 +962,59 @@ internal fun KeyLayoutsScreen(
         }
     }
 
+    val pickable = layouts.filter {
+        it.id in customIds && it.id !in shippedIds && it.id !in addonLayoutIds
+    }
+    val livePicked = pickable.filter { it.id in pickedIds }
+    val picking = livePicked.isNotEmpty()
+    BackHandler(enabled = picking) { pickedIds = emptySet() }
+    if (picking) {
+        RegisterDock {
+            PickBar(
+                count = livePicked.size,
+                allPicked = livePicked.size == pickable.size,
+                onClear = { pickedIds = emptySet() },
+                onSelectAll = { pickedIds = pickable.mapTo(HashSet()) { it.id } },
+                onExport = {
+                    // The file Export layouts in use writes, which Import reads back.
+                    pendingBundle = livePicked
+                    bundleLauncher.launch(LayoutFile.bundleFileName(System.currentTimeMillis()))
+                },
+                onDelete = { confirmBulkDelete = true },
+            )
+        }
+    }
+    if (confirmBulkDelete && picking) {
+        val count = livePicked.size
+        AlertDialog(
+            onDismissRequest = { confirmBulkDelete = false },
+            title = { Text(pluralStringResource(R.plurals.pick_delete_title, count, count)) },
+            text = { Text(stringResource(R.string.pick_delete_message)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmBulkDelete = false
+                    val doomed = livePicked
+                    pickedIds = emptySet()
+                    scope.launch {
+                        for (layout in doomed) {
+                            val others = settings.value.customLayouts
+                            repository.deleteCustomLayout(layout.id)
+                            withContext(Dispatchers.IO) { InputMethodImport.forget(context.filesDir, layout, others) }
+                        }
+                    }
+                }) { Text(stringResource(CommonR.string.common_delete)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { confirmBulkDelete = false }) {
+                    Text(stringResource(CommonR.string.common_cancel))
+                }
+            },
+        )
+    }
+
     // Two kinds of grid can be made here, so the FAB opens a two-line menu
     // rather than guessing which one the press meant.
-    RegisterFab {
+    if (!picking) RegisterFab {
         var open by remember { mutableStateOf(false) }
         Box {
             FloatingActionButton(onClick = { open = true }) {
@@ -975,11 +1083,53 @@ internal fun KeyLayoutsScreen(
                         onPublish = { publishing = layout },
                         expanded = layout.id in expandedLayouts,
                         onToggleLayers = { toggleLayers(layout.id) },
+                        picking = picking,
+                        picked = layout.id in pickedIds,
+                        onPick = { pickedIds = pickedIds.toggled(layout.id) },
                     )
                 }
             }
             if (layout.id in expandedLayouts) {
                 item { LayerRows(layout) { key -> openEditor(layout.id, key) } }
+            }
+        }
+    }
+
+    val builtIns = layouts.filter {
+        it.id in shippedIds && it.id in enabledIds
+    }
+    if (builtIns.isNotEmpty()) {
+        SettingsGroup(stringResource(R.string.layout_editor_built_in_title)) {
+            for (layout in builtIns) {
+                item(key = layout.id) {
+                    ScrollAnchor(layout.id == returnTo) {
+                        LayoutRow(
+                            layout = layout,
+                            enabled = settings.watch { layout.id in it.enabledLayoutIds },
+                            onToggle = { on -> toggle(layout.id, on) },
+                            onEdit = { openEditor(layout.id) },
+                            onExport = {
+                                pendingExport = layout
+                                exportLauncher.launch(LayoutFile.fileName(layout, System.currentTimeMillis()))
+                            },
+                            onDuplicate = { duplicateAndEdit(layout) },
+                            // An edited built-in is stored as an override under the same
+                            // id, so removing it restores the shipped grid rather than
+                            // deleting anything — hence Reset, not Delete.
+                            onDelete = if (layout.id in customIds) {
+                                { confirmDelete = layout }
+                            } else {
+                                null
+                            },
+                            deleteIsReset = true,
+                            expanded = layout.id in expandedLayouts,
+                            onToggleLayers = { toggleLayers(layout.id) },
+                        )
+                    }
+                }
+                if (layout.id in expandedLayouts) {
+                    item { LayerRows(layout) { key -> openEditor(layout.id, key) } }
+                }
             }
         }
     }
@@ -1006,6 +1156,9 @@ internal fun KeyLayoutsScreen(
                         onDelete = { confirmDelete = layout },
                         deleteIsReset = false,
                         onPublish = { publishing = layout },
+                        picking = picking,
+                        picked = layout.id in pickedIds,
+                        onPick = { pickedIds = pickedIds.toggled(layout.id) },
                     )
                 }
             }
@@ -1058,44 +1211,6 @@ internal fun KeyLayoutsScreen(
         }
     }
 
-    val builtIns = layouts.filter {
-        it.id in shippedIds && it.id in enabledIds
-    }
-    if (builtIns.isNotEmpty()) {
-        SettingsGroup(stringResource(R.string.layout_editor_built_in_title)) {
-            for (layout in builtIns) {
-                item(key = layout.id) {
-                    ScrollAnchor(layout.id == returnTo) {
-                        LayoutRow(
-                            layout = layout,
-                            enabled = settings.watch { layout.id in it.enabledLayoutIds },
-                            onToggle = { on -> toggle(layout.id, on) },
-                            onEdit = { openEditor(layout.id) },
-                            onExport = {
-                                pendingExport = layout
-                                exportLauncher.launch(LayoutFile.fileName(layout, System.currentTimeMillis()))
-                            },
-                            onDuplicate = { duplicateAndEdit(layout) },
-                            // An edited built-in is stored as an override under the same
-                            // id, so removing it restores the shipped grid rather than
-                            // deleting anything — hence Reset, not Delete.
-                            onDelete = if (layout.id in customIds) {
-                                { confirmDelete = layout }
-                            } else {
-                                null
-                            },
-                            deleteIsReset = true,
-                            expanded = layout.id in expandedLayouts,
-                            onToggleLayers = { toggleLayers(layout.id) },
-                        )
-                    }
-                }
-                if (layout.id in expandedLayouts) {
-                    item { LayerRows(layout) { key -> openEditor(layout.id, key) } }
-                }
-            }
-        }
-    }
 
     confirmImport?.let { imported ->
         AlertDialog(
@@ -1548,8 +1663,14 @@ private fun LayoutRow(
     onToggle: ((Boolean) -> Boolean)? = null,
     /** Opens the community publish dialog; null for a shipped layout, which is not the user's to publish. */
     onPublish: (() -> Unit)? = null,
+    /** Ticks or unticks the row for the dock's bulk actions; null where those cannot act. */
+    onPick: (() -> Unit)? = null,
+    /** The list is picking: a tap ticks rather than opening, and the row's own buttons step aside. */
+    picking: Boolean = false,
+    picked: Boolean = false,
 ) {
     val resources = LocalContext.current.resources
+    val picks = picking && onPick != null
     val exportDesc = stringResource(R.string.layout_editor_export_desc, layout.name)
     val duplicateDesc = stringResource(R.string.layout_editor_duplicate_desc, layout.name)
     val deleteDesc = if (deleteIsReset) {
@@ -1570,7 +1691,7 @@ private fun LayoutRow(
                 )
             }
         },
-        trailing = {
+        trailing = if (picks) null else { {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 if (onToggle != null && !layout.secondary) {
                     val switchDesc = stringResource(R.string.layout_editor_row_switch_desc, layout.name)
@@ -1638,8 +1759,14 @@ private fun LayoutRow(
                     }
                 }
             }
+        } },
+        leading = if (picks) {
+            { Checkbox(checked = picked, onCheckedChange = null) }
+        } else {
+            null
         },
-        onClick = onEdit,
+        onLongClick = onPick,
+        onClick = if (picks) onPick else onEdit,
     )
 }
 
@@ -1893,6 +2020,7 @@ internal fun editorBottomRowRules(
         globeInOnePlace = settings.layoutBehavior.globeInOnePlace && !secondary,
         swapCommaAndGlobe = settings.swapCommaAndGlobe,
         globeAsEmoji = settings.globeAsEmoji,
+        globeTool = settings.layoutBehavior.globeTool,
         commaAsEmoji = settings.commaAsEmoji && layer == LayoutLayer.LETTERS && !secondary,
     )
 }
@@ -1919,14 +2047,22 @@ private val GoneLayout = LayoutSpec(id = "", name = "")
  * not otherwise.
  */
 @Stable
-private class OpenLayout(private val settings: LiveSettings, val id: String) {
+private class OpenLayout(
+    private val settings: LiveSettings,
+    val id: String,
+    /** The page tab on screen, which everything here reads as the letters; see [withLettersSwappedFor]. */
+    private val page: String? = null,
+) {
+    private fun LayoutSpec.asEdited(): LayoutSpec =
+        if (page != null && page in layers) withLettersSwappedFor(page) else this
+
     /** The layout as stored now, for a write or an undo step; null once deleted. */
-    fun now(): LayoutSpec? = findLayout(settings.value.customLayouts, id)
+    fun now(): LayoutSpec? = findLayout(settings.value.customLayouts, id)?.asEdited()
 
     /** [pick] of the layout, recomposing the caller only when that changes. */
     @Composable
     fun <R> watch(pick: (LayoutSpec) -> R): R =
-        settings.watch { pick(findLayout(it.customLayouts, id) ?: GoneLayout) }
+        settings.watch { pick((findLayout(it.customLayouts, id) ?: GoneLayout).asEdited()) }
 }
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
@@ -1959,12 +2095,18 @@ internal fun KeyLayoutEditorScreen(
 
     // A secondary layout (issue #62) is one grid: no language, no layer chips,
     // no tablet widening, and it is never "on" — a key or the toolbar shows it.
-    val edited = remember(settings, layoutId) { OpenLayout(settings, layoutId) }
+    // A further page of a paginated alphabet, the Hindi board's 2/4 to 4/4 or a
+    // Keyman layout's own layers. Edited as if it were the letters: no key on
+    // the board opens it here, so these tabs are the only way to it.
+    var pageKey by rememberSaveable(layoutId) { mutableStateOf<String?>(null) }
+    val pages = settings.watch { findLayout(it.customLayouts, layoutId)?.pageLayerKeys().orEmpty() }
+    if (pageKey != null && pageKey !in pages) pageKey = null
+    val edited = remember(settings, layoutId, pageKey) { OpenLayout(settings, layoutId, pageKey) }
     val secondary = edited.watch { it.secondary }
     var layer by rememberSaveable(layoutId) {
         mutableStateOf(LayoutLayer.entries.firstOrNull { it.key == initialLayer } ?: LayoutLayer.LETTERS)
     }
-    var selection by remember(layoutId, layer) { mutableStateOf<KeyRef?>(null) }
+    var selection by remember(layoutId, layer, pageKey) { mutableStateOf<KeyRef?>(null) }
     // Issue #63, the per-layout half: the four panels are tabs of this editor
     // too. A panel tab set aside the typing layer; the grid, its selection and
     // its sheet are then the panel's, edited into this layout's own copy of
@@ -1980,17 +2122,17 @@ internal fun KeyLayoutEditorScreen(
     var actualSize by rememberSaveable(layoutId) { mutableStateOf(false) }
     // A key on one of the rows drawn around the grid (issue #769), which
     // [selection] cannot address: those rows are not rows of the layer.
-    var extraSel by remember(layoutId, layer) { mutableStateOf<ExtraRef?>(null) }
+    var extraSel by remember(layoutId, layer, pageKey) { mutableStateOf<ExtraRef?>(null) }
     // The kind of field the preview draws the keyboard for (issue #769).
     var previewField by rememberSaveable(layoutId) { mutableStateOf(EditorPreviewField.TEXT) }
     // Several keys picked at once (issue #769), in the grid's own coordinates;
     // null while the grid picks one key at a time.
-    var multi by remember(layoutId, layer) { mutableStateOf<Set<KeyRef>?>(null) }
+    var multi by remember(layoutId, layer, pageKey) { mutableStateOf<Set<KeyRef>?>(null) }
     // Where the selection goes once an edit that moves the selected keys comes
     // back from the store (issue #769). Moved at once, the selection pointed at
     // the moved key's new seat while the grid on screen still had its
     // neighbour there, and the key's settings filled with the neighbour's.
-    var pendingSelect by remember(layoutId, layer) { mutableStateOf<PendingSelect?>(null) }
+    var pendingSelect by remember(layoutId, layer, pageKey) { mutableStateOf<PendingSelect?>(null) }
     val specNow = edited.watch { it }
     pendingSelect?.let { pending ->
         if (specNow != pending.before) {
@@ -2015,9 +2157,11 @@ internal fun KeyLayoutEditorScreen(
     // Session-scoped on purpose. Persisting it would mean a second serialized
     // document per layout, for a benefit — "undo what I did last Tuesday" —
     // that nobody expects from an editor.
-    var undo by remember(layoutId) { mutableStateOf(emptyList<LayoutSpec>()) }
-    var redo by remember(layoutId) { mutableStateOf(emptyList<LayoutSpec>()) }
-    var stepPushed by remember(layoutId) { mutableStateOf(false) }
+    // Per page as well: a step holds the layout as its page saw it, which only
+    // that page can put back.
+    var undo by remember(layoutId, pageKey) { mutableStateOf(emptyList<LayoutSpec>()) }
+    var redo by remember(layoutId, pageKey) { mutableStateOf(emptyList<LayoutSpec>()) }
+    var stepPushed by remember(layoutId, pageKey) { mutableStateOf(false) }
 
     // Editing an inherited layer authors this layout's own copy of it. Until
     // then the grid shows the built-in, which is what makes "replaces
@@ -2051,7 +2195,8 @@ internal fun KeyLayoutEditorScreen(
 
     /** Restores a whole layout, for undo and redo. */
     fun save(next: LayoutSpec) {
-        scope.launch { repository.upsertCustomLayout(next) }
+        val stored = next.withLettersSwappedFor(pageKey)
+        scope.launch { repository.upsertCustomLayout(stored) }
     }
 
     /**
@@ -2062,7 +2207,12 @@ internal fun KeyLayoutEditorScreen(
      * would undo the first.
      */
     fun apply(transform: (LayoutSpec) -> LayoutSpec) {
-        scope.launch { repository.updateCustomLayout(layoutId, transform) }
+        val page = pageKey
+        scope.launch {
+            repository.updateCustomLayout(layoutId) { stored ->
+                transform(stored.withLettersSwappedFor(page)).withLettersSwappedFor(page)
+            }
+        }
     }
 
     /** One discrete edit: one undo step. */
@@ -2245,9 +2395,15 @@ internal fun KeyLayoutEditorScreen(
     val storedFillRow = edited.watch { it.layer(layer)?.fillRow }
     val storedArrowRow = edited.watch { it.layer(layer)?.arrowRow }
     val arrowOrder = settings.watch { it.layoutBehavior.arrowRowOrder }
-    val defaultArrowRow = remember(arrowOrder) { arrowOrder.map(::arrowRowKey) }
+    // The keyboard-wide rows from the settings are what a layer without its
+    // own row draws, so they are what the preview shows and the first edit
+    // starts from.
+    val customNumberRow = settings.watch { it.layoutBehavior.customNumberRow }
+    val customArrowRow = settings.watch { it.layoutBehavior.customArrowRow }
+    val defaultArrowRow = remember(arrowOrder, customArrowRow) { customArrowRow ?: arrowOrder.map(::arrowRowKey) }
     fun extraDefault(band: ExtraBand): List<Key> = when (band) {
-        ExtraBand.NUMBER -> BuiltInLayouts.defaultNumberRow(layer)
+        ExtraBand.NUMBER -> customNumberRow?.takeIf { layer != LayoutLayer.SYMBOLS_SHIFTED }
+            ?: BuiltInLayouts.defaultNumberRow(layer)
         ExtraBand.FILL -> BuiltInLayouts.SYMBOLS_FILL_ROW
         ExtraBand.ARROW -> defaultArrowRow
     }
@@ -2270,32 +2426,40 @@ internal fun KeyLayoutEditorScreen(
     val shownMain = drawnRows.mapIndexed { r, row ->
         board?.rows?.getOrNull(r)?.takeIf { it.size == row.size } ?: row
     }.let { main -> if (fillRowKeys != null) listOf(fillRowKeys) + main.drop(1) else main }
-    val topOffset = if (numberRowKeys != null) 1 else 0
-    val displayRows = listOfNotNull(numberRowKeys) + shownMain + listOfNotNull(arrowRowKeys)
+    // The arrow row draws over the digits when Arrow keys row on top is set,
+    // the way the keyboard draws it; under the grid otherwise.
+    val arrowRowOnTop = settings.watch { it.layoutBehavior.arrowRowOnTop }
+    val arrowOnTop = arrowRowKeys != null && arrowRowOnTop
+    val arrowAbove = arrowRowKeys?.takeIf { arrowOnTop }
+    val arrowBelow = arrowRowKeys?.takeIf { !arrowOnTop }
+    val numberIndex = if (arrowOnTop) 1 else 0
+    val topOffset = numberIndex + if (numberRowKeys != null) 1 else 0
+    val displayRows = listOfNotNull(arrowAbove, numberRowKeys) + shownMain + listOfNotNull(arrowBelow)
+    val arrowIndex = if (arrowOnTop) 0 else displayRows.lastIndex
     val numberRowHeightDp = settings.watch { it.numberRowHeightDp }
     val extraScale = numberRowHeightDp.toFloat() / keyHeightDp.coerceAtLeast(1)
     val displayHeights = if (numberRowKeys == null && arrowRowKeys == null) {
         rowHeights
     } else {
-        listOfNotNull(extraScale.takeIf { numberRowKeys != null }) +
+        listOfNotNull(extraScale.takeIf { arrowAbove != null }, extraScale.takeIf { numberRowKeys != null }) +
             List(drawnRows.size) { rowHeights?.getOrNull(it) ?: 1f } +
-            listOfNotNull(extraScale.takeIf { arrowRowKeys != null })
+            listOfNotNull(extraScale.takeIf { arrowBelow != null })
     }
     val displayLayout = arranged.layout.copy(rows = displayRows, rowHeights = displayHeights)
 
     /** Which row of the layer, or which row around it, a cell of the preview is on. */
     fun fromDisplay(ref: KeyRef): Pair<ExtraRef?, KeyRef?> = when {
-        numberRowKeys != null && ref.row == 0 -> ExtraRef(ExtraBand.NUMBER, ref.col) to null
-        arrowRowKeys != null && ref.row == displayRows.lastIndex -> ExtraRef(ExtraBand.ARROW, ref.col) to null
+        arrowRowKeys != null && ref.row == arrowIndex -> ExtraRef(ExtraBand.ARROW, ref.col) to null
+        numberRowKeys != null && ref.row == numberIndex -> ExtraRef(ExtraBand.NUMBER, ref.col) to null
         fillRowKeys != null && ref.row == topOffset -> ExtraRef(ExtraBand.FILL, ref.col) to null
         else -> null to KeyRef(ref.row - topOffset, ref.col)
     }
     val shownExtraSel = extraSel?.takeIf { it.band in shownBands }
     val displaySelection = shownExtraSel?.let { sel ->
         when (sel.band) {
-            ExtraBand.NUMBER -> KeyRef(0, sel.col)
+            ExtraBand.NUMBER -> KeyRef(numberIndex, sel.col)
             ExtraBand.FILL -> KeyRef(topOffset, sel.col)
-            ExtraBand.ARROW -> KeyRef(displayRows.lastIndex, sel.col)
+            ExtraBand.ARROW -> KeyRef(arrowIndex, sel.col)
         }
     } ?: selection?.let { KeyRef(it.row + topOffset, it.col) }
 
@@ -2350,7 +2514,9 @@ internal fun KeyLayoutEditorScreen(
         IconButton(
             enabled = undo.isNotEmpty(),
             onClick = {
-                val previous = undo.last()
+                // `enabled` is read at composition: a second tap landing
+                // before the next frame finds the history already empty.
+                val previous = undo.lastOrNull() ?: return@IconButton
                 undo = undo.dropLast(1)
                 redo = redo + listOfNotNull(edited.now())
                 stepPushed = false
@@ -2365,7 +2531,7 @@ internal fun KeyLayoutEditorScreen(
         IconButton(
             enabled = redo.isNotEmpty(),
             onClick = {
-                val next = redo.last()
+                val next = redo.lastOrNull() ?: return@IconButton
                 redo = redo.dropLast(1)
                 undo = undo + listOfNotNull(edited.now())
                 stepPushed = false
@@ -2545,8 +2711,17 @@ internal fun KeyLayoutEditorScreen(
                     edited = edited,
                     selected = layer,
                     selectedPanel = panelTab,
-                    onSelect = { layer = it; panelTab = null; selection = null; extraSel = null },
-                    onSelectPanel = { panelTab = it; selection = null; extraSel = null },
+                    pages = pages,
+                    selectedPage = pageKey,
+                    onSelect = { layer = it; pageKey = null; panelTab = null; selection = null; extraSel = null },
+                    onSelectPanel = { panelTab = it; pageKey = null; selection = null; extraSel = null },
+                    onSelectPage = {
+                        layer = LayoutLayer.LETTERS
+                        pageKey = it
+                        panelTab = null
+                        selection = null
+                        extraSel = null
+                    },
                 )
             }
             if (fieldPreview) PreviewFieldChips(previewField) { previewField = it }
@@ -3116,7 +3291,7 @@ internal fun KeyLayoutEditorScreen(
     // (issue #105). Every word of it is resolved here because a click lambda is
     // a plain lambda, and because a note about a pasted grid names the layer it
     // landed in, which is a translated word.
-    val layerName = stringResource(layerTitleRes(layer))
+    val layerName = pageKey?.let { pageTitle(it) } ?: stringResource(layerTitleRes(layer))
     val layerNames = LayoutLayer.entries.associate { it.key to stringResource(layerTitleRes(it)) }
     val clipLabel = stringResource(R.string.layout_editor_layer_clip_label)
     val copyDoneFormat = stringResource(R.string.layout_editor_copy_layer_done_message)
@@ -3566,6 +3741,25 @@ internal fun KeyLayoutEditorScreen(
                 range = SidePadScaleRange,
                 display = { "${(it * 100).roundToInt()}%" },
             ) { value -> edit { s -> s.withSizing { it.copy(sidePadRightScale = value) } } }
+        }
+        if (!secondary) item(level = SettingLevel.STANDARD) {
+            // Layouts that type the same way: only the grid changes sideways.
+            val current = settings.watch { it.customLayouts }
+            val spec = edited.watch { it }
+            val others = remember(current, spec.langId, spec.composerType()) {
+                val shipped = LanguageRegistry.byId(spec.langId).layoutIds.mapNotNull { findLayout(current, it) }
+                (shipped + current.filter { it.langId == spec.langId })
+                    .distinctBy { it.id }
+                    .filter { it.id != spec.id && it.composerType() == spec.composerType() }
+            }
+            ChoiceSetting(
+                title = R.string.layout_editor_landscape_layout_title,
+                subtitle = stringResource(R.string.layout_editor_landscape_layout_subtitle),
+                options = listOf<Pair<String?, String>>(
+                    null to stringResource(R.string.layout_editor_landscape_layout_same),
+                ) + others.map { it.id to it.name },
+                selected = spec.landscapeLayoutId,
+            ) { chosen -> edit { it.copy(landscapeLayoutId = chosen) } }
         }
         if (!secondary) item(level = SettingLevel.ADVANCED) {
             // `edit`, not `editCoalesced`, because one deliberate flip deserves
@@ -4038,6 +4232,10 @@ private fun LayerChips(
     /** The panel tab on screen, or null while a typing layer is; see issue #63. */
     selectedPanel: PanelKind? = null,
     onSelectPanel: (PanelKind) -> Unit = {},
+    /** The layout's further pages, by key; see [pageLayerKeys]. */
+    pages: List<String> = emptyList(),
+    selectedPage: String? = null,
+    onSelectPage: (String) -> Unit = {},
 ) {
     LazyRow(
         modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp),
@@ -4046,9 +4244,17 @@ private fun LayerChips(
         items(LayoutLayer.entries) { layer ->
             LayerChip(
                 title = stringResource(layerTitleRes(layer)),
-                selected = selectedPanel == null && layer == selected,
+                selected = selectedPanel == null && selectedPage == null && layer == selected,
                 authored = edited.watch { it.layer(layer) != null },
                 onClick = { onSelect(layer) },
+            )
+        }
+        items(pages) { page ->
+            LayerChip(
+                title = pageTitle(page),
+                selected = selectedPanel == null && page == selectedPage,
+                authored = true,
+                onClick = { onSelectPage(page) },
             )
         }
         // The panels, after the typing layers: every sub-layout of this
@@ -4061,6 +4267,17 @@ private fun LayerChips(
                 onClick = { onSelectPanel(kind) },
             )
         }
+    }
+}
+
+/** A page's tab: "Page 2" for the `page2` the paginated boards use, a layer's own key otherwise. */
+@Composable
+private fun pageTitle(key: String): String {
+    val number = key.removePrefix("page").toIntOrNull()
+    return if (key.startsWith("page") && number != null) {
+        stringResource(R.string.layout_editor_layer_page, number)
+    } else {
+        key
     }
 }
 
@@ -5520,6 +5737,13 @@ internal val KeyActionCatalog: List<KeyActionOption> = listOf(
         R.string.layout_editor_action_edit_detail,
         { KeyAction.Edit(TextEditAction.LEFT) }, { it is KeyAction.Edit },
     ),
+    // Empty until the sheet that opens the moment this is chosen fills it.
+    KeyActionOption(
+        R.string.layout_editor_action_sequence_title,
+        R.string.layout_editor_action_group_text_edit,
+        R.string.layout_editor_action_sequence_detail,
+        { KeyAction.EditSequence(emptyList()) }, { it is KeyAction.EditSequence },
+    ),
     KeyActionOption(
         R.string.layout_editor_action_braille_dot_title,
         R.string.layout_editor_action_group_chorded,
@@ -5655,6 +5879,7 @@ internal fun KeyEditSheet(
     var pickingIme by remember { mutableStateOf(false) }
     // Which operation an edit key runs, and which component a field cell hosts.
     var pickingEdit by remember { mutableStateOf(false) }
+    var pickingSequence by remember { mutableStateOf(false) }
     var pickingField by remember { mutableStateOf(false) }
     // Which icon the picker is choosing: null while it is shut, false for the
     // key's own icon, true for its corner hint.
@@ -5987,11 +6212,17 @@ internal fun KeyEditSheet(
                 rowsBelow = rowCount - ref.row - 1,
             ) { span -> onChange { it.copy(rowSpan = span) } }
         }
+        item(level = SettingLevel.STANDARD) {
+            KeyScreenRow(key.showOn) { screen -> onChange { it.copy(showOn = screen) } }
+        }
         if (!isField && drawsScalableLabel(key)) item(level = SettingLevel.STANDARD) {
             KeyLabelScaleRow(key) { scale -> onChange { it.copy(labelScale = scale) } }
         }
         if (!isField && !key.hideHint) item(level = SettingLevel.ADVANCED) {
             KeyHintScaleRow(key) { scale -> onChange { it.copy(hintScale = scale) } }
+        }
+        if (!isField && !key.hideHint) item(level = SettingLevel.ADVANCED) {
+            KeyHintShiftRow(key) { x, y -> onChange { it.copy(hintShiftXDp = x, hintShiftYDp = y) } }
         }
         // Every key but a component's cell can wear an icon (issue #187). The
         // space bar and the action keys used to have no field for one, and the
@@ -6059,6 +6290,7 @@ internal fun KeyEditSheet(
                 if (action is KeyAction.Mode) pickingMode = true
                 if (action is KeyAction.SwitchInputMethod) pickingIme = true
                 if (action is KeyAction.Edit) pickingEdit = true
+                if (action is KeyAction.EditSequence) pickingSequence = true
                 if (action is KeyAction.Field) pickingField = true
             },
             onDismiss = { pickingAction = false },
@@ -6120,6 +6352,17 @@ internal fun KeyEditSheet(
             onPick = { op ->
                 pickingEdit = false
                 onChange { it.copy(action = KeyAction.Edit(op)) }
+            },
+        )
+    }
+
+    if (pickingSequence) {
+        TextEditSequenceDialog(
+            current = (key.action as? KeyAction.EditSequence)?.ops.orEmpty(),
+            onDismiss = { pickingSequence = false },
+            onPick = { ops ->
+                pickingSequence = false
+                onChange { it.copy(action = KeyAction.EditSequence(ops)) }
             },
         )
     }
@@ -6497,6 +6740,7 @@ private fun FlickFields(
     // actions ask: which operation, which tool, which layout.
     var picking by remember(ref) { mutableStateOf<FlickDirection?>(null) }
     var pickingEditAt by remember(ref) { mutableStateOf<FlickDirection?>(null) }
+    var pickingSequenceAt by remember(ref) { mutableStateOf<FlickDirection?>(null) }
     var pickingToolAt by remember(ref) { mutableStateOf<FlickDirection?>(null) }
     var pickingLayoutAt by remember(ref) { mutableStateOf<FlickDirection?>(null) }
     var pickingModeAt by remember(ref) { mutableStateOf<FlickDirection?>(null) }
@@ -6658,6 +6902,7 @@ private fun FlickFields(
                 // and backing out of the second question leaves the arm as it was.
                 when (action) {
                     is KeyAction.Edit -> pickingEditAt = direction
+                    is KeyAction.EditSequence -> pickingSequenceAt = direction
                     is KeyAction.Tool -> pickingToolAt = direction
                     is KeyAction.Layout -> pickingLayoutAt = direction
                     is KeyAction.Mode -> pickingModeAt = direction
@@ -6665,6 +6910,17 @@ private fun FlickFields(
                 }
             },
             onDismiss = { picking = null },
+        )
+    }
+
+    pickingSequenceAt?.let { direction ->
+        TextEditSequenceDialog(
+            current = (key.flickActions[direction]?.action as? KeyAction.EditSequence)?.ops.orEmpty(),
+            onDismiss = { pickingSequenceAt = null },
+            onPick = { ops ->
+                pickingSequenceAt = null
+                finishArm(direction, KeyAction.EditSequence(ops))
+            },
         )
     }
 
@@ -7096,6 +7352,7 @@ private fun ActionAlternatesRows(
     var pickingModeAt by remember { mutableStateOf<Int?>(null) }
     // Same for a text-editing operation (#630): without it every one landed as Left.
     var pickingEditAt by remember { mutableStateOf<Int?>(null) }
+    var pickingSequenceAt by remember { mutableStateOf<Int?>(null) }
     // Same for the keyboard a switch-keyboard action names.
     var pickingImeAt by remember { mutableStateOf<Int?>(null) }
 
@@ -7150,6 +7407,7 @@ private fun ActionAlternatesRows(
                 if (action is KeyAction.Layout) pickingLayoutAt = landsAt
                 if (action is KeyAction.Mode) pickingModeAt = landsAt
                 if (action is KeyAction.Edit) pickingEditAt = landsAt
+                if (action is KeyAction.EditSequence) pickingSequenceAt = landsAt
                 if (action is KeyAction.SwitchInputMethod) pickingImeAt = landsAt
             },
             onDismiss = { editing = null },
@@ -7191,6 +7449,19 @@ private fun ActionAlternatesRows(
                             a
                         }
                     },
+                )
+            },
+        )
+    }
+
+    pickingSequenceAt?.let { index ->
+        TextEditSequenceDialog(
+            current = (alternates.getOrNull(index)?.action as? KeyAction.EditSequence)?.ops.orEmpty(),
+            onDismiss = { pickingSequenceAt = null },
+            onPick = { ops ->
+                pickingSequenceAt = null
+                onChange(
+                    alternates.mapIndexed { i, a -> if (i == index) a.copy(action = KeyAction.EditSequence(ops)) else a },
                 )
             },
         )
@@ -7281,6 +7552,9 @@ internal fun actionAlternateName(
             ?: alternate.label.ifBlank { stringResource(R.string.layout_editor_action_mode_title) }
     }
     if (action is KeyAction.Edit) return stringResource(textEditActionTitle(action.op))
+    if (action is KeyAction.EditSequence) {
+        return action.ops.map { stringResource(textEditActionTitle(it)) }.joinToString(" + ")
+    }
     val option = KeyActionCatalog.firstOrNull { it.matches(action) }
     return option?.let { stringResource(it.titleRes) }
         ?: alternate.drawnLabel().ifBlank { stringResource(R.string.layout_editor_action_unknown) }
@@ -7692,6 +7966,30 @@ internal fun LayoutFontScaleRow(
     }
 }
 
+/** Where this key's corner hint sits, nudged from where every hint does (#970). */
+@Composable
+private fun KeyHintShiftRow(key: Key, onChange: (Float?, Float?) -> Unit) {
+    val x = key.hintShiftXDp ?: 0f
+    val y = key.hintShiftYDp ?: 0f
+    ControlSetting(
+        stringResource(R.string.layout_editor_key_hint_shift_label, x.toInt(), y.toInt()),
+        subtitle = stringResource(R.string.layout_editor_key_hint_shift_hint),
+        icon = SettingsRowIcons[R.string.layout_editor_key_label_scale_label],
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(
+                selected = key.hintShiftXDp == null && key.hintShiftYDp == null,
+                onClick = { onChange(null, null) },
+                label = { Text(stringResource(R.string.layout_editor_font_scale_auto_chip)) },
+            )
+            FilterChip(selected = false, onClick = { onChange(x + 1f, y) }, label = { Text("←") })
+            FilterChip(selected = false, onClick = { onChange(x - 1f, y) }, label = { Text("→") })
+            FilterChip(selected = false, onClick = { onChange(x, y - 1f) }, label = { Text("↑") })
+            FilterChip(selected = false, onClick = { onChange(x, y + 1f) }, label = { Text("↓") })
+        }
+    }
+}
+
 /**
  * Corner hint size for one key, as a multiple of every hint's size (#970): for
  * the key whose hint is a mark too small to read, an Arabic haraka on a corner,
@@ -7878,12 +8176,12 @@ internal val SpecialKeyPresets: List<KeyActionOption> by lazy {
     )
     KeyActionCatalog.filter { option ->
         when (val action = option.build()) {
-            is KeyAction.Edit, is KeyAction.Tool, is KeyAction.Layout, is KeyAction.Mode,
+            is KeyAction.Edit, is KeyAction.EditSequence, is KeyAction.Tool, is KeyAction.Layout, is KeyAction.Mode,
             is KeyAction.SwitchInputMethod, is KeyAction.Broadcast, is KeyAction.BrailleDot,
             -> false
             else -> action !in skipped
         }
-    } + TextEditAction.entries.map { op ->
+    } + TextEditAction.entries.filter { it != TextEditAction.NO_SPACE_NEXT }.map { op ->
         KeyActionOption(
             textEditActionTitle(op),
             R.string.layout_editor_action_group_text_edit,
@@ -7891,6 +8189,35 @@ internal val SpecialKeyPresets: List<KeyActionOption> by lazy {
             { KeyAction.Edit(op) },
             { it == KeyAction.Edit(op) },
         )
+    }
+}
+
+/** Which way up the screen a key exists: both, or one of them. The editor always draws it. */
+@Composable
+private fun KeyScreenRow(screen: KeyScreen, onChange: (KeyScreen) -> Unit) {
+    ControlSetting(
+        R.string.layout_editor_key_screen_title,
+        subtitle = stringResource(R.string.layout_editor_key_screen_hint),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp), modifier = Modifier.padding(top = 4.dp)) {
+            for (choice in KeyScreen.entries) {
+                FilterChip(
+                    selected = choice == screen,
+                    onClick = { onChange(choice) },
+                    label = {
+                        Text(
+                            stringResource(
+                                when (choice) {
+                                    KeyScreen.ALWAYS -> R.string.layout_editor_key_screen_always
+                                    KeyScreen.PORTRAIT -> R.string.layout_editor_key_screen_portrait
+                                    KeyScreen.LANDSCAPE -> R.string.layout_editor_key_screen_landscape
+                                },
+                            ),
+                        )
+                    },
+                )
+            }
+        }
     }
 }
 

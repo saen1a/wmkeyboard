@@ -13,7 +13,7 @@ joiners and compounds, the three engines, and the build gates around them. **Not
 covered:** the scoring formula itself, which the
 [pipeline page](/development/glide-engine/pipeline/) owns.
 
-**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+**Verified against** the merged `github/main` at `69e87afa4` plus this branch's glide-engine improvements, on 2026-11-07. See [Version and sync](/development/glide-engine/#version-and-sync).
 
 ## Word sources
 
@@ -88,11 +88,19 @@ so an English frequency weight outvotes the shape for German.
 | Profile | `freqWeight` | `gapWeight` | `joinCost` | `joinMinPart` | `joinPartPenalty` |
 |---|---|---|---|---|---|
 | Default | 1.0 | 1.33 | infinity | 3 | 0.0 |
-| German | 0.5 | 2.0 | 8.0 | 4 | 0.1 |
+| German | 0.75 | 2.0 | 8.0 | 4 | 0.1 |
 
-The German profile was measured on 2,588 real German swipes from FUTO's public
-stroke set, plus 10,908 from HeliBoard's gesture data for rare words. Success per
-swipe, ordinary and rare:
+The merged profile uses `freqWeight` 0.75, fitted on the AOSP German list
+(#1051). On the same 2,588 FUTO swipes the downloaded German context model
+flips the preference: the decoder alone reads 81.22 % top-1 at 0.75 against
+80.64 % at 0.5, but after the blend 0.5 reads 82.77 % against 81.68 %. The
+profile is static, so a held-out fit should choose the weight by whether the
+context model is installed; do not copy either number to another language.
+
+The earlier counted-list research (150k and 1.15M words) remains: it was
+measured on 2,588 real German swipes from FUTO's public stroke set, plus 10,908
+from HeliBoard's gesture data for rare words. Success per swipe, ordinary and
+rare:
 
 | Setup | Ordinary | Rare |
 |---|---|---|

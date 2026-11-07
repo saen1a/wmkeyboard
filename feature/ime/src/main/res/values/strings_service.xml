@@ -51,6 +51,10 @@
     <string name="ime_grammar_module_installing_toast">The grammar checker is downloading. Try again in a moment.</string>
 
     <!-- AI panel: one tap actions that run on the text in the field. -->
+    <string name="ime_symbols_unicode_label">Unicode</string>
+    <string name="ime_symbols_unicode_search">Search</string>
+    <string name="ime_symbols_unicode_search_hint">A name or a code: arrow, U+2192</string>
+    <string name="ime_symbols_unicode_search_close">Close search</string>
     <string name="ime_ai_model_label">Model:</string>
     <string name="ime_ai_setup_body">Set up an AI provider in the settings of the tool to use AI.</string>
     <string name="ime_ai_setup_local_body">Set up an AI provider, or download a model to your device. Both are in the settings of the tool.</string>
@@ -235,6 +239,7 @@
     <string name="ime_service_media_download_error_toast">The download did not work. Check your connection.</string>
 
     <!-- Clipboard: what the keyboard says when it copies or pastes for you. -->
+    <string name="ime_service_null_field_copy_toast">This app keeps its text from the keyboard. Use its own Copy.</string>
     <string name="ime_service_copied_toast">Copied</string>
     <string name="ime_service_copied_paste_toast">Copied. You can paste it anywhere.</string>
     <string name="ime_service_file_copy_error_toast">The keyboard cannot copy that file</string>
@@ -267,6 +272,7 @@
     <string name="ime_floating_lookup_label">Look up a word</string>
     <string name="ime_floating_pick_hint">Tap a word to look it up</string>
     <string name="ime_floating_pick_nothing">There is no text there to look up</string>
+    <string name="ime_screenshot_failed">Android did not take the screenshot</string>
     <string name="ime_floating_hide_label">Hide the button</string>
     <string name="ime_floating_none_label">Nothing</string>
     <string name="ime_floating_close_menu">Close menu</string>
@@ -277,6 +283,17 @@
     <!-- A slot that opens an app (#922), named here only when the app is gone. -->
     <string name="ime_floating_app_label">Open an app</string>
     <string name="ime_floating_app_missing">That app is no longer installed</string>
+    <string name="ime_floating_pair_label">Open an app pair</string>
+    <string name="ime_floating_applet_name">%1$s in a box</string>
+    <string name="ime_applet_close">Close the box</string>
+    <string name="ime_applet_open_in_keyboard">Open in the keyboard</string>
+    <string name="ime_applet_resize">Drag to resize</string>
+    <string name="ime_applet_tuck">Tuck into the edge</string>
+    <!-- The tab a floating box leaves on the screen's edge. %1$s is the tool's name, for example Calculator. -->
+    <string name="ime_applet_untuck">Bring back <xliff:g id="tool" example="Calculator">%1$s</xliff:g></string>
+    <string name="ime_applet_copied">Copied</string>
+    <string name="ime_floating_pair_name">%1$s + %2$s</string>
+    <string name="ime_floating_pair_missing">One of the two apps is no longer installed</string>
     <!-- A slot that opens a ring of its own (#923), named here only when it has no name. -->
     <string name="ime_floating_category_label">Category</string>
     <string name="ime_floating_category_empty">This category is empty. Add actions to it in the floating button settings.</string>

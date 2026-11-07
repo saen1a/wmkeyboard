@@ -1,5 +1,6 @@
 package com.wasimaster.wmkeyboard.core.layout
 
+import com.wasimaster.wmkeyboard.core.settings.TextEditAction
 import com.wasimaster.wmkeyboard.core.settings.repeats
 import kotlin.math.floor
 import kotlin.math.roundToInt
@@ -97,6 +98,8 @@ data class Key(
      * so a grid the editor has just had a row deleted from still draws.
      */
     val rowSpan: Int = 1,
+    /** Which way up the screen has to be for this key to exist. */
+    val showOn: KeyScreen = KeyScreen.ALWAYS,
     val longPress: List<String> = emptyList(),
     /**
      * Long-press alternates that run an action instead of typing: Tab, the voice
@@ -197,6 +200,14 @@ data class Key(
      */
     val flick: Map<FlickDirection, String> = emptyMap(),
     /**
+     * A 모아키 (Moakey) consonant: the drag can change direction, and each bend
+     * turns the vowel of the [flick] arm it started on into the next one, so
+     * right and back types ㅐ rather than ㅏ. The key's own letter is the initial
+     * of what the lift types. Its arms stay off the key face, which is not big
+     * enough for eight syllables, and glide typing leaves its strokes alone.
+     */
+    val bendsVowels: Boolean = false,
+    /**
      * What each [flick] arm types while Shift is on, the way [shiftLabel] does
      * for the tap (issue #550). A kana pad with a Shift key can then put its
      * katakana on the same keys as its hiragana, rather than on a second
@@ -245,6 +256,13 @@ data class Key(
      * [KeyHintScaleRange].
      */
     val hintScale: Float? = null,
+    /**
+     * This key's corner hint moved from where every hint sits, in dp (#970):
+     * across (positive is in from the corner) and down. For the one glyph whose
+     * shape needs it. Null follows the setting.
+     */
+    val hintShiftXDp: Float? = null,
+    val hintShiftYDp: Float? = null,
     /**
      * Every letter this one key stands for — `"abc"` on a T9 keypad's 2, `"qw"`
      * on a compact grid's first key — for a layout that puts more than one
@@ -553,8 +571,13 @@ fun Key.holdIsSpokenFor(): Boolean = repeatOnHold || action.holdIsSpokenFor()
  * key owns its whole gesture, tap and flick and hold together, and a repeat has
  * nowhere to live inside it. That is a fact about the key rather than about
  * typing text, which is why it is here and not there.
+ *
+ * Any other key keeps its repeat beside flick arms (#865): a still hold
+ * repeats, and a flick that leaves the key before the repeat starts is an arm,
+ * as on the delete and arrow keys.
  */
-fun Key.canRepeatOnHold(): Boolean = flick.isEmpty() && flickActions.isEmpty() && action.canRepeatOnHold()
+fun Key.canRepeatOnHold(): Boolean =
+    (flick.isEmpty() || (action != KeyAction.Text && action !is KeyAction.KeymanKey)) && action.canRepeatOnHold()
 
 /**
  * Whether a held finger on this key fires it over and over.
@@ -678,6 +701,14 @@ fun Key.multitapKey(step: Int): Key {
  */
 val KeyLabelScaleRange = 0.3f..2f
 
+/** Whether this layout's letters page starts with a row of digits it drew itself. */
+fun LayoutSpec.hasDigitRowOfItsOwn(): Boolean =
+    (
+        layer(LayoutLayer.LETTERS)?.rows?.firstOrNull()?.count { key ->
+            key.action == KeyAction.Text && (key.output ?: key.label).singleOrNull()?.isDigit() == true
+        } ?: 0
+        ) >= 5
+
 /** What a [Key.hintScale] is honoured at. */
 val KeyHintScaleRange = 0.5f..3f
 
@@ -749,6 +780,12 @@ data class KeyboardLayout(
     val flickHints: Boolean? = null,
     /** [LayerSpec.keymanFrames], carried onto the grid on screen. */
     val keymanFrames: Map<String, KeymanTarget> = emptyMap(),
+    /**
+     * Whether this is a symbols page the layout borrowed rather than wrote, so
+     * its `$` key may show the currency where the phone is. A page the layout
+     * wrote itself is drawn as written.
+     */
+    val borrowedSymbols: Boolean = false,
 )
 
 /**
@@ -994,7 +1031,7 @@ sealed interface FlickArm {
  * Whether [Key.flickActions] work on this key (issue #549).
  *
  * Every key but the ones whose drag or hold is already the gesture: a braille
- * dot's chord, a component's cell, and a key told to repeat while held. A flick arm on one of those would either
+ * dot's chord and a component's cell. A flick arm on one of those would either
  * never be reached or take away what the key is for, so the editor does not
  * offer them and the keyboard does not read them.
  *
@@ -1007,14 +1044,16 @@ sealed interface FlickArm {
  *
  * So are the caret keys whose hold repeats (#865): a still hold still
  * repeats, and a flick before the repeat starts is an arm, word left or
- * right on an arrow, page up or down.
+ * right on an arrow, page up or down. A key its author told to repeat while
+ * held is one too (#865): the arrow row's keys are raw arrow key presses
+ * told to repeat, and they are the arrows people put word and page moves on.
  *
  * And so is the space bar (#863), on the delete key's terms: its swipes and
  * hold are its own, but an arm takes the directions it covers, and the swipes
  * keep the rest. No space on a flick of the space bar is the arm asked for.
  */
 fun Key.takesFlickActions(): Boolean =
-    action == KeyAction.Space || !holdIsSpokenFor() || action.deletesBackward() || action.deletesForward() ||
+    action == KeyAction.Space || !action.holdIsSpokenFor() || action.deletesBackward() || action.deletesForward() ||
         (action as? KeyAction.Edit)?.op?.repeats == true
 
 /**
@@ -1045,7 +1084,54 @@ fun Key.isSwipeOnly(): Boolean =
 /**
  * Whether a finger held on this flick arm runs it again and again: the arms
  * that move the caret or delete, which repeat the same way the keys for them do.
+ * A caret move counts whichever way it was picked: a text editing move, a
+ * cursor tool or a raw arrow key ([repeatsAsCaretMove], #865).
  * Asked of the key [flickKey] hands back.
  */
 fun Key.flickArmRepeats(): Boolean =
-    action.deletesBackward() || action.deletesForward() || (action as? KeyAction.Edit)?.op?.repeats == true
+    action.deletesBackward() || action.deletesForward() || action.repeatsAsCaretMove()
+
+/**
+ * This delete key with a swipe up deleting lines behind the caret and a swipe
+ * down deleting lines after it (#1162), as action arms of its own, so the key's
+ * gesture handles them the way it handles any arm: the sideways delete swipe
+ * keeps the directions they leave, and a finger held out repeats them. A
+ * direction the layout already armed keeps its own arm, and [up] false leaves
+ * the swipe up to Swipe up to clear all.
+ */
+fun Key.withDeleteLineArms(up: Boolean): Key {
+    val add = HashMap<FlickDirection, KeyAlternate>()
+    fun free(direction: FlickDirection) = direction !in flickActions && direction !in activeFlick
+    if (up && free(FlickDirection.UP)) {
+        add[FlickDirection.UP] = KeyAlternate(KeyAction.Edit(TextEditAction.DELETE_LINE))
+    }
+    if (free(FlickDirection.DOWN)) {
+        add[FlickDirection.DOWN] = KeyAlternate(KeyAction.Edit(TextEditAction.DELETE_LINE_FORWARD))
+    }
+    return if (add.isEmpty()) this else copy(flickActions = flickActions + add)
+}
+
+/**
+ * Which way up the screen has to be for a key to exist. A duplicate `g` and `v`
+ * for two thumbs is worth a key sideways, where the board is wide, and costs one
+ * upright, where it isn't.
+ */
+@Serializable
+enum class KeyScreen { ALWAYS, PORTRAIT, LANDSCAPE }
+
+/**
+ * This grid with only the keys [landscape] calls for. A row left with no keys
+ * goes, with its height. The same grid back when no key asks, which is nearly
+ * every grid, so a rotation costs them nothing.
+ */
+fun KeyboardLayout.forScreen(landscape: Boolean): KeyboardLayout {
+    val gone = if (landscape) KeyScreen.PORTRAIT else KeyScreen.LANDSCAPE
+    if (rows.none { row -> row.any { it.showOn == gone } }) return this
+    val kept = rows.withIndex()
+        .map { (index, row) -> index to row.filterNot { it.showOn == gone } }
+        .filter { (_, row) -> row.isNotEmpty() }
+    return copy(
+        rows = kept.map { (_, row) -> row },
+        rowHeights = rowHeights?.let { heights -> kept.map { (index, _) -> heights.getOrElse(index) { 1f } } },
+    )
+}

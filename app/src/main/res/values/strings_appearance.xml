@@ -152,6 +152,9 @@
     <string name="appearance_toolbox_paginate_info">When this is off, the toolbox is one grid that scrolls up and down. When it is on, the toolbox becomes pages that you swipe between. Dots below the grid show your position. Every tool then keeps the same place, so you can find it from memory. To move a tool to another page, drag it and hold it against the side edge of the toolbox until the page turns.</string>
     <string name="appearance_toolbox_search_button_title">Toolbox search</string>
     <string name="appearance_toolbox_search_button_subtitle">A search button on the toolbar while the toolbox is open</string>
+    <string name="appearance_toolbox_back_lowers_title">Back puts a tool\'s keys down first</string>
+    <string name="appearance_toolbox_back_lowers_subtitle">The next Back closes the tool</string>
+    <string name="appearance_toolbox_back_lowers_info">With the keys up under a tool\'s own box, such as Translate or find and replace, the first Back takes the keys down so the whole tool shows, and the second closes the tool. Off, Back closes the tool at once. Either way, the keyboard button at the end of the box\'s suggestion strip puts the keys down.</string>
     <string name="appearance_toolbox_search_button_info">While the toolbox is open, the toolbar shows a search button. Tapping it opens the search over the whole keyboard, with a back button that returns to the toolbox. Type a tool\'s name to find it, wherever it is, folders included. Turn this off to leave the toolbox without a search.</string>
     <string name="appearance_toolbox_search_at_end_title">Search button at the far end</string>
     <string name="appearance_toolbox_search_at_end_subtitle">Put the toolbox search at the far end of the toolbar, away from the back button</string>
@@ -193,6 +196,9 @@
     <string name="appearance_suggestion_primary_color_title">Autocorrect word color</string>
     <string name="appearance_suggestion_primary_color_subtitle">Color of the word that autocorrect will put in for a space</string>
     <string name="appearance_suggestion_primary_color_info">The strip draws its first suggestion in bold. Pick a color here and that word takes the color only when autocorrect has decided to put it in for you when you type a space. A bold word without the color is the top suggestion, and a space keeps what you typed. The other suggestions keep the theme color. Reset the row to follow the theme again.</string>
+    <string name="appearance_suggestion_new_word_color_title">New word color</string>
+    <string name="appearance_suggestion_new_word_color_subtitle">Color of a word that no word list or your dictionary knows yet</string>
+    <string name="appearance_suggestion_new_word_color_info">Pick a color here and a word on the strip that is in no word list, not in your personal dictionary, not one of your contacts and not accepted by the spell checker takes it. That is usually the word you are typing, so you can see that it would be new to the dictionary before you add it from its hold menu or the keyboard learns it on its own. The color goes as soon as the word is learned or added. The autocorrect word color wins where both apply. Not used on a layout that turns your keys into another script. Reset the row to follow the theme again.</string>
 
     <string name="appearance_toolbox_label_size_title">Toolbox label size</string>
     <string name="appearance_toolbox_label_size_subtitle">The name under each tool in the full tool panel</string>

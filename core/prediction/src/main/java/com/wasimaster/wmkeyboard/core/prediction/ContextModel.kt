@@ -63,14 +63,19 @@ class ContextModel private constructor(
     }
 
     /**
-     * ln P(word next) for each of [words], spelling a word the vocabulary does
-     * not hold as one token in pieces; NaN only where the model can read
-     * neither. One forward step per piece, so this is for a glide's handful of
-     * candidates, never the whole strip.
+     * [scores] with a word the vocabulary lacks spelled through its pieces, NaN
+     * only for a word it cannot spell either (#1016). Up to six forward steps a
+     * word, so this is for a stroke's candidates or a few close words, never a
+     * whole strip per keystroke. An engine library older than the call answers
+     * as [scores].
      */
     fun scoresSpelled(words: List<String>): FloatArray {
         if (closed || words.isEmpty()) return FloatArray(words.size) { Float.NaN }
-        return PredictionNative.lmScoresSpelled(session, words.toTypedArray())
+        return try {
+            PredictionNative.lmScoresSpelled(session, words.toTypedArray())
+        } catch (_: UnsatisfiedLinkError) {
+            scores(words)
+        }
     }
 
     /** The model's view of a word as typed, for the learned gate; see [gateView]. */

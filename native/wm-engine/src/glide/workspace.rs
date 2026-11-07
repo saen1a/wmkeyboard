@@ -33,7 +33,13 @@ pub fn samples_for(arc: f32) -> usize {
         (LONG_SAMPLES + SAMPLES_PER_LETTER * letters).min(SAMPLE_POINTS)
     }
 }
-pub const MAX_STATES: usize = 8192;
+/// Frontier cap; the pool grows only when a long stroke needs it.
+///
+/// It was 8,192. At the 4,000-pop budget that cap bound again on real German
+/// swipes: 12,288 states lifted top-1 from 75.81 to 76.31 and top-64 coverage
+/// from 87.13 % to 87.75 %, for ~4.5 MB of columns at the longest stroke.
+/// 16,384 gained nothing more on the same set.
+pub const MAX_STATES: usize = 12288;
 /// Longest key sequence a candidate's ideal path can have: a word of
 /// `MAX_WORD_LENGTH` letters visits at most that many keys, plus the two
 /// anchor leads the shape channel adds.

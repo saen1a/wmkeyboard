@@ -1,420 +1,230 @@
 package com.wasimaster.wmkeyboard.core.gesture
 
-import com.wasimaster.wmkeyboard.core.prediction.WordKey
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
+import java.nio.charset.CharacterCodingException
 import java.nio.charset.CodingErrorAction
 import java.security.MessageDigest
 
-/**
- * Runtime shape snapshot, format v1 (`WMKS`), all integers big-endian.
- *
- * Header, 80 bytes: magic, version, header size, flags, digest algorithm,
- * reserved, snapshot tick, layout count, reserved, payload length and a
- * SHA-256 digest. The digest covers every header byte except the digest field
- * itself, plus the whole payload, so tick, counts and lengths are covered too.
- *
- * Then one 24-byte directory entry per layout: key, word count, table offset,
- * arena offset, arena size. A word table holds `uint16` UTF-8 length, the
- * folded [WordKey] bytes, word tick, shape offset inside the layout's arena,
- * and `uint16` shape count. An arena holds that many records of `uint32`
- * accepted, `uint32` rejected and 96 point bytes. Table and arena offsets are
- * absolute; shape offsets are relative to their arena.
- *
- * SHA-256 is the corruption detector, not an authenticator: it detects
- * accidental damage and casual modification, but a writer who can replace the
- * file can recompute it. v1 is app-private storage protected by Android's
- * file-based encryption, so a keyed MAC was deliberately not added; see the
- * security audit in the contribution bundle.
- *
- * A file from a newer version keeps this magic and is rejected by
- * [BinaryCodec.decode], never parsed as JSON.
- */
-internal class BinaryShapeData(
-    val points: ByteArray,
-    val accepted: Int,
-    val rejected: Int,
-)
+/** One stored shape: [GlideShapeStore.POINTS] quantised coordinates and its accept and reject counts. */
+class GlideShapeRecord(val points: ByteArray, val accepted: Int, val rejected: Int)
 
-internal class BinaryWordData(
-    val tick: Long,
-    val shapes: List<BinaryShapeData>,
-)
+/** One word's shapes on one layout, and when the word last learned or lost one. */
+class GlideShapeWord(val tick: Long, val shapes: List<GlideShapeRecord>)
 
 /**
- * The flat, allocation-light decode layout. No per-word or per-shape objects:
- * the arena offsets are ints and the point bytes stay in [BinarySnapshot.bytes].
+ * A whole [GlideShapeStore] as it goes to disk, in either of its formats: what
+ * the binary file and the JSON backup both decode to, so the two loads share
+ * one set of checks ([GlideShapeStore] applies them).
  */
-internal class BinaryLayout(
-    val words: Array<String>,
-    val wordTicks: LongArray,
-    val shapeStart: IntArray,
-    val shapeCount: IntArray,
-    val shapePointsOffset: IntArray,
-    val shapeAccepted: IntArray,
-    val shapeRejected: IntArray,
-)
+class GlideShapeImage(val tick: Long, val layouts: Map<Long, Map<String, GlideShapeWord>>)
 
-internal class BinarySnapshot(
-    val tick: Long,
-    val bytes: ByteArray,
-    val layouts: Map<Long, BinaryLayout>,
-)
+/**
+ * The learned-shape store's runtime file, binary format v1 (issue #1130).
+ *
+ * The JSON it replaces carried every point as two hex digits and had to be
+ * parsed into objects whole before the decoder could read a shape; this is
+ * the same data at its own size, read with no text in between. JSON stays the
+ * backup format, so a backup still restores on an older build.
+ *
+ * All integers big-endian.
+ *
+ * ```
+ * Header, 80 bytes
+ *    0  magic "WMKS"
+ *    4  u16 version (1)
+ *    6  u16 header size (80)
+ *    8  u32 flags (0)
+ *   12  u8  digest algorithm (1 = SHA-256), 3 bytes reserved
+ *   16  i64 store tick
+ *   24  u32 layout count, 4 bytes reserved
+ *   32  u64 payload length
+ *   40  8 bytes reserved
+ *   48  SHA-256 over header bytes 0..48 and the whole payload
+ *
+ * Payload: a directory, then each layout's word table and shape arena
+ *   Directory, 24 bytes a layout, sorted by layout key (unsigned):
+ *     i64 layout key | u32 word count | u32 word-table offset |
+ *     u32 arena offset | u32 arena size          (offsets from payload start)
+ *   Word table, sorted by word:
+ *     u16 UTF-8 length | word bytes | i64 tick |
+ *     u32 first shape's offset in the arena | u16 shape count
+ *   Shape arena, 104 bytes a shape:
+ *     u32 accepted | u32 rejected | 96 point bytes
+ * ```
+ *
+ * The digest catches a file that was damaged, truncated or edited, not one
+ * forged on purpose: the file is app-private, and a keyed MAC would need a
+ * Keystore key that Auto Backup cannot carry to a new phone. An unknown
+ * version, flag or digest algorithm is refused, never guessed at. Encoding is
+ * canonical, so one store always writes the same bytes.
+ *
+ * Public only so the tests in :app can check the bytes; the store is the
+ * one writer.
+ */
+object GlideShapeBinary {
 
-internal object BinaryCodec {
-    private const val MAGIC = 0x574d4b53 // WMKS
-    private const val VERSION = 1
-    private const val HEADER = 80
-    private const val DIRECTORY_ENTRY = 24
-    private const val SHAPE_RECORD = 8 + GlideShapeStore.POINTS
-    private const val DIGEST_ALGORITHM_SHA256 = 1
-    private const val DIGEST_SIZE = 32
+    private val MAGIC = byteArrayOf('W'.code.toByte(), 'M'.code.toByte(), 'K'.code.toByte(), 'S'.code.toByte())
+    const val VERSION = 1
+    const val HEADER_SIZE = 80
     private const val DIGEST_OFFSET = 48
-    private const val FLAGS_NONE = 0
+    private const val DIGEST_SHA256 = 1
+    private const val DIRECTORY_ENTRY = 24
+    private const val SHAPE_SIZE = 8 + GlideShapeStore.POINTS
 
-    /**
-     * Whether [bytes] starts with the WMKS magic, whatever version follows.
-     * A file from a newer binary version must still take the binary path: it
-     * is then preserved as `.corrupt` and never parsed as JSON, and [decode]
-     * names the unsupported version. Checking the version here would send a
-     * future file to the JSON fallback, which would silently discard it.
-     */
+    /** Largest file read at all, checked before anything is allocated. */
+    const val MAX_FILE_BYTES = 64L * 1024 * 1024
+
+    /** Whether [bytes] claims to be this format, whatever its version: a file that does is never read as JSON. */
     fun isBinary(bytes: ByteArray): Boolean =
-        bytes.size >= 4 &&
-            bytes[0] == 0x57.toByte() && bytes[1] == 0x4d.toByte() &&
-            bytes[2] == 0x4b.toByte() && bytes[3] == 0x53.toByte()
+        bytes.size >= MAGIC.size && (MAGIC.indices).all { bytes[it] == MAGIC[it] }
 
-    fun encode(tick: Long, layouts: Map<Long, Map<String, BinaryWordData>>): ByteArray {
-        require(tick >= 0) { "bad tick" }
-        data class EncodedWord(val word: BinaryWordData, val display: ByteArray)
-        data class Section(
-            val key: Long,
-            val words: List<EncodedWord>,
-            val tableSize: Int,
-            val arenaSize: Int,
-        )
-
-        // Canonical order: sorted layouts and words. The decoder does not
-        // depend on it, but it makes the same store encode to the same bytes
-        // and keeps tests and diffs stable.
-        val sections = ArrayList<Section>(layouts.size)
-        for ((layoutKey, words) in layouts.entries.sortedBy { it.key }) {
-            var tableSize = 0
-            var arenaSize = 0
-            val encoded = ArrayList<EncodedWord>(words.size)
-            for ((display, word) in words.entries.sortedBy { it.key }) {
-                val displayBytes = display.toByteArray(Charsets.UTF_8)
-                require(displayBytes.size in 1..GlideShapeStore.MAX_WORD_LENGTH) { "bad word" }
-                require(word.tick in 0..tick) { "bad word tick" }
-                require(word.shapes.size in 0..GlideShapeStore.MAX_SHAPES_PER_WORD) { "bad shape count" }
-                encoded += EncodedWord(word, displayBytes)
-                tableSize += 2 + displayBytes.size + 8 + 4 + 2
-                arenaSize += word.shapes.size * SHAPE_RECORD
-            }
-            sections += Section(layoutKey, encoded, tableSize, arenaSize)
+    /** [image] as a v1 file. The caller has already held every shape to [GlideShapeStore.POINTS] bytes. */
+    fun encode(image: GlideShapeImage): ByteArray {
+        val layouts = image.layouts.entries
+            .filter { it.value.isNotEmpty() }
+            .sortedWith { a, b -> java.lang.Long.compareUnsigned(a.key, b.key) }
+        // Each layout's table and arena, laid out first so the directory can point at them.
+        val tables = layouts.map { (_, words) ->
+            // A word key past a u16 cannot be written, and nothing a keyboard
+            // learns comes near one; it is dropped rather than truncated.
+            val sorted = words.entries
+                .filter { it.key.isNotEmpty() && it.key.toByteArray(Charsets.UTF_8).size <= 0xFFFF }
+                .sortedBy { it.key }
+            val wordBytes = sorted.map { it.key.toByteArray(Charsets.UTF_8) }
+            val tableSize = wordBytes.sumOf { 2 + it.size + 8 + 4 + 2 }
+            val arenaSize = sorted.sumOf { it.value.shapes.size } * SHAPE_SIZE
+            Triple(sorted, wordBytes, tableSize to arenaSize)
         }
-
-        val totalLong = HEADER.toLong() + DIRECTORY_ENTRY.toLong() * sections.size +
-            sections.sumOf { it.tableSize.toLong() + it.arenaSize.toLong() }
-        require(totalLong <= Int.MAX_VALUE) { "snapshot too large" }
-        val total = totalLong.toInt()
-        val tableOffsets = IntArray(sections.size)
-        val arenaOffsets = IntArray(sections.size)
-        var cursor = HEADER + DIRECTORY_ENTRY * sections.size
-        for (i in sections.indices) {
-            tableOffsets[i] = cursor
-            cursor += sections[i].tableSize
+        val payloadSize = DIRECTORY_ENTRY * layouts.size +
+            tables.sumOf { (_, _, sizes) -> sizes.first + sizes.second }
+        val out = ByteBuffer.allocate(HEADER_SIZE + payloadSize).order(ByteOrder.BIG_ENDIAN)
+        out.put(MAGIC)
+        out.putShort(VERSION.toShort())
+        out.putShort(HEADER_SIZE.toShort())
+        out.putInt(0)
+        out.put(DIGEST_SHA256.toByte())
+        out.put(ByteArray(3))
+        out.putLong(image.tick)
+        out.putInt(layouts.size)
+        out.putInt(0)
+        out.putLong(payloadSize.toLong())
+        out.put(ByteArray(8))
+        out.put(ByteArray(32))
+        var offset = DIRECTORY_ENTRY * layouts.size
+        for ((i, layout) in layouts.withIndex()) {
+            val (sorted, _, sizes) = tables[i]
+            out.putLong(layout.key)
+            out.putInt(sorted.size)
+            out.putInt(offset)
+            out.putInt(offset + sizes.first)
+            out.putInt(sizes.second)
+            offset += sizes.first + sizes.second
         }
-        for (i in sections.indices) {
-            arenaOffsets[i] = cursor
-            cursor += sections[i].arenaSize
-        }
-        require(cursor == total) { "bad layout size" }
-
-        val out = ByteBuffer.allocate(total).order(ByteOrder.BIG_ENDIAN)
-        out.putInt(MAGIC)
-        out.putInt(VERSION)
-        out.putInt(HEADER)
-        out.putInt(FLAGS_NONE)
-        out.putInt(DIGEST_ALGORITHM_SHA256)
-        out.putInt(0) // reserved
-        out.putLong(tick)
-        out.putInt(sections.size)
-        out.putInt(0) // reserved
-        out.putLong((total - HEADER).toLong())
-        // The 32 digest bytes are already zero; digestOf ignores them.
-
-        for (i in sections.indices) {
-            val section = sections[i]
-            out.position(HEADER + i * DIRECTORY_ENTRY)
-            out.putLong(section.key)
-            out.putInt(section.words.size)
-            out.putInt(tableOffsets[i])
-            out.putInt(arenaOffsets[i])
-            out.putInt(section.arenaSize)
-        }
-
-        for (i in sections.indices) {
-            val section = sections[i]
-            var tableAt = tableOffsets[i]
+        for ((sorted, wordBytes, _) in tables) {
             var shapeOffset = 0
-            for (word in section.words) {
-                val display = word.display
-                out.position(tableAt)
-                out.putShort(display.size.toShort())
-                out.put(display)
-                out.putLong(word.word.tick)
+            for ((j, entry) in sorted.withIndex()) {
+                out.putShort(wordBytes[j].size.toShort())
+                out.put(wordBytes[j])
+                out.putLong(entry.value.tick)
                 out.putInt(shapeOffset)
-                out.putShort(word.word.shapes.size.toShort())
-                tableAt += 2 + display.size + 8 + 4 + 2
-                shapeOffset += word.word.shapes.size * SHAPE_RECORD
+                out.putShort(entry.value.shapes.size.toShort())
+                shapeOffset += entry.value.shapes.size * SHAPE_SIZE
             }
-
-            var arenaAt = arenaOffsets[i]
-            for (word in section.words) {
-                out.position(arenaAt)
-                for (shape in word.word.shapes) {
-                    require(shape.points.size == GlideShapeStore.POINTS) { "bad shape" }
-                    require(shape.accepted > 0 && shape.rejected >= 0) { "bad shape counts" }
+            for (entry in sorted) {
+                for (shape in entry.value.shapes) {
                     out.putInt(shape.accepted)
                     out.putInt(shape.rejected)
                     out.put(shape.points)
-                    arenaAt += SHAPE_RECORD
                 }
             }
         }
-
-        out.position(DIGEST_OFFSET)
-        out.put(digestOf(out.array(), HEADER))
-        return out.array()
+        val bytes = out.array()
+        System.arraycopy(digest(bytes), 0, bytes, DIGEST_OFFSET, 32)
+        return bytes
     }
-
-    fun decode(bytes: ByteArray): BinarySnapshot {
-        require(bytes.size >= HEADER) { "short header" }
-        val data = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
-        require(data.int == MAGIC) { "not WMKS" }
-        require(data.int == VERSION) { "not binary v1" }
-        val headerSize = data.int
-        require(headerSize in HEADER..bytes.size) { "bad header size" }
-        val flags = data.int
-        require(flags == FLAGS_NONE) { "unsupported flags" }
-        val algorithm = data.int
-        require(algorithm == DIGEST_ALGORITHM_SHA256) { "unsupported digest" }
-        data.int // reserved
-        val tick = data.long
-        require(tick >= 0) { "bad tick" }
-        val layoutCount = data.int
-        require(layoutCount in 0..GlideShapeStore.MAX_LAYOUTS) { "bad layout count" }
-        data.int // reserved
-        val payloadLength = data.long
-        require(payloadLength == (bytes.size - headerSize).toLong()) { "bad payload length" }
-        val storedDigest = ByteArray(DIGEST_SIZE)
-        data.get(storedDigest)
-        require(MessageDigest.isEqual(storedDigest, digestOf(bytes, headerSize))) {
-            "bad digest"
-        }
-        require(headerSize.toLong() + layoutCount.toLong() * DIRECTORY_ENTRY <= bytes.size) {
-            "bad directory"
-        }
-
-        val layouts = HashMap<Long, BinaryLayout>(layoutCount)
-        val table = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
-        val shapeBuffer = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
-        var totalWords = 0
-        repeat(layoutCount) { i ->
-            data.position(headerSize + i * DIRECTORY_ENTRY)
-            val layoutKey = data.long
-            val wordCount = data.int
-            val tableOffset = data.int
-            val arenaOffset = data.int
-            val arenaSize = data.int
-            require(wordCount in 0..GlideShapeStore.MAX_WORDS) { "bad word count" }
-            require(tableOffset in headerSize..bytes.size) { "bad table" }
-            require(arenaOffset in headerSize..bytes.size) { "bad arena" }
-            require(arenaSize >= 0 && arenaOffset.toLong() + arenaSize <= bytes.size) {
-                "bad arena size"
-            }
-            require(totalWords.toLong() + wordCount <= GlideShapeStore.MAX_WORDS) { "too many words" }
-
-            table.position(tableOffset)
-            val words = arrayOfNulls<String>(wordCount)
-            val wordTicks = LongArray(wordCount)
-            val shapeStart = IntArray(wordCount)
-            val shapeCount = IntArray(wordCount)
-            val pointsOffsets = ArrayList<Int>(wordCount)
-            val accepted = ArrayList<Int>(wordCount)
-            val rejected = ArrayList<Int>(wordCount)
-            val seenWords = HashSet<String>(wordCount * 2)
-            repeat(wordCount) { w ->
-                val length = table.short.toInt() and 0xffff
-                require(length in 1..GlideShapeStore.MAX_WORD_LENGTH) { "bad word" }
-                val wordAt = table.position()
-                val display = decodeUtf8(bytes, wordAt, length)
-                table.position(wordAt + length)
-                require(display.isNotEmpty() && WordKey.of(display) == display) { "bad word key" }
-                require(seenWords.add(display)) { "duplicate word" }
-                words[w] = display
-                wordTicks[w] = table.long
-                require(wordTicks[w] in 0..tick) { "bad word tick" }
-                val shapeOffset = table.int
-                val count = table.short.toInt() and 0xffff
-                require(count in 0..GlideShapeStore.MAX_SHAPES_PER_WORD) { "bad shape count" }
-                require(
-                    shapeOffset >= 0 &&
-                        shapeOffset.toLong() + count.toLong() * SHAPE_RECORD <= arenaSize,
-                ) { "bad shape range" }
-                shapeStart[w] = pointsOffsets.size
-                shapeCount[w] = count
-                repeat(count) { j ->
-                    val record = arenaOffset + shapeOffset + j * SHAPE_RECORD
-                    shapeBuffer.position(record)
-                    val acceptedCount = shapeBuffer.int
-                    val rejectedCount = shapeBuffer.int
-                    require(acceptedCount > 0 && rejectedCount >= 0) { "bad shape counts" }
-                    accepted += acceptedCount
-                    rejected += rejectedCount
-                    pointsOffsets += record + 8
-                }
-                totalWords++
-            }
-            require(layouts.put(
-                layoutKey,
-                BinaryLayout(
-                    words.requireNoNulls(),
-                    wordTicks,
-                    shapeStart,
-                    shapeCount,
-                    pointsOffsets.toIntArray(),
-                    accepted.toIntArray(),
-                    rejected.toIntArray(),
-                ),
-            ) == null) { "duplicate layout" }
-        }
-        return BinarySnapshot(tick, bytes, layouts)
-    }
-
-    /** Strict UTF-8: a malformed byte sequence is corruption, not a replacement. */
-    private fun decodeUtf8(bytes: ByteArray, offset: Int, length: Int): String =
-        Charsets.UTF_8.newDecoder()
-            .onMalformedInput(CodingErrorAction.REPORT)
-            .onUnmappableCharacter(CodingErrorAction.REPORT)
-            .decode(ByteBuffer.wrap(bytes, offset, length))
-            .toString()
 
     /**
-     * SHA-256 over every header byte outside the digest field, plus the whole
-     * payload. Extension bytes between [DIGEST_OFFSET] + 32 and [headerSize]
-     * are covered, so a future header cannot hide data from the digest.
+     * [bytes] as a store image, or null when they are not a v1 file this
+     * build can trust: damaged, truncated, of another version or with a range
+     * that points outside the file. Never throws.
      */
-    private fun digestOf(bytes: ByteArray, headerSize: Int): ByteArray {
-        val digest = MessageDigest.getInstance("SHA-256")
-        digest.update(bytes, 0, DIGEST_OFFSET)
-        digest.update(bytes, DIGEST_OFFSET + DIGEST_SIZE, headerSize - (DIGEST_OFFSET + DIGEST_SIZE))
-        digest.update(bytes, headerSize, bytes.size - headerSize)
-        return digest.digest()
-    }
-}
+    fun decode(bytes: ByteArray): GlideShapeImage? = runCatching { decodeOrThrow(bytes) }.getOrNull()
 
-/** The immutable decode view over a binary v1 layout. */
-internal class BinaryArenaLayout(
-    private val bytes: ByteArray,
-    private val layout: BinaryLayout,
-    private val shapeLimit: Int,
-    eagerIndex: Boolean,
-) : GlideShapeSource {
-    private val byWord = HashMap<String, Int>(layout.words.size * 2)
-    private val wordStart = IntArray(layout.words.size)
-    private val wordShapes = IntArray(layout.words.size)
-    private val shapePoints = ArrayList<Int>()
-    private val shapeWord = ArrayList<Int>()
-
-    init {
-        for (i in layout.words.indices) {
-            byWord[layout.words[i]] = i
-            wordStart[i] = shapePoints.size
-            val start = layout.shapeStart[i]
-            val count = layout.shapeCount[i]
-            val kept = GlideShapeStore.topShapeIndices(
-                layout.shapeAccepted,
-                layout.shapeRejected,
-                start,
-                count,
-                shapeLimit,
-            )
-            wordShapes[i] = kept.size
-            for (shape in kept) {
-                shapeWord += i
-                shapePoints += layout.shapePointsOffset[shape]
+    private fun decodeOrThrow(bytes: ByteArray): GlideShapeImage? {
+        if (bytes.size < HEADER_SIZE || bytes.size > MAX_FILE_BYTES || !isBinary(bytes)) return null
+        val buf = ByteBuffer.wrap(bytes).order(ByteOrder.BIG_ENDIAN)
+        if (buf.getShort(4).toInt() and 0xFFFF != VERSION) return null
+        if (buf.getShort(6).toInt() and 0xFFFF != HEADER_SIZE) return null
+        if (buf.getInt(8) != 0) return null
+        if (bytes[12].toInt() != DIGEST_SHA256) return null
+        val payloadLength = buf.getLong(32)
+        if (payloadLength != (bytes.size - HEADER_SIZE).toLong()) return null
+        if (!MessageDigest.isEqual(digest(bytes), bytes.copyOfRange(DIGEST_OFFSET, DIGEST_OFFSET + 32))) return null
+        val tick = buf.getLong(16)
+        val layoutCount = buf.getInt(24).toLong() and 0xFFFFFFFFL
+        val payload = payloadLength.toInt()
+        if (layoutCount * DIRECTORY_ENTRY > payload) return null
+        val utf8 = Charsets.UTF_8.newDecoder()
+            .onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT)
+        val layouts = LinkedHashMap<Long, Map<String, GlideShapeWord>>()
+        for (l in 0 until layoutCount.toInt()) {
+            val at = HEADER_SIZE + l * DIRECTORY_ENTRY
+            val layoutKey = buf.getLong(at)
+            val wordCount = buf.getInt(at + 8).toLong() and 0xFFFFFFFFL
+            val tableOffset = buf.getInt(at + 12).toLong() and 0xFFFFFFFFL
+            val arenaOffset = buf.getInt(at + 16).toLong() and 0xFFFFFFFFL
+            val arenaSize = buf.getInt(at + 20).toLong() and 0xFFFFFFFFL
+            if (arenaOffset + arenaSize > payload || tableOffset > arenaOffset) return null
+            if (tableOffset < layoutCount * DIRECTORY_ENTRY) return null
+            if (arenaSize % SHAPE_SIZE != 0L || layoutKey in layouts) return null
+            val arenaStart = HEADER_SIZE + arenaOffset.toInt()
+            val tableEnd = arenaStart
+            var pos = HEADER_SIZE + tableOffset.toInt()
+            val words = LinkedHashMap<String, GlideShapeWord>()
+            for (w in 0L until wordCount) {
+                if (pos + 2 > tableEnd) return null
+                val length = buf.getShort(pos).toInt() and 0xFFFF
+                pos += 2
+                if (length == 0 || pos + length + 14 > tableEnd) return null
+                val word = try {
+                    utf8.decode(ByteBuffer.wrap(bytes, pos, length)).toString()
+                } catch (_: CharacterCodingException) {
+                    return null
+                }
+                pos += length
+                val wordTick = buf.getLong(pos)
+                val shapeOffset = buf.getInt(pos + 8).toLong() and 0xFFFFFFFFL
+                val shapeCount = buf.getShort(pos + 12).toInt() and 0xFFFF
+                pos += 14
+                if (shapeOffset + shapeCount.toLong() * SHAPE_SIZE > arenaSize) return null
+                if (word in words) return null
+                val shapes = ArrayList<GlideShapeRecord>(shapeCount)
+                var s = arenaStart + shapeOffset.toInt()
+                repeat(shapeCount) {
+                    shapes.add(
+                        GlideShapeRecord(
+                            points = bytes.copyOfRange(s + 8, s + SHAPE_SIZE),
+                            accepted = buf.getInt(s),
+                            rejected = buf.getInt(s + 4),
+                        ),
+                    )
+                    s += SHAPE_SIZE
+                }
+                words[word] = GlideShapeWord(wordTick, shapes)
             }
+            if (pos != tableEnd) return null
+            layouts[layoutKey] = words
         }
+        return GlideShapeImage(tick, layouts)
     }
 
-    private val byStart: Map<Int, IntArray> by lazy(LazyThreadSafetyMode.PUBLICATION) {
-        GlideShapeSeeding.bucketByStart(shapePoints.size) {
-            GlideShapeStore.cellOf(bytes, shapePoints[it])
-        }
-    }
-
-    init {
-        if (eagerIndex) byStart
-    }
-
-    override fun wordCount(): Int = layout.words.size
-
-    override fun countFor(word: String): Int {
-        val at = byWord[WordKey.of(word)]
-        if (at == null) return 0
-        return wordShapes[at]
-    }
-
-    override fun minDistance(word: String, drawn: ByteArray): Float {
-        val at = byWord[WordKey.of(word)]
-        if (at == null) return -1f
-        var best = Float.MAX_VALUE
-        val start = wordStart[at]
-        repeat(wordShapes[at]) { i ->
-            best = minOf(best, GlideShapeStore.distanceAt(bytes, shapePoints[start + i], drawn, best))
-        }
-        return if (best == Float.MAX_VALUE) -1f else best
-    }
-
-    override fun shapesOf(word: String): List<ByteArray> {
-        val at = byWord[WordKey.of(word)]
-        if (at == null) return emptyList()
-        val start = wordStart[at]
-        return List(wordShapes[at]) { i -> copyShape(bytes, shapePoints[start + i]) }
-    }
-
-    /** Compares at the arena offset, so a caller that only needs distance copies nothing. */
-    override fun shapeDistance(word: String, index: Int, drawn: ByteArray): Float {
-        val at = byWord[WordKey.of(word)]
-        if (at == null) return -1f
-        if (index !in 0 until wordShapes[at]) return -1f
-        return GlideShapeStore.distanceAt(bytes, shapePoints[wordStart[at] + index], drawn)
-    }
-
-    override fun wordsNear(drawn: ByteArray, radius: Float, limit: Int): List<String> =
-        GlideShapeSeeding.wordsNear(
-            count = shapePoints.size,
-            drawn = drawn,
-            radius = radius,
-            limit = limit,
-            byStart = byStart,
-            wordAt = { layout.words[shapeWord[it]] },
-            distanceOf = { i, stroke, bound ->
-                GlideShapeStore.distanceAt(bytes, shapePoints[i], stroke, bound)
-            },
-        )
-
-    override fun prepareWordsNear() {
-        byStart
-    }
-
-    private companion object {
-        fun copyShape(bytes: ByteArray, offset: Int): ByteArray {
-            val out = ByteArray(GlideShapeStore.POINTS)
-            System.arraycopy(bytes, offset, out, 0, out.size)
-            return out
-        }
+    /** SHA-256 over every header byte before the digest field, then the payload. */
+    private fun digest(bytes: ByteArray): ByteArray {
+        val sha = MessageDigest.getInstance("SHA-256")
+        sha.update(bytes, 0, DIGEST_OFFSET)
+        sha.update(bytes, HEADER_SIZE, bytes.size - HEADER_SIZE)
+        return sha.digest()
     }
 }

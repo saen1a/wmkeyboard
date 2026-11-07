@@ -5,6 +5,7 @@ import android.os.StatFs
 import androidx.annotation.StringRes
 import com.wasimaster.wmkeyboard.common.R as CommonR
 import com.wasimaster.wmkeyboard.core.netlog.NetSource
+import com.wasimaster.wmkeyboard.core.netlog.OfflineBuild
 import com.wasimaster.wmkeyboard.voice.R
 import java.io.File
 import kotlin.math.roundToInt
@@ -84,7 +85,7 @@ object EtDownloadManager {
             } catch (e: PinnedDownload.FailedException) {
                 set(model, Status.Failed(e.messageRes, e.messageArg))
             } catch (_: Exception) {
-                set(model, Status.Failed(CommonR.string.common_error_network))
+                set(model, Status.Failed(OfflineBuild.download(CommonR.string.common_error_network)))
             } finally {
                 activeId = null
             }
@@ -110,7 +111,9 @@ object EtDownloadManager {
         val dir = EtStore.dir(filesDir, model).apply { mkdirs() }
         val stillNeeded = model.files.sumOf { f ->
             val target = EtStore.file(filesDir, model, f)
-            if (target.length() == f.bytes) 0L else f.bytes - FileDownloader.bytesDone(File(dir, "${f.name}.part"))
+            val fetch = if (target.length() == f.bytes) 0L else f.bytes - FileDownloader.bytesDone(File(dir, "${f.name}.part"))
+            // An archive's files take about as much room again once unpacked.
+            fetch + if (f.archive) f.bytes else 0L
         }
         if (StatFs(dir.path).availableBytes < stillNeeded + SPACE_MARGIN_BYTES) {
             throw PinnedDownload.FailedException(
@@ -128,6 +131,13 @@ object EtDownloadManager {
             }
             downloadFile(model, f, target, done)
             done += f.bytes
+        }
+        // Vosk's models come as one zip, laid out once it is checked.
+        try {
+            EtStore.unpackArchives(filesDir, model)
+        } catch (_: java.io.IOException) {
+            EtStore.delete(filesDir, model)
+            throw PinnedDownload.FailedException(R.string.core_voice_whistle_checksum_error)
         }
     }
 

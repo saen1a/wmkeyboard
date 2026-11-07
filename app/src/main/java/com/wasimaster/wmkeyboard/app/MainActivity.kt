@@ -56,6 +56,7 @@ import com.wasimaster.wmkeyboard.app.storage.StorageCategoryScreen
 import com.wasimaster.wmkeyboard.app.netlog.NetworkActivityScreen
 import com.wasimaster.wmkeyboard.app.statistics.StatisticsScreen
 import com.wasimaster.wmkeyboard.app.storage.StorageScreen
+import com.wasimaster.wmkeyboard.app.resources.ResourcesScreen
 import com.wasimaster.wmkeyboard.app.storage.storageRoute
 import com.wasimaster.wmkeyboard.app.language.appLanguageSplitCompat
 import com.wasimaster.wmkeyboard.app.launcher.LauncherCombos
@@ -69,6 +70,7 @@ import com.wasimaster.wmkeyboard.app.lock.LockTarget
 import com.wasimaster.wmkeyboard.app.lock.AppLockSettingsScreen
 import com.wasimaster.wmkeyboard.app.media.MusicApps
 import com.wasimaster.wmkeyboard.app.media.MusicAppsScreen
+import com.wasimaster.wmkeyboard.app.review.ReviewPrompt
 import com.wasimaster.wmkeyboard.app.updates.LocalAppUpdater
 import com.wasimaster.wmkeyboard.app.updates.MissingLink
 import com.wasimaster.wmkeyboard.app.updates.NewerLinkDialog
@@ -385,6 +387,7 @@ class MainActivity : FragmentActivity() {
             // on About are far apart in the tree and must not disagree about
             // the same download.
             val updater = rememberAppUpdater()
+            ReviewPrompt(updater)
             AppTheme(settings) {
                 CompositionLocalProvider(
                     LocalAppUpdater provides updater,
@@ -487,6 +490,9 @@ class MainActivity : FragmentActivity() {
     override fun onResume() {
         super.onResume()
         jankMonitor.start(window)
+        // A module the keyboard asked Play for may be waiting on a yes that
+        // Play can only ask here (Telegram, 4529). Nothing outside Play.
+        com.wasimaster.wmkeyboard.app.modules.PlayModules.confirmPending(this)
     }
 
     override fun onPause() {
@@ -534,8 +540,13 @@ class MainActivity : FragmentActivity() {
             com.wasimaster.wmkeyboard.app.homeassistant.SmartThingsSignIn.finish(applicationContext, lifecycleScope, callback)
             return PendingNav(route = "tool/${ToolbarTool.HOME_ASSISTANT.name}")
         }
+        // "Open in Clink" on Clink's community page: a preview of the item,
+        // and the way its exported file comes in. Clink has no Android app.
+        com.wasimaster.wmkeyboard.core.addons.ClinkCommunity.itemIdFrom(link)?.let {
+            return PendingNav(route = clinkCommunityRoute(it))
+        }
         AddonDeepLink.routeFor(link)?.let { return PendingNav(route = it) }
-        SettingsDeepLink.parse(link)?.let { target -> return pendingFor(target) }
+        SettingsDeepLink.parse(link)?.let { target -> return pendingFor(target)?.copy(fromLink = true) }
         // One of ours, naming a screen this build does not have: most likely
         // from a newer version, which the dialog then looks for.
         SettingsDeepLink.unknown(link)?.let { return PendingNav(missing = MissingLink(it.since, row = false)) }
@@ -576,7 +587,7 @@ class MainActivity : FragmentActivity() {
      */
     private fun openSettingLink(link: String) {
         val nav = SettingsDeepLink.parse(link)?.let(::pendingFor) ?: return
-        if (nav.route != null) pendingNav.value = nav.copy(missing = null)
+        if (nav.route != null) pendingNav.value = nav.copy(missing = null, fromLink = true)
     }
 
     /**
@@ -638,13 +649,16 @@ class MainActivity : FragmentActivity() {
  * route: the string resource of the one row on the arriving screen that should
  * scroll itself into view and pulse, or 0 for the whole screen. [missing] is a
  * settings link this build could not follow in full, alone or beside the
- * [route] it could.
+ * [route] it could. [fromLink] is a settings link as opposed to the keyboard
+ * opening one of its own pages: a link to a whole screen is about all of it, so
+ * the screen opens with the rows the depth would hide ([DepthReveal]).
  */
 internal data class PendingNav(
     val route: String? = null,
     val tool: ToolbarTool? = null,
     @StringRes val highlight: Int = 0,
     val missing: MissingLink? = null,
+    val fromLink: Boolean = false,
 )
 
 @Composable
@@ -848,11 +862,19 @@ private fun SettingsNavHost(
     // The rows an update brought (#970), worked out once per launch. Off the
     // main thread: it builds the whole search index.
     LaunchedEffect(Unit) { kotlinx.coroutines.withContext(Dispatchers.Default) { NewSettings.load(context) } }
-    // As a search result opens one: flash the row, then go.
-    val openNewSetting: (SettingsSearchEntry) -> Unit = remember(navController) {
+    // As a search result opens one: flash the row, then go. A step is a jump
+    // the way a result is, so it lands over Home alone, with the path the page
+    // really lives at seeded on the trail (#1111). Back after the walk then
+    // returns Home rather than through every page it showed (Telegram 5359),
+    // and the path strip, and a favourite made on the way, name where the
+    // page lives instead of the pages the walk passed through.
+    val walkHomeTitle = stringResource(CommonR.string.common_settings)
+    val openNewSetting: (SettingsSearchEntry) -> Unit = remember(navController, crumbs, walkHomeTitle) {
         { entry ->
-            SettingsHighlight.request(entry.titleRes)
+            SettingsHighlight.request(entry.titleRes, centre = true)
+            crumbs.seed(settingsCrumbSeed(entry, NewSettings.wholeIndex, walkHomeTitle))
             navController.navigate(routeWithExtensions(entry.route, settings.value.extensionsResolved())) {
+                popUpTo(HomeRoute)
                 launchSingleTop = true
             }
         }
@@ -1043,6 +1065,7 @@ private fun SettingsNavGraph(
                 // first composition, and a request made after would be a frame
                 // too late for the row to scroll itself into view.
                 if (pending.highlight != 0) SettingsHighlight.request(pending.highlight)
+                else if (pending.fromLink) SettingsHighlight.requestScreen()
                 // A link to a screen a switched-off bundle owns lands on the
                 // Extensions screen with that bundle flashed, not on the page.
                 navController.navigate(routeWithExtensions(pending.route, settings.value.extensionsResolved()))
@@ -1884,6 +1907,16 @@ private fun SettingsNavGraph(
                 TelegramStickersScreen(repository, settings) { route -> navController.navigate(route) }
             }
         }
+        composable("clink_community/{itemId}") { backStackEntry ->
+            val itemId = backStackEntry.arguments?.getString("itemId").orEmpty()
+            SettingsScreen(
+                stringResource(R.string.clink_community_title),
+                { navController.popBackStack() },
+                route = clinkCommunityRoute(itemId),
+            ) {
+                ClinkCommunityScreen(itemId = itemId, repository = repository)
+            }
+        }
         composable("telegram_pack/{setName}") { backStackEntry ->
             val setName = backStackEntry.arguments?.getString("setName").orEmpty()
             SettingsScreen(
@@ -2057,6 +2090,20 @@ private fun SettingsNavGraph(
                 StickerPackScreen(packId, openPicker = true) { route -> navController.navigate(route) }
             }
         }
+        composable("sticker_pack/{packId}/edit/{stickerId}") { backStackEntry ->
+            // The keyboard's hold sheet (#1157): the pack, with one sticker's
+            // title and keywords already open, so a shortcut thought of mid-chat
+            // is two taps away rather than a hunt through the packs.
+            val packId = backStackEntry.arguments?.getString("packId").orEmpty()
+            val stickerId = backStackEntry.arguments?.getString("stickerId")
+            SettingsScreen(
+                stringResource(R.string.home_screen_sticker_pack_edit_title),
+                { navController.popBackStack() },
+                route = stickerPackRoute(packId),
+            ) {
+                StickerPackScreen(packId, editStickerId = stickerId) { route -> navController.navigate(route) }
+            }
+        }
         composable(
             route = "$STICKER_GENERATOR_ROUTE?pack={pack}",
             arguments = listOf(navArgument("pack") { type = NavType.StringType; nullable = true; defaultValue = null }),
@@ -2135,6 +2182,23 @@ private fun SettingsNavGraph(
             val kind = PanelKind.entries.firstOrNull { it.name == backStackEntry.arguments?.getString("panel") }
                 ?: PanelKind.EMOJI
             PanelLayoutJsonScreen(repository, settings, kind) { navController.popBackStack() }
+        }
+        // The keyboard-wide number row and arrow row, set once for every
+        // layout. The argument is the GlobalRow's name; an unknown one opens
+        // the number row.
+        composable("global_row/{row}") { backStackEntry ->
+            val row = globalRowOf(backStackEntry.arguments?.getString("row"))
+            SettingsScreen(
+                stringResource(row.titleRes()),
+                { navController.popBackStack() },
+                route = globalRowRoute(row),
+            ) {
+                GlobalRowEditorScreen(repository, settings, row) { route -> navController.navigate(route) }
+            }
+        }
+        composable("global_row_json/{row}") { backStackEntry ->
+            val row = globalRowOf(backStackEntry.arguments?.getString("row"))
+            GlobalRowJsonScreen(repository, settings, row) { navController.popBackStack() }
         }
         composable("languages") {
             SettingsScreen(
@@ -2483,7 +2547,7 @@ private fun SettingsNavGraph(
                 { navController.popBackStack() },
                 route = "permissions",
             ) {
-                PermissionsSettings()
+                PermissionsSettings(repository)
             }
         }
         composable(AppLockTargets.ROUTE) {
@@ -2843,6 +2907,8 @@ private fun SettingsNavGraph(
                     onOpenLicenseText = { navController.navigate("license_text/$it") },
                     onOpenDebugLog = { navController.navigate("debug_log") },
                     onOpenStorage = { navController.navigate("storage") },
+                    onOpenResources = { navController.navigate("resources") },
+                    onOpenImportHub = { navController.navigate("import_hub") },
                     onOpenStatistics = { navController.navigate("statistics") },
                     onOpenEggGame = { navController.navigate("egg_game") },
                     onReplayOnboarding = { navController.navigate("onboarding") },
@@ -2855,6 +2921,15 @@ private fun SettingsNavGraph(
             // secret that can be searched for is a menu entry.
             KeycapCatcherScreen(anim = this) { navController.popBackStack() }
         }
+        composable("import_hub") {
+            SettingsScreen(
+                stringResource(R.string.import_hub_title),
+                { navController.popBackStack() },
+                route = "import_hub",
+            ) {
+                ImportHubScreen { navController.navigate(it) }
+            }
+        }
         composable("storage") {
             SettingsScreen(
                 stringResource(R.string.about_storage_title),
@@ -2862,6 +2937,24 @@ private fun SettingsNavGraph(
                 route = "storage",
             ) {
                 StorageScreen(repository) { navController.navigate(storageRoute(it)) }
+            }
+        }
+        composable("resources") {
+            SettingsScreen(
+                stringResource(R.string.about_resources_title),
+                { navController.popBackStack() },
+                route = "resources",
+            ) {
+                ResourcesScreen(useRoot = settings.watch { it.launcher.useRoot }) { navController.navigate(it) }
+            }
+        }
+        composable("feature_libraries") {
+            SettingsScreen(
+                stringResource(R.string.feature_libraries_title),
+                { navController.popBackStack() },
+                route = "feature_libraries",
+            ) {
+                FeatureLibrariesScreen(settings)
             }
         }
         composable("statistics") {
@@ -3635,35 +3728,54 @@ internal fun SettingsGroup(
     val depth = depthControl.depth
     val groupAbove = !depth.shows(level)
     val folds = LocalAdvancedFolds.current
-    val highlighted = SettingsHighlight.target != 0 || SettingsHighlight.targetItems.isNotEmpty()
+    // Held by the screen, not the flash: the flash ends after two seconds, and
+    // a row hidden by the depth went with it, out from under the finger of
+    // whoever had just followed a link to it (#1030).
+    val depthReveal = LocalDepthReveal.current
+    val highlighted = depthReveal?.arrived ?: SettingsHighlight.pending
     // A row above the depth is not drawn at all; that is what the depth is
-    // for. Two things bring it back: a pending highlight (a search result or
-    // an addon's Use button has to land on it, so it is drawn in its place as
-    // if the depth allowed it), and About › App › "Show where settings are
-    // hidden", which puts a "N more settings" row at the end of the group
-    // and folds a whole titled group closed under its heading instead.
+    // for. Two things bring it back: arriving from a link, a search result or
+    // an addon's Use button (the row they name has to be there, so the page is
+    // drawn as if the depth allowed it, and says so; see [DepthRevealNotice]),
+    // and About › App › "Show where settings are hidden", which puts a "N more
+    // settings" row at the end of the group and folds a whole titled group
+    // closed under its heading instead.
     val reveal = highlighted || depthControl.hiddenRows
     if (groupAbove && !reveal) return
     val foldsWhole = groupAbove && title != null && depthControl.hiddenRows
     val tucked: (SettingsGroupScope.Entry) -> Boolean =
         { e -> !foldsWhole && (groupAbove || !depth.shows(e.level)) }
     val tuckedCount = scope.items.count { it.visible && tucked(it) }
-    val entries = when {
+    val laidOut = when {
         tuckedCount == 0 -> scope.items
         // Not pointed at: the hidden rows are simply not there.
         !depthControl.hiddenRows && !highlighted -> scope.items.filterNot { tucked(it) }
-        // A highlight pending and nothing to point with: every row in its place.
-        !depthControl.hiddenRows -> scope.items
+        // Arrived here and nothing to point with: every row in its place, each
+        // knowing the depth it would otherwise need.
+        !depthControl.hiddenRows -> {
+            val needed = scope.items.filter { it.visible && tucked(it) }.maxOf { maxOf(it.level, level) }
+            SideEffect { depthReveal?.note(needed) }
+            scope.items.map { entry ->
+                if (!tucked(entry)) return@map entry
+                val revealedAt = maxOf(entry.level, level)
+                SettingsGroupScope.Entry(entry.visible, entry.conditional, entry.key, entry.level) {
+                    CompositionLocalProvider(LocalRevealedLevel provides revealedAt, entry.content)
+                }
+            }
+        }
         else -> {
-            // Remembered per group like a fold, and drawn open while a
-            // highlight is pending so a search result can land inside.
+            // Remembered per group like a fold, and drawn open on arrival so a
+            // search result can land inside.
             val moreId = "$route/${foldKey ?: title ?: "group"}#more"
-            val moreOpen = highlighted || (folds?.isOpen(moreId) ?: false)
+            val moreOpen = (depthReveal?.holdsOpen(moreId) ?: highlighted) || (folds?.isOpen(moreId) ?: false)
             buildList<SettingsGroupScope.Entry> {
                 scope.items.filterNotTo(this) { tucked(it) }
                 add(
                     SettingsGroupScope.Entry(visible = true, conditional = false, key = null) {
-                        MoreSettingsRow(tuckedCount, moreOpen) { folds?.toggle(moreId, !moreOpen) }
+                        MoreSettingsRow(tuckedCount, moreOpen) {
+                            depthReveal?.letGo(moreId)
+                            folds?.toggle(moreId, !moreOpen)
+                        }
                     },
                 )
                 // Conditional on the fold, so they grow in under the row
@@ -3684,6 +3796,8 @@ internal fun SettingsGroup(
             }
         }
     }
+    // A new row another setting hides, drawn greyed while the walk points at it.
+    val entries = peekHiddenRows(laidOut)
     // What the group is showing right now, which is what every count below is
     // about: a hidden conditional row is not a row the reader can see, so it
     // is not a slab in the skeleton and not one of the rows a closed fold
@@ -3701,14 +3815,16 @@ internal fun SettingsGroup(
     // A group folded by its level is named by its title: two such groups on
     // one screen must not share a remembered state.
     val foldId = (foldKey ?: if (foldsWhole) "level:$title" else null)?.let { "$route/$it" }
-    val open = foldId == null || highlighted || (folds?.isOpen(foldId) ?: false)
+    val open = foldId == null || (depthReveal?.holdsOpen(foldId) ?: highlighted) || (folds?.isOpen(foldId) ?: false)
+    // The heading of a group above the depth is itself a row the depth hid.
+    val groupRevealedAt = level.takeIf { groupAbove && !depthControl.hiddenRows }
     // A named group is a scroll target in its own right. Some things the user
     // arrives at from search — or from an addon's Use button — are a whole
     // section rather than one row: "Icon pack", "Your packs", "Installed
     // fonts". Unnamed groups have nothing to match on and stay plain. Coarse,
     // because anything inside it that answers to the same request is a better
     // answer than the section around them.
-    HighlightableRow(title, highlightKey, coarse = true) {
+    HighlightableRow(title, highlightKey, coarse = true, revealedAt = groupRevealedAt) {
         if (foldId != null && title != null) {
             FoldHeader(
                 title,
@@ -3717,6 +3833,7 @@ internal fun SettingsGroup(
                 info = info,
                 summary = if (open) null else foldSummary?.invoke(),
             ) {
+                depthReveal?.letGo(foldId)
                 folds?.toggle(foldId, !open)
             }
         } else if (title != null) {

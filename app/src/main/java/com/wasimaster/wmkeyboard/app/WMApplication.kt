@@ -116,17 +116,19 @@ open class WMApplication : Application() {
         installLlmDelivery(this)
         // The same for ML Kit's translator and OnDeviceTranslator.
         installTranslateDelivery(this)
-        // The Dropbox and OneDrive client ids, which live in BuildConfig and
+        // The Dropbox, OneDrive and Box client ids, which live in BuildConfig and
         // so cannot be read from the library module that needs them.
         BackupClients.install(
             dropbox = BuildConfig.DROPBOX_APP_KEY,
             oneDrive = BuildConfig.ONEDRIVE_CLIENT_ID,
+            box = BuildConfig.BOX_CLIENT_ID,
+            boxSecret = BuildConfig.BOX_CLIENT_SECRET,
         )
         // Whether the translate list can offer the on-device engines: ML Kit,
         // Bergamot and NLLB sit above the module that keeps the provider lists.
         NllbTranslator.checkMemory(this)
         ProviderEnvironment.install(
-            onDeviceTranslate = OnDeviceTranslator.AVAILABLE,
+            onDeviceTranslate = OnDeviceTranslator.offered,
             googleHome = com.wasimaster.wmkeyboard.config.BuildConfig.ENABLE_GOOGLE_HOME,
             bergamot = BergamotTranslator.available,
             nllb = NllbTranslator.available,
@@ -135,6 +137,8 @@ open class WMApplication : Application() {
         // look-up from the keyboard or the AI tool alike. Only a path: before
         // the unlock nothing is read, and a look-up then finds nothing.
         com.wasimaster.wmkeyboard.core.tools.offlinedict.OfflineDictionaries.attach(filesDir)
+        // Where the paid services' usage counts are kept (#1135).
+        com.wasimaster.wmkeyboard.core.tools.ServiceUsage.attach(filesDir)
         // The same for the dictionaries the user imported (#765).
         com.wasimaster.wmkeyboard.core.tools.yomichan.YomichanDictionaries.attach(filesDir)
         // Where zinnia's and PaddleOCR's handwriting models are downloaded
@@ -148,13 +152,19 @@ open class WMApplication : Application() {
         // pushes shortly after a synced setting changes. Here because the
         // keyboard and the settings app share this process, and either may be
         // the one running. Does nothing while sync is off.
+        com.wasimaster.wmkeyboard.core.layout.KeymanLayoutPack.attach(this)
         val repository = SettingsRepository(this)
         SyncWatcher.start(this, repository)
+        // A Keyman layout that is on, however it got on, brings its grids down.
+        KeymanLayoutPackWatcher.start(this, repository)
         // "Ask AI" in other apps' selection menus follows its switch and the
         // AI tool's, wherever either is changed from (#897).
         AskAiSelectionMenu.start(this, repository)
         // The same for "WM Keyboard" and "WM Translate" there (#916).
         TextActionsSelectionMenu.start(this, repository)
+        // WM Keyboard on Android's voice input and assistant lists follows
+        // their switches (#1142, #1143).
+        SystemVoiceComponents.start(this, repository)
         // The clock tool's alarms and timers. Android drops every registered
         // wake-up at a reboot, and the app has no boot receiver on purpose:
         // the keyboard starts at boot anyway, and this puts them back then.
@@ -164,6 +174,8 @@ open class WMApplication : Application() {
         // The same for the reminders plugins set, for the same reason. Free
         // for anyone with no plugin that declares reminders.
         com.wasimaster.wmkeyboard.core.plugins.PluginReminderAlarms.rearmOnStart(this)
+        // And the to-do list's (#995). Free for anyone with no list.
+        com.wasimaster.wmkeyboard.core.todo.TodoReminders.rearmOnStart(this)
     }
 }
 

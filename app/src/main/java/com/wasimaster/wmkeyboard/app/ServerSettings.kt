@@ -265,6 +265,7 @@ internal val ServiceEndpoint.labelRes: Int
         ServiceEndpoint.PEXELS -> R.string.servers_pexels
         ServiceEndpoint.WIKIPEDIA -> R.string.servers_wikipedia
         ServiceEndpoint.DICTIONARY_API -> R.string.servers_dictionary_api
+        ServiceEndpoint.URBAN_DICTIONARY -> R.string.servers_urban_dictionary
         ServiceEndpoint.DATAMUSE -> R.string.servers_datamuse
         ServiceEndpoint.KAIKKI -> R.string.servers_kaikki
         ServiceEndpoint.WIKTIONARY -> R.string.servers_wiktionary
@@ -279,6 +280,7 @@ internal val ServiceEndpoint.labelRes: Int
         ServiceEndpoint.CURRENCY_API -> R.string.servers_currency_api
         ServiceEndpoint.CURRENCY_API_MIRROR -> R.string.servers_currency_api_mirror
         ServiceEndpoint.FRANKFURTER -> R.string.servers_frankfurter
+        ServiceEndpoint.ALLRATESTODAY -> R.string.servers_allratestoday
         ServiceEndpoint.ER_API -> R.string.servers_er_api
         ServiceEndpoint.COINBASE -> R.string.servers_coinbase
         ServiceEndpoint.COINGECKO -> R.string.servers_coingecko

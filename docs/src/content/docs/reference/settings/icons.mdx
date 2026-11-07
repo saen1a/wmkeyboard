@@ -29,6 +29,7 @@ The first group lists **Built-in icons** (always the top row, selected whenever 
 Every installed row also carries two trailing buttons the built-in row doesn't have:
 
 - **Export** opens a save dialog and writes that pack out as a `.wmicons` file, named after the pack. You'll see "The app saved `<pack name>`." on success, or "The app could not write that file." if the write fails.
+- **Share with everyone** (the globe) sends the pack to the [community repository](/addons/community/). It is there on a row once the pack has at least one icon.
 - **Delete** asks for confirmation first (a "Delete `<pack name>`?" dialog whose body reads "The app deletes its `<N>` icons from your device.") before removing the pack's files and any per-slot override pinned to it.
 
 <PhoneFrame side caption="Confirming deletion of an installed icon pack.">
@@ -42,7 +43,7 @@ Three rows sit below the pack list, in their own untitled group:
 | Row | What it does |
 |---|---|
 | Download more | Opens the addon catalogue, already filtered to icon packs |
-| Import an icon pack | Opens a file picker for a `.wmicons` file and installs it, switching to it right away |
+| Import an icon pack | Opens a file picker for a `.wmicons` file and installs it, switching to it right away. Several files, or a `.zip` of packs from **Export selected**, install every pack without switching, and one message counts them |
 | Reset all icons | Turns off the active pack and clears every per-slot override in one step. Installed packs are kept: subtitle reads "This turns the pack off and deletes every single-icon change. The app keeps the installed packs." |
 
 **Download more** sits first, next to the file importer, because the two answer the same question from opposite ends. One takes a `.wmicons` file you already have. The other goes looking for packs in whichever repositories you've added. See [Installing addons](/addons/installing/).

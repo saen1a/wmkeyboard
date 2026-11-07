@@ -1,5 +1,6 @@
 package com.wasimaster.wmkeyboard.app
 
+import com.wasimaster.wmkeyboard.core.netlog.InternetPermission
 import android.app.ActivityManager
 import android.content.Context
 import android.provider.OpenableColumns
@@ -69,6 +70,7 @@ import com.wasimaster.wmkeyboard.core.modules.FeatureModules
 import com.wasimaster.wmkeyboard.core.modules.ModuleState
 import com.wasimaster.wmkeyboard.core.modules.NativeDelivery
 import com.wasimaster.wmkeyboard.core.modules.NativeConsent
+import com.wasimaster.wmkeyboard.core.netlog.OfflineBuild
 import com.wasimaster.wmkeyboard.core.settings.MeteredDecision
 import com.wasimaster.wmkeyboard.core.settings.LocalLlmBackend
 import com.wasimaster.wmkeyboard.core.settings.SettingsRepository
@@ -175,6 +177,7 @@ internal fun LocalLlmModelManager(repository: SettingsRepository, settings: Live
                 value = settings.watch { it.ai.hfToken },
                 builtInAvailable = false,
                 emptyHint = stringResource(R.string.models_llm_token_hint),
+                wmPassTitle = "Hugging Face",
             ) { repository.setHfToken(it) }
         }
         item {
@@ -549,7 +552,7 @@ private fun CatalogModelRow(
                         enabled = !downloadBusy,
                     ) { Text(stringResource(R.string.models_resume_action)) }
                     is DownloadStatus.NotDownloaded, is DownloadStatus.Failed ->
-                        if (!model.gated || hasToken) {
+                        if (InternetPermission.granted && (!model.gated || hasToken)) {
                             TextButton(
                                 onClick = onDownload,
                                 enabled = !downloadBusy,
@@ -649,7 +652,7 @@ private fun LlamaModuleBanner(settings: LiveSettings) {
         is ModuleState.Missing if state.consent != null -> NativeConsentBanner(state.consent.orEmpty(), "llama")
         is ModuleState.Missing -> StateBanner(
             stringResource(
-                if (state.failed) R.string.models_whisper_module_failed_info else R.string.models_llm_llama_module_missing_info,
+                if (state.failed) OfflineBuild.library(R.string.models_whisper_module_failed_info) else R.string.models_llm_llama_module_missing_info,
             ),
             action = stringResource(if (state.failed) CommonR.string.common_retry else CommonR.string.common_download),
             tone = if (state.failed) BannerTone.WARNING else BannerTone.INFO,

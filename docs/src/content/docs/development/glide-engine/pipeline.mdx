@@ -13,7 +13,7 @@ list that reaches the preview or the commit. **Not covered:** how the service
 decides whether a glide may start. That is the
 [IME integration page](/development/glide-engine/integration/).
 
-**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+**Verified against** the merged `github/main` at `69e87afa4` plus this branch's glide-engine improvements, on 2026-11-07. See [Version and sync](/development/glide-engine/#version-and-sync).
 
 ## Data flow
 
@@ -263,7 +263,10 @@ The search returns candidates. It does not return the words the user sees.
 2. **Blacklist.** Suppressed words are removed.
 3. **Context blend.** The neural context model scores the top pool, and each
    finite score shifts the candidate by a clamped amount relative to the first
-   finite score. This is the step that reads the sentence, not the stroke.
+   finite score. A listed word is a lookup; an unlisted one is spelled through
+   its pieces only when it is within the blend cap of the leader, since a full
+   cap cannot lift a candidate further behind. This is the step that reads the
+   sentence, not the stroke.
 4. **Rerank.** The same reranker the suggestion strip uses reorders the pool
    with the previous words, the recent words and the context.
 5. **Personal shifts.** `rankOffsets` and `GlideOutcomes` add nats to the

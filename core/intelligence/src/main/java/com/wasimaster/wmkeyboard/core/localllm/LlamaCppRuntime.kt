@@ -36,6 +36,9 @@ object LlamaCpp {
 
     fun requestModule() = FeatureModules.llama.requestInstall()
 
+    /** Whether this phone can use the OpenCL build (gate `llamagpu`) at all. */
+    val gpuLibraryUsable: Boolean get() = LlamaGpu.usable
+
     /**
      * Fetches the OpenCL build (gate `llamagpu`) ahead of the first GGUF
      * answer, when Compute is set to GPU on a phone that can use it; does
@@ -85,7 +88,14 @@ object LlamaCpp {
                 throw IOException(context.getString(message))
             }
             gate.requestInstall()
-            throw IOException(context.getString(R.string.core_intel_llm_module_downloading))
+            // Play may be waiting for a yes it can ask only in the settings
+            // app; "try again in a moment" never came true then (Telegram, 4529).
+            val waiting = (gate.state.value as? ModuleState.Missing)?.confirm == true
+            throw IOException(
+                context.getString(
+                    if (waiting) R.string.core_intel_llm_module_confirm else R.string.core_intel_llm_module_downloading,
+                ),
+            )
         }
         if (!LlamaNative.loaded) LlamaNative.wantGpuLibrary = instance.gpuLibraryWanted(context, backend)
         if (!LlamaNative.available) {
@@ -104,6 +114,9 @@ object LlamaCpp {
     fun stop() {
         if (started) instance.stop()
     }
+
+    /** The GGUF loaded right now, or null; see [LlmRuntime.loadedModel]. */
+    fun loadedModel(): File? = if (started) instance.loadedModel() else null
 
     /** Contract of [LlmRuntime.gpuMemoryMayBeStranded], for llama.cpp's GPU. */
     fun gpuMemoryMayBeStranded(): Boolean = started && instance.gpuMemoryMayBeStranded()
@@ -192,6 +205,9 @@ internal class LlamaCppRuntime : LlmRuntime {
     private var session: LlamaSession? = null
     private var vision: LlamaVision? = null
     private var loadedKey: String? = null
+
+    // The key starts with the model's path; see where it is built.
+    override fun loadedModel(): File? = loadedKey?.substringBefore('|')?.let(::File)
 
     /** The session answering right now, for [stop]. */
     @Volatile

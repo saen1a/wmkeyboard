@@ -169,6 +169,8 @@ internal class StorageItem(
     val deletable: Boolean = true,
     /** An image to draw beside the row, when the item is one. */
     val preview: File? = null,
+    /** The screen a press on the row opens: what this item belongs to. */
+    val route: String? = null,
     /** Whether the row stands for a directory, for the icon it falls back to. */
     val directory: Boolean = false,
 )
@@ -585,7 +587,7 @@ internal object StorageCategories {
                 } else if (item.id == DENOISE_ITEM_ID) {
                     StrongDenoise.delete(env.roots.files)
                 } else if (item.id == PUNCTUATION_ITEM_ID) {
-                    DictationPunctuation.delete(env.roots.files)
+                    DictationPunctuation.deleteAll(env.roots.files)
                 } else if (item.id == VAD_ITEM_ID) {
                     VadModels.deleteAll(env.roots.files)
                 } else if (item.id.startsWith(ET_ITEM_PREFIX)) {
@@ -610,7 +612,7 @@ internal object StorageCategories {
                 EtCatalog.models.forEach { EtDownloadManager.delete(env.roots.files, it) }
                 emptyOut(MmsVoices.rootDir(env.roots.files))
                 StrongDenoise.delete(env.roots.files)
-                DictationPunctuation.delete(env.roots.files)
+                DictationPunctuation.deleteAll(env.roots.files)
                 VadModels.deleteAll(env.roots.files)
             },
         ),
@@ -1015,11 +1017,20 @@ internal object StorageCategories {
             icon = Icons.Outlined.Extension,
             accent = Color(0xFF90A4AE),
             group = StorageGroup.DOWNLOADS,
+            manageRoute = "feature_libraries",
             pathsOf = { roots -> listOfNotNull(NativeDelivery.store()?.root?.takeIf { it.startsWith(roots.noBackupFiles) }) },
             countOf = { _ -> installedLibraries().size },
             itemsOf = { env ->
                 installedLibraries().map { (pin, file) ->
-                    StorageItem(id = pin.sha256, label = pin.name, detail = pin.gate, bytes = file.length(), files = listOf(file.parentFile ?: file))
+                    val info = FeatureLibraryInfo.of(pin.name, pin.gate)
+                    StorageItem(
+                        id = pin.sha256,
+                        label = pin.name,
+                        detail = info?.let { env.context.getString(it.description) } ?: pin.gate,
+                        bytes = file.length(),
+                        files = listOf(file.parentFile ?: file),
+                        route = info?.route,
+                    )
                 }
             },
         ),

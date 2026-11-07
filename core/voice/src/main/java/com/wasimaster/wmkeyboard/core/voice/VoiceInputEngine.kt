@@ -1,7 +1,9 @@
 package com.wasimaster.wmkeyboard.core.voice
 
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.speech.RecognitionService
 import android.os.Build
 import android.os.Bundle
 import android.os.Handler
@@ -86,9 +88,44 @@ class VoiceInputEngine(private val context: Context) {
     /** Starts, or restarts, [resultCheck] for the session running now. */
     private var awaitResult: (() -> Unit)? = null
 
+    /**
+     * A recognition service the user picked by name (#993): another app's,
+     * such as Marmalade, Transcribro or FUTO Voice Input, in place of the one
+     * the phone has set as its default. Null is the default. A pick whose app
+     * has since gone is passed over for the default rather than failing.
+     */
+    var service: ComponentName? = null
+
+    /**
+     * Never bind the phone's default recognizer (#1142). Set by WM Keyboard's
+     * own recognition service, which may itself be that default: asking it
+     * would only come back here. A session that would have gone to the
+     * default goes to another app's recognizer instead, or ends with
+     * [ErrorKind.LANGUAGE] when there is none.
+     */
+    var avoidDefault: Boolean = false
+
+    /** [service], when its app still offers it. */
+    private fun pickedService(): ComponentName? =
+        service?.takeIf { picked -> recognitionServices(context).any { it.first == picked } }
+
+    /**
+     * Another app's recognizer to use where the default would be asked, when
+     * the default must not be: [avoidDefault], or the default is WM
+     * Keyboard's own service (#1142), which would hand the keyboard's own
+     * "phone's recognizer" choice straight back to the keyboard. Null leaves
+     * the default as it is.
+     */
+    private fun defaultStandIn(): ComponentName? {
+        if (!avoidDefault && defaultRecognitionService(context)?.packageName != context.packageName) return null
+        return otherRecognitionService(context)
+    }
+
     /** False on devices without any recognition service (no GMS). */
     fun isAvailable(): Boolean =
-        SpeechRecognizer.isRecognitionAvailable(context) ||
+        pickedService() != null ||
+            (avoidDefault && otherRecognitionService(context) != null) ||
+            (!avoidDefault && SpeechRecognizer.isRecognitionAvailable(context)) ||
             (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
                 SpeechRecognizer.isOnDeviceRecognitionAvailable(context))
 
@@ -118,15 +155,23 @@ class VoiceInputEngine(private val context: Context) {
         alsoListenFor: List<String> = emptyList(),
     ) {
         cancel()
-        val onDevice = allowOnDevice &&
+        val picked = pickedService()
+        val onDevice = picked == null && allowOnDevice &&
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
             languageTag !in onDeviceFailedTags &&
             languageTag !in onDeviceStalledTags &&
             SpeechRecognizer.isOnDeviceRecognitionAvailable(context)
-        val session = if (onDevice) {
-            SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
-        } else {
-            SpeechRecognizer.createSpeechRecognizer(context)
+        val standIn = if (picked == null && !onDevice) defaultStandIn() else null
+        if (picked == null && !onDevice && standIn == null && avoidDefault) {
+            // Nothing to ask but the default, which is not to be asked.
+            main.post { listener.onError(ErrorKind.LANGUAGE) }
+            return
+        }
+        val session = when {
+            picked != null -> SpeechRecognizer.createSpeechRecognizer(context, picked)
+            onDevice -> SpeechRecognizer.createOnDeviceSpeechRecognizer(context)
+            standIn != null -> SpeechRecognizer.createSpeechRecognizer(context, standIn)
+            else -> SpeechRecognizer.createSpeechRecognizer(context)
         }
         recognizer = session
         finishing = false
@@ -493,3 +538,44 @@ data class VoiceBiasRequest(val words: List<String>, val deviceContext: Boolean)
         val NONE = VoiceBiasRequest(emptyList(), deviceContext = false)
     }
 }
+
+/**
+ * Every other app's recognition service installed on the phone (#993), with
+ * its label, the default among them. What the system recognizer's settings
+ * offer to pick from; the manifest's `<queries>` names the intent so Android
+ * 11 and later show them. WM Keyboard's own (#1142) is left out: the keyboard
+ * sending its dictation to itself would go round in a circle.
+ */
+fun recognitionServices(context: Context): List<Pair<ComponentName, String>> {
+    val pm = context.packageManager
+    return runCatching {
+        pm.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0).mapNotNull { info ->
+            val si = info.serviceInfo ?: return@mapNotNull null
+            if (si.packageName == context.packageName) return@mapNotNull null
+            ComponentName(si.packageName, si.name) to info.loadLabel(pm).toString()
+        }
+    }.getOrDefault(emptyList()).distinctBy { it.first }
+}
+
+/**
+ * The recognition service Android has set as the default, when it lets the
+ * setting be read; null when it does not or none is set.
+ */
+fun defaultRecognitionService(context: Context): ComponentName? = runCatching {
+    android.provider.Settings.Secure.getString(context.contentResolver, "voice_recognition_service")
+        ?.takeIf { it.isNotBlank() }
+        ?.let(ComponentName::unflattenFromString)
+}.getOrNull()
+
+/**
+ * Another app's recognizer to stand in for the default (#1142): the default
+ * itself when it is another app's, else the first installed one, Google's
+ * ahead of the rest since it is the one most phones ship as the default.
+ */
+fun otherRecognitionService(context: Context): ComponentName? {
+    val others = recognitionServices(context).map { it.first }
+    defaultRecognitionService(context)?.takeIf { it in others }?.let { return it }
+    return others.firstOrNull { it.packageName == GOOGLE_RECOGNIZER_PACKAGE } ?: others.firstOrNull()
+}
+
+private const val GOOGLE_RECOGNIZER_PACKAGE = "com.google.android.googlequicksearchbox"

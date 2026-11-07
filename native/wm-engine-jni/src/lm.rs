@@ -164,10 +164,9 @@ pub extern "system" fn Java_com_wasimaster_wmkeyboard_core_prediction_Prediction
     })
 }
 
-/// `lmScoresSpelled(session, words)`: ln P(word next) per word, spelling a
-/// word the vocabulary does not hold in pieces; NaN only when the model can
-/// read neither. More expensive than `lmScores` (up to one forward step per
-/// piece), so this is for a glide's handful of candidates, never the strip.
+/// `lmScoresSpelled(session, words)`: [`lmScores`], with a word the vocabulary
+/// does not hold spelled through its pieces: up to six forward steps a word, so
+/// for a handful of candidates, never the whole strip.
 #[no_mangle]
 pub extern "system" fn Java_com_wasimaster_wmkeyboard_core_prediction_PredictionNative_lmScoresSpelled(
     mut env: JNIEnv,
