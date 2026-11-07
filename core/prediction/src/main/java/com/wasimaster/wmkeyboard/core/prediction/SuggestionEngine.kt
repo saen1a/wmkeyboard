@@ -2081,7 +2081,7 @@ class SuggestionEngine(
             if (!leaderScore.isFinite()) {
                 val all = model.scoresSpelled(words)
                 val fallback = all.firstOrNull { it.isFinite() } ?: return decoded
-                return shiftGlideScores(decoded, all, fallback)
+                return shiftGlideContextScores(decoded, all, fallback)
             }
             scores[0] = leaderScore
         }
@@ -2101,11 +2101,11 @@ class SuggestionEngine(
             val spelled = model.scoresSpelled(spell.map { words[it] })
             spell.forEachIndexed { k, i -> scores[i] = spelled[k] }
         }
-        return shiftGlideScores(decoded, scores, reference)
+        return shiftGlideContextScores(decoded, scores, reference)
     }
 
     /** [blendGlideContextModel]'s score shift and stable sort, over [scores]. */
-    private fun shiftGlideScores(
+    private fun shiftGlideContextScores(
         decoded: List<GlideBeam.Candidate>,
         scores: FloatArray,
         reference: Float,
