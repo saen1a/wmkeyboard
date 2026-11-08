@@ -2049,12 +2049,13 @@ class SuggestionEngine(
      * over the reference, at most
      * [GlideLanguageProfiles.Profile.glideLmBlendCap] either way. The blend is
      * opt-in per measured language and list size: English reads +4.9 top-1 on
-     * the 17k bundled list at 0.7/3.0, but 79.57 % against 80.55 % without it
-     * on the 160k AOSP list over 26,523 public strokes, so its large-list value
-     * is zero. The reference is the first candidate the model can read,
-     * spelling an unlisted one through its pieces (#1016), and never moves; a
-     * word it cannot read keeps its decoder score. Before [rerankGlide], which
-     * still reorders on its own evidence.
+     * the 17k bundled list at 0.7/3.0; on the 160k AOSP list over 26,523 public
+     * strokes, spelling unlisted candidates reads 79.57 % against 80.55 %
+     * without the blend, but scoring listed candidates only reads 80.74 % with
+     * top-4 unchanged at 88.50 %, at no piece pass. German's compounds keep
+     * the spelling. The reference is the first candidate the model can read,
+     * and never moves; a word it cannot read keeps its decoder score. Before
+     * [rerankGlide], which still reorders on its own evidence.
      *
      * Pieces cost a forward step each, so only the pool the strip can show is
      * spelled (8 ordinarily, 16 after a deep search), never the whole walk.
@@ -2069,45 +2070,50 @@ class SuggestionEngine(
     private fun blendGlideContextModel(decoded: List<GlideBeam.Candidate>): List<GlideBeam.Candidate> {
         val model = contextModel ?: return decoded
         if (decoded.size < 2) return decoded
-        val profile = GlideLanguageProfiles.forLanguage(primaryLanguageId)
+        // A mixed field judged the decoder with the default weights, so the
+        // blend must use the same profile: the primary language's blend was
+        // fitted on one language's candidates, not on a mixed sentence.
+        val mixed = secondaryDictionariesField.isNotEmpty() || englishAsSecondaryField
+        val profile = if (mixed) GlideLanguageProfiles.DEFAULT else GlideLanguageProfiles.forLanguage(primaryLanguageId)
         val large = activeDictionary.wordCount > GlideLanguageProfiles.GLIDE_LM_BLEND_LIST_LIMIT
         val blend = if (large) profile.glideLmBlendLargeList else profile.glideLmBlend
         val cap = if (large) profile.glideLmBlendCapLargeList else profile.glideLmBlendCap
         if (blend == 0.0 || cap <= 0.0) return decoded
+        val spellOov = if (large) profile.glideLmSpellOovLargeList else profile.glideLmSpellOov
         val scored = decoded.take(GLIDE_LM_SPELLED)
         val words = scored.map { it.word.lowercase() }
         // A listed word is a lookup; only an unlisted one costs a piece pass.
         val listed = model.scores(words)
         val scores = FloatArray(words.size) { Float.NaN }
-        if (listed[0].isFinite()) {
-            scores[0] = listed[0]
-        } else {
-            // The leader is a word the vocabulary does not list. Spelling it
-            // through pieces is what sets the reference; if it cannot be read
-            // either, fall back to spelling the whole pool so the first
-            // finite candidate still leads the blend.
+        for (i in words.indices) {
+            val lp = listed[i]
+            if (lp.isFinite()) scores[i] = lp
+        }
+        if (spellOov && !listed[0].isFinite()) {
+            // The leader is unlisted. Spelling it sets the reference when it
+            // can be read; if it cannot, the first finite listed candidate is
+            // the reference and the leader keeps its decoder score.
             val leaderScore = model.scoresSpelled(listOf(words[0]))[0]
-            if (!leaderScore.isFinite()) {
+            if (leaderScore.isFinite()) {
+                scores[0] = leaderScore
+            } else if (scores.none { it.isFinite() }) {
                 val all = model.scoresSpelled(words)
                 val fallback = all.firstOrNull { it.isFinite() } ?: return decoded
                 return shiftGlideContextScores(decoded, all, fallback, blend, cap)
             }
-            scores[0] = leaderScore
         }
-        val reference = scores[0]
-        val leader = scored[0].score
-        val spell = ArrayList<Int>(words.size)
-        for (i in 1 until words.size) {
-            val lp = listed[i]
-            if (lp.isFinite()) {
-                scores[i] = lp
-            } else if (leader - scored[i].score <= cap) {
-                spell.add(i)
+        val reference = scores.firstOrNull { it.isFinite() } ?: return decoded
+        if (spellOov) {
+            val leader = scored[0].score
+            val spell = ArrayList<Int>(words.size)
+            for (i in 1 until words.size) {
+                if (scores[i].isFinite()) continue
+                if (leader - scored[i].score <= cap) spell.add(i)
             }
-        }
-        if (spell.isNotEmpty()) {
-            val spelled = model.scoresSpelled(spell.map { words[it] })
-            spell.forEachIndexed { k, i -> scores[i] = spelled[k] }
+            if (spell.isNotEmpty()) {
+                val spelled = model.scoresSpelled(spell.map { words[it] })
+                spell.forEachIndexed { k, i -> scores[i] = spelled[k] }
+            }
         }
         return shiftGlideContextScores(decoded, scores, reference, blend, cap)
     }

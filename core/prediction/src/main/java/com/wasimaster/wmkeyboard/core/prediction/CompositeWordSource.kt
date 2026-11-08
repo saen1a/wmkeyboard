@@ -33,6 +33,7 @@ class CompositeWordSource private constructor(
 
     override fun contains(word: String): Boolean = sources.any { it.contains(word) }
 
+    /** The members' counts summed; an overlap may count twice, which is enough for the blend's size class. */
     override val wordCount: Int get() = sources.sumOf { it.wordCount }
 
     /** The union is expressed as several walks merged by max — the same

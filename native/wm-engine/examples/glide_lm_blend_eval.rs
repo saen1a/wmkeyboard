@@ -11,9 +11,11 @@
 //!
 //! `GATE=<nats>` spells only unlisted candidates within that distance of the
 //! decoder's leader (the app's gate is the blend cap); `0` (the default)
-//! spells every candidate. `VOCAB_RANK=<n>` caps each source's word list; `0`
-//! walks it all and the shipped setting defaults to 300,000. The printed
-//! `spelled` count compares the piece work with and without the gate.
+//! spells every candidate. `SPELL=0` scores listed candidates only, so an
+//! unlisted candidate keeps its decoder score. `VOCAB_RANK=<n>` caps each
+//! source's word list; `0` walks it all and the shipped setting defaults to
+//! 300,000. The printed `spelled` count compares the piece work with and
+//! without the gate.
 //!
 //! `ITEMS=<path>` (optional) writes one TSV row per evaluated record, sorted
 //! by `item_id` (the record's index in the filtered `records` vector). Header
@@ -146,6 +148,9 @@ fn main() {
     // Spell an unlisted candidate only when its decoder score is within this
     // many nats of the leader; 0 spells every candidate.
     let gate: f64 = std::env::var("GATE").ok().and_then(|v| v.parse().ok()).unwrap_or(0.0);
+    // `SPELL=0` scores listed candidates only: no piece pass for an unlisted
+    // one. A candidate the model cannot read keeps its decoder score.
+    let spell_oov = std::env::var("SPELL").map(|v| v != "0").unwrap_or(true);
     let records: Vec<Record> = std::io::BufReader::new(std::fs::File::open(&args[1]).unwrap())
         .lines()
         .map_while(Result::ok)
@@ -269,15 +274,19 @@ fn main() {
                                     let lp = match session.logprob_listed(word) {
                                         Some(score) => Some(score),
                                         None => {
-                                            let hopeless = gate > 0.0
-                                                && j > 0
-                                                && reference.is_some()
-                                                && blended[0].1 - blended[j].1 > gate;
-                                            if hopeless {
+                                            if !spell_oov {
                                                 None
                                             } else {
-                                                spelled += 1;
-                                                session.logprob(word)
+                                                let hopeless = gate > 0.0
+                                                    && j > 0
+                                                    && reference.is_some()
+                                                    && blended[0].1 - blended[j].1 > gate;
+                                                if hopeless {
+                                                    None
+                                                } else {
+                                                    spelled += 1;
+                                                    session.logprob(word)
+                                                }
                                             }
                                         }
                                     };

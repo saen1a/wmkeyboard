@@ -99,12 +99,15 @@ profile is static, so a held-out fit should choose the weight by whether the
 context model is installed; do not copy either number to another language.
 
 The glide context blend is opt-in per language **and list size**. German keeps
-0.5/5.0 on both the AOSP and counted lists. English uses 0.7/3.0 only on the
-small bundled list, where the reference model measured +4.9 top-1, and 0.0 on
-lists above `GLIDE_LM_BLEND_LIST_LIMIT` (50,000 words): on 26,523 public
-English strokes over the 160k AOSP list, 0.7/3.0 read 79.57 % against 80.55 %
-without the blend, and 0.5/5.0 read 79.69 %. A language with no row has no
-glide blend until it is measured; its typing blend is unchanged.
+0.5/5.0 with pieces on both the AOSP and counted lists. English uses 0.7/3.0
+with pieces on the small bundled list, where the reference model measured +4.9
+top-1, and 0.5/5.0 on **listed candidates only** above
+`GLIDE_LM_BLEND_LIST_LIMIT` (50,000 words): on 26,523 public English strokes
+over the 160k AOSP list, that reads 80.74 % / 88.50 % against 80.55 % / 88.50 %
+without the blend, at no piece pass; spelling unlisted candidates read
+79.57 % / 87.83 %, and 0.5/5.0 with pieces read 79.69 % / 87.72 %. A language
+with no row has no glide blend until it is measured; its typing blend is
+unchanged.
 
 The earlier counted-list research (150k and 1.15M words) remains: it was
 measured on 2,588 real German swipes from FUTO's public stroke set, plus 10,908

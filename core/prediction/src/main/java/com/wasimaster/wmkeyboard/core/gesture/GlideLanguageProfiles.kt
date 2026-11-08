@@ -45,8 +45,10 @@ package com.wasimaster.wmkeyboard.core.gesture
  *
  * The glide context blend is opt-in as well
  * ([Profile.glideLmBlend]): the default is zero, German keeps its measured
- * 0.5/5.0 on both list sizes, and English uses 0.7/3.0 only on the small
- * bundled list. A language without a measured row keeps the decoder order.
+ * 0.5/5.0 with pieces on both list sizes, and English uses 0.7/3.0 with
+ * pieces on the small bundled list and 0.5/5.0 on listed candidates only
+ * above [GLIDE_LM_BLEND_LIST_LIMIT]. A language without a measured row keeps
+ * the decoder order.
  */
 object GlideLanguageProfiles {
 
@@ -60,9 +62,10 @@ object GlideLanguageProfiles {
 
     /**
      * A word list longer than this counts as large for the glide's context
-     * blend. The English model reads positive on the 17k bundled list and
-     * negative on the 160k AOSP and 1.6M counted lists, so the two are not
-     * interchangeable.
+     * blend. The English model reads positive on the 17k bundled list with
+     * pieces, and positive on the 160k AOSP list **only** when it scores
+     * listed candidates alone; with pieces on the large list it reads
+     * negative. The two list sizes are not interchangeable.
      */
     const val GLIDE_LM_BLEND_LIST_LIMIT = 50_000
 
@@ -91,6 +94,14 @@ object GlideLanguageProfiles {
          */
         val glideLmBlendLargeList: Double = 0.0,
         val glideLmBlendCapLargeList: Double = glideLmBlendCap,
+        /**
+         * Whether the glide blend spells an unlisted candidate through its
+         * pieces. German's compounds need it; an English large list gains
+         * more from scoring its listed candidates alone (0.8074 against
+         * 0.8055 top-1, with no piece pass at all).
+         */
+        val glideLmSpellOov: Boolean = true,
+        val glideLmSpellOovLargeList: Boolean = false,
     ) {
         /** [tuning] with this profile's weights on it, or [tuning] itself when it already carries them. */
         fun applyTo(tuning: GlideBeam.Tuning): GlideBeam.Tuning =
@@ -138,15 +149,16 @@ object GlideLanguageProfiles {
         lmBlendCap = 5.0,
         glideLmBlend = 0.5,
         glideLmBlendLargeList = 0.5,
+        glideLmSpellOovLargeList = true,
     )
 
     /**
      * English: the decoder defaults are its fit, and the context model's small
      * list result is the one the reference model measured (+4.9 top-1 at
      * 0.7/3.0 on the 17k bundled list). On the 26,523-stroke public English
-     * set over the 160k AOSP list the same blend reads 79.57 % against 80.55 %
-     * without it, so the large-list value is zero until a source-specific fit
-     * says otherwise.
+     * set over the 160k AOSP list, spelling unlisted candidates reads 79.57 %
+     * against 80.55 % without it; scoring listed candidates only reads
+     * 80.74 % with top-4 unchanged at 88.50 %, at no piece pass.
      */
     val ENGLISH = Profile(
         freqWeight = GlideBeam.Tuning.DEFAULT.freqWeight,
@@ -158,7 +170,9 @@ object GlideLanguageProfiles {
         lmBlendCap = DEFAULT_LM_BLEND_CAP,
         glideLmBlend = 0.7,
         glideLmBlendCap = 3.0,
-        glideLmBlendLargeList = 0.0,
+        glideLmBlendLargeList = 0.5,
+        glideLmBlendCapLargeList = 5.0,
+        glideLmSpellOovLargeList = false,
     )
 
     private val BY_LANGUAGE: Map<String, Profile> = mapOf(
