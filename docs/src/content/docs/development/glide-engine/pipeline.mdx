@@ -261,12 +261,13 @@ The search returns candidates. It does not return the words the user sees.
    user assigned an apostrophe key, the drawn character restores the apostrophe
    directly.
 2. **Blacklist.** Suppressed words are removed.
-3. **Context blend.** The neural context model scores the top pool, and each
-   finite score shifts the candidate by a clamped amount relative to the first
-   finite score. A listed word is a lookup; an unlisted one is spelled through
-   its pieces only when it is within the blend cap of the leader, since a full
-   cap cannot lift a candidate further behind. This is the step that reads the
-   sentence, not the stroke.
+3. **Context blend.** Where the language and its list size have a measured
+   weight, the neural context model scores the top pool, and each finite score
+   shifts the candidate by a clamped amount relative to the first finite score.
+   A listed word is a lookup; an unlisted one is spelled through its pieces only
+   when it is within the blend cap of the leader, since a full cap cannot lift a
+   candidate further behind. A language with no measured row keeps the decoder
+   order. This is the step that reads the sentence, not the stroke.
 4. **Rerank.** The same reranker the suggestion strip uses reorders the pool
    with the previous words, the recent words and the context.
 5. **Personal shifts.** `rankOffsets` and `GlideOutcomes` add nats to the

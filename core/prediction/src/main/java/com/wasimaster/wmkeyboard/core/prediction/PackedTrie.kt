@@ -32,7 +32,7 @@ class PackedTrie internal constructor(
 ) : WordSource, TrieWalker {
 
     /** Number of distinct words stored. */
-    val wordCount: Int get() = isWord.count { it }
+    override val wordCount: Int get() = isWord.count { it }
 
     override fun walkers(): List<TrieWalker> = listOf(this)
 

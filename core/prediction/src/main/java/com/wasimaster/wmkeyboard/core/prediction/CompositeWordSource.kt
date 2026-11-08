@@ -33,6 +33,8 @@ class CompositeWordSource private constructor(
 
     override fun contains(word: String): Boolean = sources.any { it.contains(word) }
 
+    override val wordCount: Int get() = sources.sumOf { it.wordCount }
+
     /** The union is expressed as several walks merged by max — the same
      * semantics [frequencyOf]'s maxOf already gives. */
     override fun walkers(): List<TrieWalker> = sources.flatMap { it.walkers() }

@@ -42,6 +42,11 @@ package com.wasimaster.wmkeyboard.core.gesture
  * (`native/wm-engine/examples/glide_beam_eval`, `COLS` set to the layout's
  * columns). A language with no row here decodes with the defaults, and the
  * English output is unchanged to the bit.
+ *
+ * The glide context blend is opt-in as well
+ * ([Profile.glideLmBlend]): the default is zero, German keeps its measured
+ * 0.5/5.0 on both list sizes, and English uses 0.7/3.0 only on the small
+ * bundled list. A language without a measured row keeps the decoder order.
  */
 object GlideLanguageProfiles {
 
@@ -52,6 +57,14 @@ object GlideLanguageProfiles {
      */
     const val DEFAULT_LM_BLEND = 0.7
     const val DEFAULT_LM_BLEND_CAP = 3.0
+
+    /**
+     * A word list longer than this counts as large for the glide's context
+     * blend. The English model reads positive on the 17k bundled list and
+     * negative on the 160k AOSP and 1.6M counted lists, so the two are not
+     * interchangeable.
+     */
+    const val GLIDE_LM_BLEND_LIST_LIMIT = 50_000
 
     /** The weights a profile moves; everything else stays as the caller tuned it. */
     class Profile(
@@ -64,6 +77,20 @@ object GlideLanguageProfiles {
         val lmBlend: Double = DEFAULT_LM_BLEND,
         /** The most [lmBlend] moves a candidate either way. */
         val lmBlendCap: Double = DEFAULT_LM_BLEND_CAP,
+        /**
+         * [lmBlend] for the glide path only: typing's strip is a different
+         * evidence problem. Zero keeps the glide blend off, which is the safe
+         * default until a language and a list size have been measured.
+         */
+        val glideLmBlend: Double = 0.0,
+        val glideLmBlendCap: Double = lmBlendCap,
+        /**
+         * The same two for a list above [GLIDE_LM_BLEND_LIST_LIMIT]. English
+         * reads positive on the small bundled list and negative on the large
+         * AOSP and counted lists, so its large value is zero.
+         */
+        val glideLmBlendLargeList: Double = 0.0,
+        val glideLmBlendCapLargeList: Double = glideLmBlendCap,
     ) {
         /** [tuning] with this profile's weights on it, or [tuning] itself when it already carries them. */
         fun applyTo(tuning: GlideBeam.Tuning): GlideBeam.Tuning =
@@ -109,10 +136,34 @@ object GlideLanguageProfiles {
         joinPartPenalty = 0.1,
         lmBlend = 0.5,
         lmBlendCap = 5.0,
+        glideLmBlend = 0.5,
+        glideLmBlendLargeList = 0.5,
+    )
+
+    /**
+     * English: the decoder defaults are its fit, and the context model's small
+     * list result is the one the reference model measured (+4.9 top-1 at
+     * 0.7/3.0 on the 17k bundled list). On the 26,523-stroke public English
+     * set over the 160k AOSP list the same blend reads 79.57 % against 80.55 %
+     * without it, so the large-list value is zero until a source-specific fit
+     * says otherwise.
+     */
+    val ENGLISH = Profile(
+        freqWeight = GlideBeam.Tuning.DEFAULT.freqWeight,
+        gapWeight = GlideBeam.Tuning.DEFAULT.gapWeight,
+        joinCost = GlideBeam.Tuning.DEFAULT.joinCost,
+        joinMinPart = GlideBeam.Tuning.DEFAULT.joinMinPart,
+        joinPartPenalty = GlideBeam.Tuning.DEFAULT.joinPartPenalty,
+        lmBlend = DEFAULT_LM_BLEND,
+        lmBlendCap = DEFAULT_LM_BLEND_CAP,
+        glideLmBlend = 0.7,
+        glideLmBlendCap = 3.0,
+        glideLmBlendLargeList = 0.0,
     )
 
     private val BY_LANGUAGE: Map<String, Profile> = mapOf(
         "de" to GERMAN,
+        "en" to ENGLISH,
     )
 
     /**

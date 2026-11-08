@@ -2045,26 +2045,35 @@ class SuggestionEngine(
     /**
      * The context model's say on a stroke's candidates, in the decoder's
      * own nats (#966): each moves by the language's
-     * [GlideLanguageProfiles.Profile.lmBlend] per nat the model prefers it over
-     * the reference, at most [GlideLanguageProfiles.Profile.lmBlendCap] either
-     * way, as [blendContextModel] does for typing. The reference is the first
-     * candidate the model can read, spelling an unlisted one through its pieces
-     * (#1016), and never moves; a word it cannot read keeps its decoder score.
-     * Before [rerankGlide], which still reorders on its own evidence.
+     * [GlideLanguageProfiles.Profile.glideLmBlend] per nat the model prefers it
+     * over the reference, at most
+     * [GlideLanguageProfiles.Profile.glideLmBlendCap] either way. The blend is
+     * opt-in per measured language and list size: English reads +4.9 top-1 on
+     * the 17k bundled list at 0.7/3.0, but 79.57 % against 80.55 % without it
+     * on the 160k AOSP list over 26,523 public strokes, so its large-list value
+     * is zero. The reference is the first candidate the model can read,
+     * spelling an unlisted one through its pieces (#1016), and never moves; a
+     * word it cannot read keeps its decoder score. Before [rerankGlide], which
+     * still reorders on its own evidence.
      *
      * Pieces cost a forward step each, so only the pool the strip can show is
      * spelled (8 ordinarily, 16 after a deep search), never the whole walk.
-     * Within that pool, an unlisted candidate further than
-     * [GlideLanguageProfiles.Profile.lmBlendCap] behind the leader is not
-     * spelled at all: even a full cap cannot lift it over the leader. On 2,588
-     * German swipes over the shipped AOSP list, with the German profile and the
-     * downloaded context model, that cut the spelled candidates from 10,260 to
-     * 2,571 (75 %) with top-1 unchanged at 81.68 % and top-4 87.64 % to
-     * 87.56 %. Heavier than typing's because a stroke says less than taps do.
+     * Within that pool, an unlisted candidate further than the blend cap
+     * behind the leader is not spelled at all: even a full cap cannot lift it
+     * over the leader. On 2,588 German swipes over the shipped AOSP list, with
+     * the German profile and the downloaded context model, that cut the
+     * spelled candidates from 10,260 to 2,571 (75 %) with top-1 unchanged at
+     * 81.68 % and top-4 87.64 % to 87.56 %. Heavier than typing's because a
+     * stroke says less than taps do.
      */
     private fun blendGlideContextModel(decoded: List<GlideBeam.Candidate>): List<GlideBeam.Candidate> {
         val model = contextModel ?: return decoded
         if (decoded.size < 2) return decoded
+        val profile = GlideLanguageProfiles.forLanguage(primaryLanguageId)
+        val large = activeDictionary.wordCount > GlideLanguageProfiles.GLIDE_LM_BLEND_LIST_LIMIT
+        val blend = if (large) profile.glideLmBlendLargeList else profile.glideLmBlend
+        val cap = if (large) profile.glideLmBlendCapLargeList else profile.glideLmBlendCap
+        if (blend == 0.0 || cap <= 0.0) return decoded
         val scored = decoded.take(GLIDE_LM_SPELLED)
         val words = scored.map { it.word.lowercase() }
         // A listed word is a lookup; only an unlisted one costs a piece pass.
@@ -2081,19 +2090,18 @@ class SuggestionEngine(
             if (!leaderScore.isFinite()) {
                 val all = model.scoresSpelled(words)
                 val fallback = all.firstOrNull { it.isFinite() } ?: return decoded
-                return shiftGlideContextScores(decoded, all, fallback)
+                return shiftGlideContextScores(decoded, all, fallback, blend, cap)
             }
             scores[0] = leaderScore
         }
         val reference = scores[0]
-        val profile = GlideLanguageProfiles.forLanguage(primaryLanguageId)
         val leader = scored[0].score
         val spell = ArrayList<Int>(words.size)
         for (i in 1 until words.size) {
             val lp = listed[i]
             if (lp.isFinite()) {
                 scores[i] = lp
-            } else if (leader - scored[i].score <= profile.lmBlendCap) {
+            } else if (leader - scored[i].score <= cap) {
                 spell.add(i)
             }
         }
@@ -2101,7 +2109,7 @@ class SuggestionEngine(
             val spelled = model.scoresSpelled(spell.map { words[it] })
             spell.forEachIndexed { k, i -> scores[i] = spelled[k] }
         }
-        return shiftGlideContextScores(decoded, scores, reference)
+        return shiftGlideContextScores(decoded, scores, reference, blend, cap)
     }
 
     /** [blendGlideContextModel]'s score shift and stable sort, over [scores]. */
@@ -2109,13 +2117,14 @@ class SuggestionEngine(
         decoded: List<GlideBeam.Candidate>,
         scores: FloatArray,
         reference: Float,
+        blend: Double,
+        cap: Double,
     ): List<GlideBeam.Candidate> {
-        val profile = GlideLanguageProfiles.forLanguage(primaryLanguageId)
         var moved = false
         val shifted = decoded.mapIndexed { i, c ->
             val lp = scores.getOrNull(i)
             if (lp == null || !lp.isFinite()) return@mapIndexed c
-            val shift = (profile.lmBlend * (lp - reference)).coerceIn(-profile.lmBlendCap, profile.lmBlendCap)
+            val shift = (blend * (lp - reference)).coerceIn(-cap, cap)
             if (shift == 0.0) {
                 c
             } else {

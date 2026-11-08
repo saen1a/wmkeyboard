@@ -89,6 +89,7 @@ so an English frequency weight outvotes the shape for German.
 |---|---|---|---|---|---|
 | Default | 1.0 | 1.33 | infinity | 3 | 0.0 |
 | German | 0.75 | 2.0 | 8.0 | 4 | 0.1 |
+| English | 1.0 | 1.33 | infinity | 3 | 0.0 |
 
 The merged profile uses `freqWeight` 0.75, fitted on the AOSP German list
 (#1051). On the same 2,588 FUTO swipes the downloaded German context model
@@ -96,6 +97,14 @@ flips the preference: the decoder alone reads 81.22 % top-1 at 0.75 against
 80.64 % at 0.5, but after the blend 0.5 reads 82.77 % against 81.68 %. The
 profile is static, so a held-out fit should choose the weight by whether the
 context model is installed; do not copy either number to another language.
+
+The glide context blend is opt-in per language **and list size**. German keeps
+0.5/5.0 on both the AOSP and counted lists. English uses 0.7/3.0 only on the
+small bundled list, where the reference model measured +4.9 top-1, and 0.0 on
+lists above `GLIDE_LM_BLEND_LIST_LIMIT` (50,000 words): on 26,523 public
+English strokes over the 160k AOSP list, 0.7/3.0 read 79.57 % against 80.55 %
+without the blend, and 0.5/5.0 read 79.69 %. A language with no row has no
+glide blend until it is measured; its typing blend is unchanged.
 
 The earlier counted-list research (150k and 1.15M words) remains: it was
 measured on 2,588 real German swipes from FUTO's public stroke set, plus 10,908
