@@ -72,6 +72,13 @@ object GlideLanguageProfiles {
     /** The weights a profile moves; everything else stays as the caller tuned it. */
     class Profile(
         val freqWeight: Double,
+        /**
+         * [freqWeight] for a stroke the context model can read alongside it.
+         * A model-aware decode has a second signal for the words frequency was
+         * outvoting, so German can lean a little further on shape. Inherits
+         * [freqWeight] for a language with no measured difference.
+         */
+        val freqWeightWithContext: Double = freqWeight,
         val gapWeight: Float,
         val joinCost: Double,
         val joinMinPart: Int,
@@ -104,27 +111,29 @@ object GlideLanguageProfiles {
         val glideLmSpellOovLargeList: Boolean = false,
     ) {
         /** [tuning] with this profile's weights on it, or [tuning] itself when it already carries them. */
-        fun applyTo(tuning: GlideBeam.Tuning): GlideBeam.Tuning =
-            if (tuning.freqWeight == freqWeight && tuning.gapWeight == gapWeight &&
+        fun applyTo(tuning: GlideBeam.Tuning, hasContext: Boolean = false): GlideBeam.Tuning {
+            val weight = if (hasContext) freqWeightWithContext else freqWeight
+            return if (tuning.freqWeight == weight && tuning.gapWeight == gapWeight &&
                 tuning.joinCost == joinCost && tuning.joinMinPart == joinMinPart &&
                 tuning.joinPartPenalty == joinPartPenalty
             ) {
                 tuning
             } else {
                 tuning.copy(
-                    freqWeight = freqWeight, gapWeight = gapWeight, joinCost = joinCost,
+                    freqWeight = weight, gapWeight = gapWeight, joinCost = joinCost,
                     joinMinPart = joinMinPart, joinPartPenalty = joinPartPenalty,
                 )
             }
+        }
     }
 
     /** The shipped weights, which every language without a row of its own decodes with. */
     val DEFAULT = Profile(
-        GlideBeam.Tuning.DEFAULT.freqWeight,
-        GlideBeam.Tuning.DEFAULT.gapWeight,
-        GlideBeam.Tuning.DEFAULT.joinCost,
-        GlideBeam.Tuning.DEFAULT.joinMinPart,
-        GlideBeam.Tuning.DEFAULT.joinPartPenalty,
+        freqWeight = GlideBeam.Tuning.DEFAULT.freqWeight,
+        gapWeight = GlideBeam.Tuning.DEFAULT.gapWeight,
+        joinCost = GlideBeam.Tuning.DEFAULT.joinCost,
+        joinMinPart = GlideBeam.Tuning.DEFAULT.joinMinPart,
+        joinPartPenalty = GlideBeam.Tuning.DEFAULT.joinPartPenalty,
     )
 
     /**
@@ -139,9 +148,13 @@ object GlideLanguageProfiles {
         // 0.5 above was fitted on a counted list, and German downloads AOSP's,
         // whose top words sit further apart (#1051). On that list, with the
         // shipped join guard and the published G6P 90k, the same 2,588 swipes:
-        // 0.5 gives 80.76 %, 0.75 gives 81.34 %, 1.0 gives 80.60 %, and `das`
-        // reads `das` 32 times of 33 rather than 30.
+        // without a context model 0.75 reads 81.34 % top-1 and 0.5 gives
+        // 80.76 %; the 0.5/5.0 glide blend takes 0.5 to 82.88 % against
+        // 81.68 % at 0.75, so with a model the stroke reads 0.5 while
+        // no-model users keep 0.75. `das` reads `das` 32 times of 33 rather
+        // than 30.
         freqWeight = 0.75,
+        freqWeightWithContext = 0.5,
         gapWeight = 2.0f,
         joinCost = 8.0,
         joinMinPart = 4,
@@ -191,10 +204,16 @@ object GlideLanguageProfiles {
      * [tuning] as the decoder should run it for [languageId]. With other
      * languages' lists [mixed] in, the shipped weights: the profiles were
      * measured on one list alone, and halving frequency lets rare English
-     * words take German strokes (#1051).
+     * words take German strokes (#1051). [hasContext] picks the profile's
+     * [Profile.freqWeightWithContext] where a context model reads the stroke.
      */
-    fun tune(tuning: GlideBeam.Tuning, languageId: String?, mixed: Boolean = false): GlideBeam.Tuning =
-        (if (mixed) DEFAULT else forLanguage(languageId)).applyTo(tuning)
+    fun tune(
+        tuning: GlideBeam.Tuning,
+        languageId: String?,
+        mixed: Boolean = false,
+        hasContext: Boolean = false,
+    ): GlideBeam.Tuning =
+        (if (mixed) DEFAULT else forLanguage(languageId)).applyTo(tuning, hasContext)
 
     /** The language subtag of a registry id: `de-DE` and `de-Runr` are German spelled two ways. */
     private fun base(languageId: String?): String =

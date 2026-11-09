@@ -42,6 +42,38 @@ class GlideLanguageProfilesTest {
     }
 
     @Test
+    fun `german reads 0_75 without a context model and 0_5 with one`() {
+        val de = GlideLanguageProfiles.GERMAN
+        assertEquals(0.75, de.freqWeight, 0.0)
+        assertEquals(0.5, de.freqWeightWithContext, 0.0)
+        val without = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "de")
+        val with = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "de", hasContext = true)
+        assertEquals(0.75, without.freqWeight, 0.0)
+        assertEquals(0.5, with.freqWeight, 0.0)
+        // The context weight moves frequency alone: the profile's gap and join
+        // weights are the same either way.
+        assertEquals(without.gapWeight, with.gapWeight, 0.0f)
+        assertEquals(without.joinCost, with.joinCost, 0.0)
+        assertEquals(without.joinMinPart, with.joinMinPart)
+        assertEquals(without.joinPartPenalty, with.joinPartPenalty, 0.0)
+    }
+
+    @Test
+    fun `english keeps its frequency weight with a context model`() {
+        val with = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "en", hasContext = true)
+        assertEquals(1.0, with.freqWeight, 0.0)
+    }
+
+    @Test
+    fun `mixed german with a context model resolves to the shipped weights`() {
+        val mixed = GlideLanguageProfiles.tune(
+            GlideBeam.Tuning.DEFAULT, "de", mixed = true, hasContext = true,
+        )
+        assertEquals(GlideBeam.Tuning.DEFAULT.freqWeight, mixed.freqWeight, 0.0)
+        assertEquals(1.0, mixed.freqWeight, 0.0)
+    }
+
+    @Test
     fun `a packed trie reports the word count the blend reads`() {
         val one = PackedTrie.of(listOf("one" to 1, "two" to 2))
         assertEquals(2, one.wordCount)

@@ -393,7 +393,15 @@ class SuggestionEngine(
      * far by [setSentenceContext] at every commit.
      */
     @Volatile
-    var contextModel: ContextModel? = null
+    private var contextModelField: ContextModel? = null
+    var contextModel: ContextModel?
+        get() = contextModelField
+        set(value) {
+            if (value === contextModelField) return
+            contextModelField = value
+            // A model changes which frequency weight the glide decodes with.
+            retuneGlide()
+        }
 
     /** The conditioning the model is read under; see [setSentenceContext]. */
     @Volatile
@@ -1444,12 +1452,15 @@ class SuggestionEngine(
     /**
      * Rebuilds the decoders from [glideTuning] with [primaryLanguageId]'s
      * own radii (#1136) and profile on it (#966), when that changed anything: a switch between
-     * two languages with the same weights costs nothing.
+     * two languages with the same weights costs nothing. [retuneGlideForContext]
+     * reads whether a context model is open unless the caller says otherwise.
      */
-    private fun retuneGlide() {
+    private fun retuneGlide() = retuneGlideForContext(contextModelField != null)
+
+    internal fun retuneGlideForContext(hasContext: Boolean) {
         val mixed = secondaryDictionariesField.isNotEmpty() || englishAsSecondaryField
         val ownRadii = GlideTolerances.resolve(glideTuning, glideTolerancesByLanguage, primaryLanguageId)
-        val forLanguage = GlideLanguageProfiles.tune(ownRadii, primaryLanguageId, mixed)
+        val forLanguage = GlideLanguageProfiles.tune(ownRadii, primaryLanguageId, mixed, hasContext)
         // Joining needs something to check the joined spelling against, so with
         // no lexicon it is off, and the decoder never offers one (#1014).
         val joins = forLanguage.joinCost.isFinite()
