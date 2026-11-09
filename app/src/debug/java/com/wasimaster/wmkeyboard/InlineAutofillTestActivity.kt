@@ -45,7 +45,7 @@ class InlineAutofillTestActivity : Activity() {
                 inputType = InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
                 importantForAutofill = View.IMPORTANT_FOR_AUTOFILL_YES
                 setAutofillHints(View.AUTOFILL_HINT_PASSWORD)
-                id = R.id.fake_login_password
+                id = View.generateViewId()
             }
             root.addView(usernameField)
             root.addView(passwordField)

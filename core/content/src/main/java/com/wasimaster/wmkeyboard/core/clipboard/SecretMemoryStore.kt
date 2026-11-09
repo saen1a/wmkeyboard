@@ -83,10 +83,12 @@ internal class SecretMemoryStore(
     /** Drops entries past their TTL; callers that only need that can say so. */
     fun prune(now: Long) {
         if (expiryMillis <= 0) return
-        // A timestamp ahead of now means the clock moved backwards. Treat it
-        // as expired rather than letting a secret outlive its TTL until the
-        // clock catches up.
-        entries.removeAll { it.timestamp > now || now - it.timestamp >= expiryMillis }
+        // The same rule ClipItem.expiresAt uses: an entry expires once now is
+        // past timestamp + TTL, not at it, so the panel's "expires in" label
+        // and what is actually retained cannot disagree. A timestamp ahead of
+        // now means the clock moved backwards; treat it as expired rather
+        // than letting a secret outlive its TTL until the clock catches up.
+        entries.removeAll { it.timestamp > now || now > it.timestamp + expiryMillis }
     }
 
     companion object {

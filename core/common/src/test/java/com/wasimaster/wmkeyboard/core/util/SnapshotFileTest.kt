@@ -38,6 +38,18 @@ class SnapshotFileTest {
     }
 
     @Test
+    fun aSecondLegacyWriteReplacesTheFileAndLeavesNoSideFiles() {
+        val file = SnapshotFile(target())
+        assertTrue(file.write(file.ticket()) { "first" })
+        assertTrue(file.write(file.ticket()) { "second" })
+        assertEquals("second", target().readText())
+        val side = target().parentFile.listFiles { f ->
+            f.name.endsWith(".part") || f.name.endsWith(".bak")
+        }.orEmpty()
+        assertEquals(0, side.size)
+    }
+
+    @Test
     fun deleteRetiresEverySnapshotDrawnBeforeIt() {
         val file = SnapshotFile(target())
         assertTrue(file.write(file.ticket()) { "kept" })

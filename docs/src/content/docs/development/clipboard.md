@@ -140,9 +140,10 @@ database. The store saves asynchronously and keeps the last snapshot ordering so
 two saves from different threads do not land out of order.
 
 `FakeAutofillService` in `app/src/debug` is a debug-only inline provider for the
-emulator test `InlineAutofillEmulatorTest` (T6). It returns one deterministic
-chip and never holds a real credential; it proves the chip plumbing, not
-passkey behaviour.
+emulator test `InlineAutofillEmulatorTest`. It returns one deterministic chip
+and never holds a real credential; it proves the chip plumbing, not passkey
+behaviour. The inline chip test is currently disabled pending an API-36
+emulator session-ordering issue.
 
 ## Architecture diagram
 
@@ -469,23 +470,22 @@ way round.
 ## Password-manager matrix
 
 The keyboard never receives chip content. These are device checks, not JVM
-tests; record the result in the code Review.
+tests. Record each result before you rely on it.
 
 | Provider | Mode | Android | Expected | Status |
 |---|---|---|---|---|
-| Bitwarden | Inline | 11, 13, 16, 17 | Username/password chips appear in the autofill lane. | Not executed; no licensed APK/test vault in the worktree. |
-| Bitwarden | Popup | 11, 13, 16, 17 | No inline chip; the manager's own dropdown is the fallback. | Not executed; same blocker. |
-| Proton Pass 1.39+ | Inline | 11, 13, 16, 17 | Chips appear; older versions may have no inline path. | Not executed; no licensed APK/test vault in the worktree. |
-| Proton Pass 1.39+ | Popup | 11, 13, 16, 17 | No inline chip; the manager's dropdown is the fallback. | Not executed; same blocker. |
-| Either | Locked vault | 16, 17 | A locked-vault chip opens the manager; it does not silently fail. | Not executed; no test vault. |
-| Either | Passkey field | 16, 17 | The passkey chip opens the system/manager prompt; cancel leaves no stale chip. | Not executed; no passkey provider/test account. |
+| Bitwarden | Inline | 11, 13, 16, 17 | Username/password chips appear in the autofill lane. | Not executed; no licensed APK or test vault is available. |
+| Bitwarden | Popup | 11, 13, 16, 17 | No inline chip; the manager's own dropdown is the fallback. | Not executed; same missing evidence. |
+| Proton Pass 1.39+ | Inline | 11, 13, 16, 17 | Chips appear; older versions may have no inline path. | Not executed; no licensed APK or test vault is available. |
+| Proton Pass 1.39+ | Popup | 11, 13, 16, 17 | No inline chip; the manager's dropdown is the fallback. | Not executed; same missing evidence. |
+| Either | Locked vault | 16, 17 | A locked-vault chip opens the manager; it does not silently fail. | Not executed; no test vault is available. |
+| Either | Passkey field | 16, 17 | The passkey chip opens the system/manager prompt; cancel leaves no stale chip. | Not executed; no passkey provider or test account is available. |
 | Either | Incognito | 16, 17 | Login chips stay available; platform smart replies are closed. | Not executed. |
 
-T7 result: the API-36 emulator `SecureWindowEmulatorTest` passed and proved
-`FLAG_SECURE` on the IME window for a password field. T7 `bmgr`/locked-boot
-checks remain manual; the static backup-rule test is the fallback. T6 remains
-ignored because the API-36 emulator creates the `AutofillSession` before the
-IME window is visible.
+Secure-window instrumentation passed on API 36: the emulator test
+`SecureWindowEmulatorTest` proved `FLAG_SECURE` on the IME window for a password
+field. The `bmgr` and locked-boot checks remain manual; the static backup-rule
+test is the fallback.
 
 Only one autofill service can be active. The diagnostic summary contains
 counters only; it does not name the active provider or any credential.

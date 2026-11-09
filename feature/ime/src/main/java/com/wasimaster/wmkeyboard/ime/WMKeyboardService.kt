@@ -3934,7 +3934,7 @@ open class WMKeyboardService : InputMethodService() {
         if (uri != null && imageMime == null && item.text == null) {
             val uris = (0 until primary.itemCount).mapNotNull { primary.getItemAt(it)?.uri }
             if (uris.isNotEmpty()) {
-                serviceScope.launch(Dispatchers.IO) { addFileClips(uris, source, false, sourcePackage) }
+                serviceScope.launch(Dispatchers.IO) { addFileClips(uris, source, sourcePackage) }
                 return@OnPrimaryClipChangedListener
             }
         }
@@ -4033,8 +4033,18 @@ open class WMKeyboardService : InputMethodService() {
                         (state.settings.clipboard.copyRulesToSystem || cleaned != null)
                     ) {
                         // Back onto the system clipboard as changed, so the app's own paste
-                        // gets it too; the token lets this one copy of ours go by.
-                        ClipboardWriteGate.writeText(this, text, clip.description?.label, selfWrite = true)
+                        // gets it too -- but only while it still holds the text captured
+                        // here. Another app may have copied in the meantime, and writing
+                        // this older text over that newer copy would lose it. The
+                        // self-write token is not used to mask this: it would let the
+                        // stale write through.
+                        val stillCopied = runCatching {
+                            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
+                                .primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0)?.text?.toString()
+                        }.getOrNull() == copied
+                        if (stillCopied) {
+                            ClipboardWriteGate.writeText(this, text, clip.description?.label, selfWrite = true)
+                        }
                     }
                     // Markup for the text as copied would paste back what a rule took out.
                     val html = item.htmlText?.takeIf { !tidied }
@@ -4140,7 +4150,7 @@ open class WMKeyboardService : InputMethodService() {
      * platform offers no protection of its own.
      */
     private fun clipMarkedSensitive(clip: android.content.ClipData): Boolean =
-        clip.description?.extras?.getBoolean(EXTRA_IS_SENSITIVE, false) == true
+        clip.description?.extras?.getBoolean(KeyboardClipboard.EXTRA_IS_SENSITIVE, false) == true
 
     private var lastScreenshotId = -1L
 
@@ -4205,12 +4215,6 @@ open class WMKeyboardService : InputMethodService() {
             }
         }
     }
-
-    /**
-     * `ClipDescription.EXTRA_IS_SENSITIVE`, spelled out so it can be read on
-     * every API level rather than only where the constant exists.
-     */
-    private val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"
 
     private fun handleScreenshotAdded() {
         val state = _uiState.value
@@ -4367,7 +4371,6 @@ open class WMKeyboardService : InputMethodService() {
     private fun addFileClips(
         uris: List<Uri>,
         sourceApp: String? = null,
-        sensitive: Boolean = false,
         sourcePackage: String? = null,
     ) {
         var added = false
@@ -4384,7 +4387,6 @@ open class WMKeyboardService : InputMethodService() {
                 size = info.size,
                 sourceApp = sourceApp,
                 durationMs = if (info.mimeType.startsWith("video/")) videoDuration(uri) else -1,
-                sensitive = sensitive,
                 sourcePackage = sourcePackage,
             )
             if (stored != null) {
@@ -9269,6 +9271,11 @@ open class WMKeyboardService : InputMethodService() {
         inputRootView?.requestApplyInsets()
         // Nor a height hold learned while it was last up (#669).
         (inputRootView?.parent as? StableMeasureFrame)?.onShownAgain()
+        // onFinishInputView cleared FLAG_SECURE as the old window went away.
+        // A re-show of the same field emits no new state for the collector to
+        // put it back, so reapply the current decision here. Both doors,
+        // startInputView and onWindowShown, reach this.
+        updateSecureWindow()
     }
 
     /**
@@ -49003,7 +49010,11 @@ open class WMKeyboardService : InputMethodService() {
         if (item.kind.isUriBacked && uriString != null) {
             serviceScope.launch {
                 val uri = runCatching { Uri.parse(uriString) }.getOrNull()
-                val readable = withContext(Dispatchers.IO) { uri != null && uriIsReadable(uri) }
+                // A folder is a container, not content: it has no asset stream
+                // of its own, so only files and videos get the readability
+                // probe and are dropped when it fails.
+                val probe = item.kind == ClipKind.FILE || item.kind == ClipKind.VIDEO
+                val readable = !probe || withContext(Dispatchers.IO) { uri != null && uriIsReadable(uri) }
                 if (!readable) {
                     clipboardStore.remove(item.id)
                     saveClipboardSoon()
@@ -49012,10 +49023,12 @@ open class WMKeyboardService : InputMethodService() {
                     return@launch
                 }
                 withContext(Dispatchers.Main) {
-                    when (item.kind) {
-                        ClipKind.FILE, ClipKind.VIDEO -> commitFileClip(item)
-                        ClipKind.FOLDER -> commitFolderClip(item)
-                        else -> Unit
+                    // Only a file, video or folder has a URI, and a folder is
+                    // the one that needs the name-plus-clipboard handoff.
+                    if (item.kind == ClipKind.FOLDER) {
+                        commitFolderClip(item)
+                    } else {
+                        commitFileClip(item)
                     }
                     clearClipboardSuggestion()
                     purgeAfterPasswordPaste(item)
@@ -50339,7 +50352,7 @@ open class WMKeyboardService : InputMethodService() {
         // Paste tool, hold V and the app's own paste read the clipboard, not
         // the history, and went on pasting the text from before the edit.
         if (saved != null && saved.text != edit.original && clipboardHolds(edit.original)) {
-            KeyboardClipboard.copy(this, saved.text)
+            KeyboardClipboard.copy(this, saved.text, sensitive = saved.sensitive)
         }
         _uiState.update { state ->
             state.copy(
@@ -50347,8 +50360,10 @@ open class WMKeyboardService : InputMethodService() {
                 clipboardItems = clipboardStore.items(),
                 // The strip's paste chip holds its own copy of the clip; one
                 // left on the old text would paste what was just corrected.
+                // A secret must not become a preview chip; drop the chip when
+                // the edited text matches a retained secret.
                 clipboardSuggestion = state.clipboardSuggestion?.let { chip ->
-                    if (chip.id == edit.id) saved else chip
+                    if (chip.id == edit.id) saved?.takeIf { !it.sensitive } else chip
                 },
             )
         }

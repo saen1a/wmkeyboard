@@ -468,6 +468,15 @@ class ClipboardStoreTest {
         assertEquals(listOf("ordinary"), store.items(now = 1600).map { it.text })
     }
 
+    @Test fun secretExpiryBoundaryMatchesThePanel() {
+        // At exactly timestamp + TTL the panel says "not yet expired"; the
+        // memory store must agree and drop it only once now is past that.
+        val store = ClipboardStore(null, expiryMillis = 0, sensitiveExpiryMillis = 100)
+        store.add("secret", now = 1000, sensitive = true)
+        assertEquals(listOf("secret"), store.items(now = 1100).map { it.text })
+        assertTrue(store.items(now = 1101).isEmpty())
+    }
+
     @Test fun pinningDoesNotKeepASecret() {
         val store = ClipboardStore(null, expiryMillis = 0, sensitiveExpiryMillis = 500)
         val secret = store.add("secret", now = 1000, sensitive = true)!!
@@ -542,6 +551,21 @@ class ClipboardStoreTest {
         assertFalse(image.exists())
         assertNull(store.reattach(removed, now = 2000))
         assertTrue(store.items(now = 2000).isEmpty())
+    }
+
+    @Test fun anExternalEditOfTheSameIdYieldsToTheInMemoryEdit() {
+        val file = Files.createTempFile("history", ".json").toFile()
+        val store = ClipboardStore(file, expiryMillis = 0)
+        val clip = store.add("original", now = 1000)!!
+        store.save()
+        // A sync writes a different clip under the same id after our save.
+        val external = ClipItem(id = clip.id, text = "external", timestamp = 2000)
+        file.writeText("""{"items":${Json.encodeToString(listOf(external))}}""")
+        file.setLastModified(System.currentTimeMillis() + 2_000)
+        // The user's edit is still only in memory when the next save runs.
+        store.editText(clip.id, "edited", now = 3000)
+        store.save()
+        assertEquals(listOf("edited"), store.items(now = 4_000).map { it.text })
     }
 
     @Test fun saveMergesAnExternalSyncWithoutLosingANewCopy() {
@@ -788,6 +812,18 @@ class ClipboardStoreTest {
         )
         val file = Files.createTempFile("history", ".json").toFile()
         file.writeText("""{"version":2,"items":${Json.encodeToString(listOf(item))}}""")
+        val store = ClipboardStore(file, expiryMillis = 0)
+        assertTrue(store.items(now = 2000).isEmpty())
+    }
+
+    @Test fun oversizedTextFromASnapshotIsDropped() {
+        val item = ClipItem(
+            id = 1,
+            text = "x".repeat(ClipboardStore.HARD_MAX_TEXT_CHARS + 1),
+            timestamp = 1000,
+        )
+        val file = Files.createTempFile("history", ".json").toFile()
+        file.writeText("""{"items":${Json.encodeToString(listOf(item))}}""")
         val store = ClipboardStore(file, expiryMillis = 0)
         assertTrue(store.items(now = 2000).isEmpty())
     }

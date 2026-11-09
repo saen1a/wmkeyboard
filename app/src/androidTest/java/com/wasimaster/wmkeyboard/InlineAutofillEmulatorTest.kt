@@ -15,9 +15,12 @@ import org.junit.Test
 import org.junit.runner.RunWith
 
 /**
- * Proves the inline-autofill chip plumbing on a device: the system binds the
- * app's debug fake autofill service, WM Keyboard becomes the IME, the login
- * form is focused and the service's deterministic chip is drawn.
+ * Intended to prove the inline-autofill chip plumbing on a device: the system
+ * binds the app's debug fake autofill service, WM Keyboard becomes the IME, the
+ * login form is focused and the service's deterministic chip is drawn.
+ *
+ * The only test is `@Ignore`d while T6 is blocked, so this class currently
+ * proves nothing; it becomes a runnable proof only when that test is enabled.
  *
  * This is deliberately not a passkey test; it never asserts credential
  * behaviour, only that a fake dataset's chip reaches the keyboard's strip.
@@ -38,29 +41,29 @@ class InlineAutofillEmulatorTest {
         // the app process where the Kotlin runtime and androidx.autofill exist.
         val autofillComponent = "$appPackage/${FakeAutofillService::class.java.name}"
 
-        val previousIme = shell(device, "settings get secure default_input_method").trim()
-        val previousAutofill = shell(device, "settings get secure autofill_service").trim()
-        val previousEnabledImes = shell(device, "settings get secure enabled_input_methods").trim()
-        val previousHardwareKeyboard = shell(device, "settings get secure show_ime_with_hard_keyboard").trim()
+        val previous = EmulatorImeHarness.captureSecureSettings(device)
 
         var warmUp: ActivityScenario<InlineAutofillTestActivity>? = null
         var login: ActivityScenario<InlineAutofillTestActivity>? = null
         try {
             // The emulator has a hardware keyboard, which suppresses the soft
             // IME window by default.
-            shell(device, "settings put secure show_ime_with_hard_keyboard 1")
-            shell(device, "ime enable $imeComponent")
-            shell(device, "settings put secure default_input_method $imeComponent")
-            shell(device, "settings put secure autofill_service $autofillComponent")
+            EmulatorImeHarness.shell(device, "settings put secure show_ime_with_hard_keyboard 1")
+            EmulatorImeHarness.shell(device, "ime enable $imeComponent")
+            EmulatorImeHarness.shell(device, "settings put secure default_input_method $imeComponent")
+            EmulatorImeHarness.shell(device, "settings put secure autofill_service $autofillComponent")
             device.waitForIdle()
 
-            assertTrue("IME did not switch to $imeComponent", waitForIme(device, imeComponent))
+            assertTrue(
+                "IME did not switch to $imeComponent",
+                EmulatorImeHarness.waitForIme(device, imeComponent),
+            )
 
             // Warm-up form: autofill is disabled on its field, so bringing the
             // IME up here does not start an autofill session.
             warmUp = ActivityScenario.launch(InlineAutofillTestActivity::class.java)
             warmUp.onActivity { it.showLoginKeyboard() }
-            assertTrue("IME window did not become visible", waitForImeShown(device))
+            assertTrue("IME window did not become visible", EmulatorImeHarness.waitForImeShown(device))
             device.waitForIdle()
 
             // Fresh task with the login form. Its password field is focused on
@@ -74,62 +77,25 @@ class InlineAutofillEmulatorTest {
             }
             login = ActivityScenario.launch(loginIntent)
 
-            val chip = requireNotNull(device.wait(Until.findObject(By.text(CHIP_TITLE)), CHIP_TIMEOUT_MS)) {
-                "chip '$CHIP_TITLE' did not appear; the fake autofill service may not be bound " +
-                    "or the IME never requested inline suggestions"
-            }
+            val chip =
+                requireNotNull(device.wait(Until.findObject(By.text(CHIP_TITLE)), CHIP_TIMEOUT_MS)) {
+                    "chip '$CHIP_TITLE' did not appear; the fake autofill service may not be bound " +
+                        "or the IME never requested inline suggestions"
+                }
             val bounds = chip.visibleBounds
-            assertTrue("chip '$CHIP_TITLE' was found but is not visible: $bounds", bounds.width() > 0 && bounds.height() > 0)
+            assertTrue(
+                "chip '$CHIP_TITLE' was found but is not visible: $bounds",
+                bounds.width() > 0 && bounds.height() > 0,
+            )
         } finally {
             runCatching { login?.close() }
             runCatching { warmUp?.close() }
-            restoreSecureSetting(device, "default_input_method", previousIme)
-            restoreSecureSetting(device, "enabled_input_methods", previousEnabledImes)
-            restoreSecureSetting(device, "autofill_service", previousAutofill)
-            restoreSecureSetting(device, "show_ime_with_hard_keyboard", previousHardwareKeyboard)
-        }
-    }
-
-    private fun shell(device: UiDevice, command: String): String = device.executeShellCommand(command)
-
-    /** Waits until InputMethodManagerService reports [imeComponent] as current. */
-    private fun waitForIme(device: UiDevice, imeComponent: String): Boolean {
-        val deadline = System.currentTimeMillis() + IME_TIMEOUT_MS
-        while (System.currentTimeMillis() < deadline) {
-            if (device.executeShellCommand("dumpsys input_method").contains("mCurId=$imeComponent")) {
-                return true
-            }
-            Thread.sleep(IME_POLL_MS)
-        }
-        return false
-    }
-
-    /** Waits until InputMethodManagerService reports the IME window as shown. */
-    private fun waitForImeShown(device: UiDevice): Boolean {
-        val deadline = System.currentTimeMillis() + IME_SHOW_TIMEOUT_MS
-        while (System.currentTimeMillis() < deadline) {
-            val dump = device.executeShellCommand("dumpsys input_method")
-            if (dump.contains("mInputShown=true") && dump.contains("mWindowVisible=true")) {
-                return true
-            }
-            Thread.sleep(IME_POLL_MS)
-        }
-        return false
-    }
-
-    private fun restoreSecureSetting(device: UiDevice, key: String, value: String) {
-        if (value.isEmpty() || value == "null") {
-            device.executeShellCommand("settings delete secure $key")
-        } else {
-            device.executeShellCommand("settings put secure $key $value")
+            EmulatorImeHarness.restoreSecureSettings(device, previous)
         }
     }
 
     private companion object {
         const val CHIP_TITLE = "Fake login"
         const val CHIP_TIMEOUT_MS = 20_000L
-        const val IME_TIMEOUT_MS = 10_000L
-        const val IME_SHOW_TIMEOUT_MS = 10_000L
-        const val IME_POLL_MS = 250L
     }
 }

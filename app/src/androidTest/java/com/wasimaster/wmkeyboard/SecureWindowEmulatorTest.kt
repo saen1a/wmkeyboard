@@ -35,21 +35,21 @@ class SecureWindowEmulatorTest {
         // form, not the fully qualified service class name.
         val imeComponent = "$appPackage/.ime.WMKeyboardService"
 
-        val previousIme = shell(device, "settings get secure default_input_method").trim()
-        val previousAutofill = shell(device, "settings get secure autofill_service").trim()
-        val previousEnabledImes = shell(device, "settings get secure enabled_input_methods").trim()
-        val previousHardwareKeyboard = shell(device, "settings get secure show_ime_with_hard_keyboard").trim()
+        val previous = EmulatorImeHarness.captureSecureSettings(device)
 
         var scenario: ActivityScenario<InlineAutofillTestActivity>? = null
         try {
             // The emulator has a hardware keyboard, which suppresses the soft
             // IME window by default.
-            shell(device, "settings put secure show_ime_with_hard_keyboard 1")
-            shell(device, "ime enable $imeComponent")
-            shell(device, "settings put secure default_input_method $imeComponent")
+            EmulatorImeHarness.shell(device, "settings put secure show_ime_with_hard_keyboard 1")
+            EmulatorImeHarness.shell(device, "ime enable $imeComponent")
+            EmulatorImeHarness.shell(device, "settings put secure default_input_method $imeComponent")
             device.waitForIdle()
 
-            assertTrue("IME did not switch to $imeComponent", waitForIme(device, imeComponent))
+            assertTrue(
+                "IME did not switch to $imeComponent",
+                EmulatorImeHarness.waitForIme(device, imeComponent),
+            )
 
             // The login form focuses its password field on resume, so the soft
             // keyboard is drawn over a secure field.
@@ -63,7 +63,7 @@ class SecureWindowEmulatorTest {
             scenario = ActivityScenario.launch(loginIntent)
             scenario.onActivity { it.showLoginKeyboard() }
 
-            assertTrue("IME window did not become visible", waitForImeShown(device))
+            assertTrue("IME window did not become visible", EmulatorImeHarness.waitForImeShown(device))
             device.waitForIdle()
 
             // The flag is applied from the state collector after the secure
@@ -73,7 +73,7 @@ class SecureWindowEmulatorTest {
             var excerpt = "no dumpsys window output captured"
             var secure = false
             while (System.currentTimeMillis() < deadline) {
-                val dump = shell(device, "dumpsys window windows")
+                val dump = EmulatorImeHarness.shell(device, "dumpsys window windows")
                 val section = imeWindowSection(dump, appPackage)
                 if (section == null) {
                     excerpt = "no InputMethod window for package $appPackage; window headers:\n" +
@@ -83,7 +83,7 @@ class SecureWindowEmulatorTest {
                     secure = hasSecureFlag(section)
                     if (secure) break
                 }
-                Thread.sleep(IME_POLL_MS)
+                Thread.sleep(EmulatorImeHarness.IME_POLL_MS)
             }
             assertTrue(
                 "IME window for $appPackage does not report FLAG_SECURE (0x2000 / SECURE); " +
@@ -92,38 +92,8 @@ class SecureWindowEmulatorTest {
             )
         } finally {
             runCatching { scenario?.close() }
-            restoreSecureSetting(device, "default_input_method", previousIme)
-            restoreSecureSetting(device, "enabled_input_methods", previousEnabledImes)
-            restoreSecureSetting(device, "autofill_service", previousAutofill)
-            restoreSecureSetting(device, "show_ime_with_hard_keyboard", previousHardwareKeyboard)
+            EmulatorImeHarness.restoreSecureSettings(device, previous)
         }
-    }
-
-    private fun shell(device: UiDevice, command: String): String = device.executeShellCommand(command)
-
-    /** Waits until InputMethodManagerService reports [imeComponent] as current. */
-    private fun waitForIme(device: UiDevice, imeComponent: String): Boolean {
-        val deadline = System.currentTimeMillis() + IME_TIMEOUT_MS
-        while (System.currentTimeMillis() < deadline) {
-            if (shell(device, "dumpsys input_method").contains("mCurId=$imeComponent")) {
-                return true
-            }
-            Thread.sleep(IME_POLL_MS)
-        }
-        return false
-    }
-
-    /** Waits until InputMethodManagerService reports the IME window as shown. */
-    private fun waitForImeShown(device: UiDevice): Boolean {
-        val deadline = System.currentTimeMillis() + IME_SHOW_TIMEOUT_MS
-        while (System.currentTimeMillis() < deadline) {
-            val dump = shell(device, "dumpsys input_method")
-            if (dump.contains("mInputShown=true") && dump.contains("mWindowVisible=true")) {
-                return true
-            }
-            Thread.sleep(IME_POLL_MS)
-        }
-        return false
     }
 
     /**
@@ -133,7 +103,7 @@ class SecureWindowEmulatorTest {
     private fun imeWindowSection(dump: String, appPackage: String): String? {
         val sections = windowSections(dump)
         return sections.firstOrNull { it.contains("mIsImWindow=true") && it.contains("package=$appPackage") }
-            ?: sections.firstOrNull { it.contains(WINDOW_TITLE) }
+            ?: sections.firstOrNull { it.contains(IME_WINDOW_TITLE) }
     }
 
     private fun windowSections(dump: String): List<String> {
@@ -179,22 +149,15 @@ class SecureWindowEmulatorTest {
             .take(MAX_HEADERS)
             .joinToString("\n")
 
-    private fun restoreSecureSetting(device: UiDevice, key: String, value: String) {
-        if (value.isEmpty() || value == "null") {
-            device.executeShellCommand("settings delete secure $key")
-        } else {
-            device.executeShellCommand("settings put secure $key $value")
-        }
-    }
-
     private companion object {
-        const val WINDOW_TITLE = "WMKeyboardService"
+        /**
+         * The generic title the system gives an IME window; the tests match it
+         * only when the package-scoped lookup above finds nothing.
+         */
+        const val IME_WINDOW_TITLE = "InputMethod"
         const val FLAG_SECURE_NAME = "SECURE"
         const val FLAG_SECURE_VALUE_RAW = 0x2000L
-        const val IME_TIMEOUT_MS = 10_000L
-        const val IME_SHOW_TIMEOUT_MS = 10_000L
         const val SECURE_FLAG_TIMEOUT_MS = 10_000L
-        const val IME_POLL_MS = 250L
         const val MAX_HEADERS = 20
         val WINDOW_HEADER = Regex("""^\s*Window #\d+ """)
         val FLAGS_PATTERN = Regex("""\bfl=([^\n}]*)""")

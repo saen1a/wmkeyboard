@@ -84,7 +84,7 @@ class SyncedClipboardIdsTest {
     }
 
     @Test
-    fun `a sync reads after it gets the path lock, so a save meanwhile is kept`() {
+    fun `a sync reads the history after it gets the path lock, so an external write is kept`() {
         val context = RuntimeEnvironment.getApplication()
         val history = File(context.filesDir, "clipboard/history.json")
         history.parentFile?.mkdirs()
@@ -109,8 +109,10 @@ class SyncedClipboardIdsTest {
         holder.start()
         assertTrue(locked.await(5, TimeUnit.SECONDS))
         applier.start()
-        // While the path lock is held, a local non-text clip lands in the file.
-        // A sync that read before taking the lock would miss it and overwrite it.
+        // While the path lock is held, this test writes a non-text clip
+        // straight to the history file without going through the store or the
+        // lock. It models an uncoordinated external write, not an IME save; a
+        // sync that read before taking the lock would miss it and overwrite it.
         history.writeText(
             buildJsonObject {
                 put("version", JsonPrimitive(2))
@@ -125,7 +127,7 @@ class SyncedClipboardIdsTest {
 
         val written = Json.parseToJsonElement(history.readText()).jsonObject
         val items = written.getValue("items").jsonArray.map { it.jsonObject }
-        // The save made while the sync waited is read and preserved.
+        // The uncoordinated write made while the sync waited is read and preserved.
         assertEquals(2, items.size)
         assertEquals(setOf("hello", "report.pdf"), items.map(::textOf).toSet())
     }

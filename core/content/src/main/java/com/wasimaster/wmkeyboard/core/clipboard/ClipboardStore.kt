@@ -301,7 +301,7 @@ class ClipboardStore(
 ) {
 
     @Serializable
-    private data class Snapshot(val items: List<ClipItem> = emptyList(), val version: Int = 2)
+    private data class Snapshot(val items: List<ClipItem> = emptyList())
 
     private val items = ArrayList<ClipItem>()
     /**
@@ -379,19 +379,24 @@ class ClipboardStore(
         }
     }
 
+    /**
+     * Whether the file this store already wrote has been deleted or emptied
+     * behind its back. Only a file this store has already written can be
+     * "cleared" externally; a never-written file is an ordinary, empty load
+     * and must keep the process-memory secrets and any pending Undo.
+     */
+    private fun isExternallyCleared(storeFile: File): Boolean =
+        fileStamp > 0 && (!storeFile.exists() || storeFile.length() == 0L)
+
     @Synchronized
     private fun reloadUnderPathLock() {
         // A save drawn before this describes the list being thrown away; it
         // must not land over whatever the settings app left in the file.
         snapshotFile?.supersede()
         val storeFile = storageFile
-        // Only a file this store has already written can be "cleared"
-        // externally; a never-written file is an ordinary, empty load and must
-        // keep the process-memory secrets and pending Undo. This matches the
-        // rule save() uses.
-        if (storeFile != null && fileStamp > 0 &&
-            (!storeFile.exists() || storeFile.length() == 0L)
-        ) {
+        // A missing or emptied file this store already wrote is an explicit
+        // external clear; save() uses the same rule.
+        if (storeFile != null && isExternallyCleared(storeFile)) {
             clearFromExternal()
         } else {
             items.clear()
@@ -441,9 +446,10 @@ class ClipboardStore(
                         droppedSensitive = true
                         item.imagePath?.let { File(it).delete() }
                     } else if (
-                        // A snapshot can carry markup past the store's cap; it
-                        // is dropped rather than keeping bytes the store would
-                        // never accept from a live copy.
+                        // A snapshot can carry text or markup past the store's
+                        // caps; it is dropped rather than keeping content the
+                        // store would never accept from a live copy.
+                        item.text.length <= HARD_MAX_TEXT_CHARS &&
                         item.htmlText?.toByteArray(Charsets.UTF_8)?.size
                             ?.let { it > HARD_MAX_HTML_BYTES } != true &&
                         when {
@@ -465,13 +471,22 @@ class ClipboardStore(
                     // save(), which would recurse back into restore().
                     val encoded = ClipboardJson.encodeToString(Snapshot(items.toList()))
                     val stable = snapshotFile
-                    val written = stable != null && stable.write(stable.ticket()) { encoded }
+                    fun scrub(): Boolean = stable != null && stable.write(stable.ticket()) { encoded }
+                    // Retry once: a transient failure must not cost the clear
+                    // history.
+                    val written = scrub() || scrub()
                     if (written) {
                         fileStamp = if (file.length() > 0) file.lastModified() else 0L
-                    } else {
-                        // Fail closed: a rewrite we cannot complete must not
-                        // leave the skipped secret's plaintext on disk.
+                    } else if (items.isEmpty()) {
+                        // No clear clip to preserve: fail closed, the skipped
+                        // secret's plaintext must not stay on disk.
                         if (stable != null) stable.delete() else file.delete()
+                        fileStamp = 0L
+                    } else {
+                        // Keep the clear history. A stamp of 0 makes the next
+                        // save see the file as newer and run this scrub again.
+                        // Residual rare failure: until a write succeeds the
+                        // skipped secret's plaintext can remain in the file.
                         fileStamp = 0L
                     }
                 }
@@ -503,17 +518,24 @@ class ClipboardStore(
         val merged = items.toMutableList()
         previous.forEach { old ->
             val sameId = merged.indexOfFirst { it.id == old.id }
-            if (sameId >= 0 && sameContent(merged[sameId], old)) {
-                // Preserve a pin or edit made since the last save.
-                merged[sameId] = old
-                kept++
-            } else if (merged.none { sameContent(it, old) }) {
-                // A different item may share an id with the external store;
-                // give the in-memory copy a fresh id rather than dropping
-                // either one.
-                val id = if (sameId >= 0) nextId++ else old.id
-                merged.add(old.copy(id = id))
-                kept++
+            // An edit made since the last save wins for the same id, even when
+            // its content differs from what the external write holds. A new
+            // in-memory clip that merely reused an external id is not an edit:
+            // it is renumbered below rather than replacing the external clip.
+            val inMemoryWins = sameId >= 0 &&
+                (sameContent(merged[sameId], old) || old.editedAt != null)
+            when {
+                inMemoryWins -> {
+                    merged[sameId] = old
+                    kept++
+                }
+                merged.none { sameContent(it, old) } -> {
+                    // A clip the external store does not have at all is kept
+                    // alongside the file's clips.
+                    val id = if (sameId >= 0) nextId++ else old.id
+                    merged.add(old.copy(id = id))
+                    kept++
+                }
             }
         }
         if (kept > 0) {
@@ -866,23 +888,7 @@ class ClipboardStore(
      * Returns whether anything changed, so the caller saves only then.
      */
     @Synchronized
-    fun clearSensitive(): Boolean {
-        var changed = secrets.clear()
-        // Legacy clear-list entries can still carry the flag after a downgrade.
-        // They are dropped, never unmasked: making a secret persistent is the
-        // one thing this method must not do.
-        val legacy = items.filter { it.sensitive }
-        if (legacy.isNotEmpty()) {
-            items.removeAll { it.sensitive }
-            legacy.forEach { item ->
-                removedIds.add(item.id)
-                dirtyIds.remove(item.id)
-                item.imagePath?.let { File(it).delete() }
-            }
-            changed = true
-        }
-        return changed
-    }
+    fun clearSensitive(): Boolean = secrets.clear()
 
     /** Drops every fetched preview, e.g. when the user turns previews off. */
     @Synchronized
@@ -1097,10 +1103,7 @@ class ClipboardStore(
                 // clear; a newer non-empty file is merged with the clips changed
                 // since the last save, so neither side loses an edit.
                 val storeFile = storageFile
-                val missing = storeFile != null && !storeFile.exists() && fileStamp > 0
-                val emptied = storeFile != null && storeFile.exists() &&
-                    storeFile.length() == 0L && fileStamp > 0
-                if (missing || emptied) {
+                if (storeFile != null && isExternallyCleared(storeFile)) {
                     clearFromExternal()
                 } else {
                     val external = storeFile?.lastModified() ?: 0

@@ -157,11 +157,30 @@ class SnapshotFile(val file: File) {
 
         /**
          * API 24/25: java.nio.file is API 26+, so rename without it. renameTo
-         * may refuse to replace an existing target, so delete and retry once.
+         * may refuse to replace an existing target, so move the old file aside,
+         * rename the part in, and put the original back if that fails. The old
+         * file is never deleted before the replacement succeeds.
          */
         private fun replaceLegacy(part: File, file: File) {
             if (part.renameTo(file)) return
-            if (file.delete() && part.renameTo(file)) return
+            if (!file.exists()) {
+                part.delete()
+                throw java.io.IOException("Could not replace ${file.absolutePath}")
+            }
+            // Preserve the original until the replacement has landed.
+            val backup = File(file.parentFile, file.name + "." + java.util.UUID.randomUUID() + ".bak")
+            if (!file.renameTo(backup)) {
+                part.delete()
+                throw java.io.IOException("Could not replace ${file.absolutePath}")
+            }
+            if (part.renameTo(file)) {
+                backup.delete()
+                return
+            }
+            // The replacement failed: restore the original we moved aside.
+            // If even that rename fails, leave the backup file in place rather
+            // than losing the store's data.
+            backup.renameTo(file)
             part.delete()
             throw java.io.IOException("Could not replace ${file.absolutePath}")
         }
