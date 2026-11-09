@@ -194,6 +194,7 @@
     <string name="about_bundled_ct2_used">Runs the NLLB-200 translation model on the device (native library, 64-bit phones)</string>
     <string name="about_bundled_ct2_libs_used">Built into the CTranslate2 native library</string>
     <string name="about_pack_nllb_used">The translation model for the NLLB engine, 200 languages, downloaded from Hugging Face after you accept its non-commercial licence</string>
+    <string name="about_pack_de_context_used">The German on-device context model behind next-word, autocorrect and glide ranking; trained on Tatoeba, Leipzig News and an OpenSubtitles chat sample, so the model is non-commercial</string>
     <string name="about_pack_firefox_translations_used">Translation models for the Bergamot engine, downloaded per language direction from Mozilla</string>
     <string name="about_bundled_rust_crates_used">The libraries that the grammar library depends on</string>
     <string name="about_bundled_tesseract_used">Reads text in most scripts for the text scanner (native library)</string>

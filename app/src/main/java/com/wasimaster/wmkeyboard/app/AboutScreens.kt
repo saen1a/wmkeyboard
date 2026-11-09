@@ -1061,6 +1061,15 @@ private val dataPackAttributions: List<Attribution> = buildList {
         "CC BY-NC 4.0", "cc-by-nc-4.0.txt",
         "https://huggingface.co/facebook/nllb-200-distilled-600M",
     ))
+    // The German context model's card records the same non-commercial terms:
+    // Tatoeba/Leipzig/OpenSubtitles, CC BY-NC 4.0.
+    add(Attribution(
+        "German context model (de_context.wmlm)",
+        R.string.about_pack_de_context_used,
+        "Tatoeba (CC BY 2.0 FR/CC0), Leipzig Corpora Collection, OpenSubtitles/OPUS (Lison & Tiedemann 2016)",
+        "CC BY-NC 4.0", "cc-by-nc-4.0.txt",
+        "https://github.com/wasi-master/wmkeyboard-data/blob/main/data/de/de_context.md",
+    ))
     add(Attribution(
         "Frequency wordlists",
         R.string.about_pack_wordlists_used,
