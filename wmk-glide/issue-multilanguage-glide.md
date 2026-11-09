@@ -38,6 +38,13 @@ The current policy and the data behind it:
 - `WordSource.wordCount` selects the size class; `CompositeWordSource` sums its
   members, `PackedTrie` counts once, `MappedTrie` reads the file header.
 
+Prototype status (local `glide-engine` branch, not pushed): the mid-swipe
+preview/lift split (2,000 / 8,192 preview, 4,000 / 12,288 lift), the versioned
+JNI tuning envelope with a `glideTuningVersion` capability check, and the
+`walkSources` cache keyed by `generation` + user-lexicon mutation count are now
+in the prototype. The measurements below are the pre-split full-lift numbers
+unless noted.
+
 ## Additional Information
 
 ### Measurements
@@ -138,6 +145,12 @@ branch, commits `f813ad8d0`, `735e0bb7a`, `429985bab`, `5328c6d8c`; not pushed):
 - [ ] **Native library and parity.** Rebuild the Android `.so` and run
       `NativeGlideParityTest`; the prototype's Rust cache and budget constants
       are not in the checked-in library yet.
+- [x] **Preview/lift split (prototype).** Preview 2,000 / 8,192, lift
+      4,000 / 12,288; the single-stroke and duet preview paths are wired.
+- [x] **Versioned tuning envelope (prototype).** `glideTuningVersion`
+      capability check; old 30/32-value arrays still accepted.
+- [x] **Source cache (prototype).** `walkSources` keyed by `generation` and
+      `userLexicon.mutationCount()`.
 - [ ] **Word-count wrappers.** `WordSource` reports 0 for a source that cannot
       say; confirm every active dictionary path is `PackedTrie`,
       `MappedTrie` or `CompositeWordSource`.

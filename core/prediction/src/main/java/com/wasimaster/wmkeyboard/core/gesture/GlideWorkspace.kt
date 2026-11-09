@@ -100,6 +100,9 @@ class GlideWorkspace {
          * real German swipes reached 8192 again: 12,288 lifted top-1 from
          * 75.81 to 76.31 and top-64 coverage from 87.13 % to 87.75 %; 16,384
          * gained nothing more on the same set.
+         *
+         * This is the final lift's frontier; a mid-swipe preview frame runs
+         * with 8,192 states (see `SuggestionEngine.GLIDE_PREVIEW_STATES`).
          */
         const val MAX_STATES = 12288
 

@@ -71,7 +71,10 @@ fn number(v: &serde_json::Value, key: &str) -> f32 {
 /// dataset's QWERTY (`GlideRealSwipeEval` reads it the same way), an
 /// eleventh on its German layout.
 fn key_width(canvas_width: f32) -> f32 {
-    let cols: f32 = std::env::var("COLS").ok().and_then(|v| v.parse().ok()).unwrap_or(10.0);
+    let cols: f32 = std::env::var("COLS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(10.0);
     canvas_width / cols
 }
 
@@ -114,6 +117,8 @@ fn set(t: &mut Tuning, name: &str, value: f64) {
         "join_cost" => t.join_cost = value,
         "join_min_part" => t.join_min_part = value as i32,
         "join_part_penalty" => t.join_part_penalty = value,
+        "max_pops" => t.max_pops = (value.max(1.0)) as usize,
+        "max_states" => t.max_states = (value.max(1.0)) as usize,
         _ => panic!("no tuning field {name}"),
     }
 }
@@ -131,12 +136,21 @@ struct Tally {
     short_top1: usize,
     long_n: usize,
     long_top1: usize,
+    /// Search diagnostics (`STATS=1`): summed over the strokes that decoded.
+    stats_n: usize,
+    pops_sum: u64,
+    pops_max: usize,
+    read_sum: u64,
+    read_max: usize,
+    states_sum: u64,
+    saturated: usize,
 }
 
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let layout_json: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(&args[2]).expect("layout")).expect("layout json");
+        serde_json::from_str(&std::fs::read_to_string(&args[2]).expect("layout"))
+            .expect("layout json");
     let layout: Vec<(i32, f32, f32)> = layout_json["keys"]
         .as_array()
         .expect("keys")
@@ -153,15 +167,33 @@ fn main() {
         known.insert(word.to_lowercase());
         trie.insert(&word, frequency);
     }
-    let skip = std::env::var("SKIP").ok().and_then(|v| v.parse().ok()).unwrap_or(0usize);
-    let limit = std::env::var("LIMIT").ok().and_then(|v| v.parse().ok()).unwrap_or(usize::MAX);
-    let threads = std::env::var("THREADS").ok().and_then(|v| v.parse().ok()).unwrap_or(8usize);
+    let skip = std::env::var("SKIP")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0usize);
+    let limit = std::env::var("LIMIT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(usize::MAX);
+    let threads = std::env::var("THREADS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(8usize);
     let all = std::env::var("ALL").is_ok_and(|v| v == "1");
-    let results = std::env::var("RESULTS").ok().and_then(|v| v.parse().ok()).unwrap_or(4usize).max(1);
+    let results = std::env::var("RESULTS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(4usize)
+        .max(1);
     let dump = std::env::var("DUMP").ok().filter(|p| !p.is_empty());
+    let stats_on = std::env::var("STATS").is_ok_and(|v| v == "1");
     // `ONE_LETTER=1` keeps the swipes for one-letter words, which sentences
     // are full of.
-    let min_letters = if std::env::var("ONE_LETTER").is_ok_and(|v| v == "1") { 1 } else { 2 };
+    let min_letters = if std::env::var("ONE_LETTER").is_ok_and(|v| v == "1") {
+        1
+    } else {
+        2
+    };
     let file = std::io::BufReader::new(std::fs::File::open(&args[1]).expect("records"));
     let records: Vec<Record> = file
         .lines()
@@ -169,19 +201,34 @@ fn main() {
         .filter_map(|line| {
             let v: serde_json::Value = serde_json::from_str(&line).ok()?;
             let word = v["word"].as_str()?.to_lowercase();
-            if word.chars().count() < min_letters || !word.chars().all(char::is_alphabetic) || (!all && !known.contains(&word)) {
+            if word.chars().count() < min_letters
+                || !word.chars().all(char::is_alphabetic)
+                || (!all && !known.contains(&word))
+            {
                 return None;
             }
             let (width, height) = (number(&v, "canvas_width"), number(&v, "canvas_height"));
             let points = v["data"]
                 .as_array()?
                 .iter()
-                .map(|p| Point { x: number(p, "x") * width, y: number(p, "y") * height, t: p["t"].as_i64().unwrap_or(0) })
+                .map(|p| Point {
+                    x: number(p, "x") * width,
+                    y: number(p, "y") * height,
+                    t: p["t"].as_i64().unwrap_or(0),
+                })
                 .collect();
             let session = v["session"].as_str().unwrap_or("").to_string();
             let sentence = v["sentence"].as_str().unwrap_or("").to_string();
             let word_idx = v["word_idx"].as_i64().unwrap_or(-1);
-            Some(Record { word, session, sentence, word_idx, width, height, points })
+            Some(Record {
+                word,
+                session,
+                sentence,
+                word_idx,
+                width,
+                height,
+                points,
+            })
         })
         .skip(skip)
         .take(limit)
@@ -205,20 +252,52 @@ fn main() {
                 .map(|part| {
                     let (trie, layout, known) = (&trie, &layout, &known);
                     scope.spawn(move || {
-                        let sources = [Source { walker: trie, log_weight: 0.0, tier: Tier::Dictionary, min_frequency: 0 }];
+                        let sources = [Source {
+                            walker: trie,
+                            log_weight: 0.0,
+                            tier: Tier::Dictionary,
+                            min_frequency: 0,
+                        }];
                         let mut decoder = Decoder::new(tuning.clone());
                         let mut t = Tally::default();
                         let mut lines: Vec<String> = Vec::new();
                         for r in part {
                             let keys = keymap(layout, r.width, r.height);
-                            let out = decoder.decode(&r.points, &keys, key_width(r.width), &sources, results, None, 0);
-                            let words: Vec<String> = out.iter().map(|c| String::from_utf16_lossy(&c.word).to_lowercase()).collect();
+                            let out = decoder.decode(
+                                &r.points,
+                                &keys,
+                                key_width(r.width),
+                                &sources,
+                                results,
+                                None,
+                                0,
+                            );
+                            if stats_on {
+                                let s = decoder.last_stats;
+                                t.stats_n += 1;
+                                t.pops_sum += s.pops as u64;
+                                t.pops_max = t.pops_max.max(s.pops);
+                                t.read_sum += s.read as u64;
+                                t.read_max = t.read_max.max(s.read);
+                                t.states_sum += s.states as u64;
+                                t.saturated += s.saturated as usize;
+                            }
+                            let words: Vec<String> = out
+                                .iter()
+                                .map(|c| String::from_utf16_lossy(&c.word).to_lowercase())
+                                .collect();
                             let hit = words.first() == Some(&r.word);
                             if dump_on {
                                 let top = words.first().map(String::as_str).unwrap_or("-");
                                 let pool = out
                                     .iter()
-                                    .map(|c| format!("{}:{:.6}", String::from_utf16_lossy(&c.word).to_lowercase(), c.score))
+                                    .map(|c| {
+                                        format!(
+                                            "{}:{:.6}",
+                                            String::from_utf16_lossy(&c.word).to_lowercase(),
+                                            c.score
+                                        )
+                                    })
                                     .collect::<Vec<_>>()
                                     .join("|");
                                 lines.push(format!(
@@ -247,7 +326,11 @@ fn main() {
             handles.into_iter().map(|h| h.join().unwrap()).collect()
         });
         if let Some(path) = &dump {
-            let text: String = tallies.iter().flat_map(|(_, lines)| lines.iter()).map(|l| format!("{l}\n")).collect();
+            let text: String = tallies
+                .iter()
+                .flat_map(|(_, lines)| lines.iter())
+                .map(|l| format!("{l}\n"))
+                .collect();
             std::fs::write(path, text).expect("dump");
         }
         let mut t = Tally::default();
@@ -259,6 +342,13 @@ fn main() {
             t.short_top1 += x.short_top1;
             t.long_n += x.long_n;
             t.long_top1 += x.long_top1;
+            t.stats_n += x.stats_n;
+            t.pops_sum += x.pops_sum;
+            t.pops_max = t.pops_max.max(x.pops_max);
+            t.read_sum += x.read_sum;
+            t.read_max = t.read_max.max(x.read_max);
+            t.states_sum += x.states_sum;
+            t.saturated += x.saturated;
         }
         t
     };
@@ -274,6 +364,18 @@ fn main() {
             f(t.long_top1, t.long_n),
             t.long_n
         );
+        if stats_on && t.stats_n > 0 {
+            println!(
+                "stats n {} mean pops {:.1} max pops {} mean read {:.1} max read {} mean states {:.1} saturated {}",
+                t.stats_n,
+                t.pops_sum as f64 / t.stats_n as f64,
+                t.pops_max,
+                t.read_sum as f64 / t.stats_n as f64,
+                t.read_max,
+                t.states_sum as f64 / t.stats_n as f64,
+                t.saturated
+            );
+        }
         std::io::stdout().flush().ok();
     };
 
@@ -299,7 +401,11 @@ fn walk(from: Point, to: Point, key_width: f32) -> Vec<Point> {
     (1..=steps)
         .map(|i| {
             let f = i as f32 / steps as f32;
-            Point { x: from.x + (to.x - from.x) * f, y: from.y + (to.y - from.y) * f, t: from.t + 8 * i as i64 }
+            Point {
+                x: from.x + (to.x - from.x) * f,
+                y: from.y + (to.y - from.y) * f,
+                t: from.t + 8 * i as i64,
+            }
         })
         .collect()
 }
@@ -311,10 +417,22 @@ fn walk(from: Point, to: Point, key_width: f32) -> Vec<Point> {
 /// before) and with the walk as an open end (what it does now), and the
 /// whole-pair hit rate too.
 fn chained(records: &[Record], layout: &[(i32, f32, f32)], trie: &UserTrie) {
-    let sources = [Source { walker: trie, log_weight: 0.0, tier: Tier::Dictionary, min_frequency: 0 }];
+    let sources = [Source {
+        walker: trie,
+        log_weight: 0.0,
+        tier: Tier::Dictionary,
+        min_frequency: 0,
+    }];
     let mut decoder = Decoder::new(Tuning::default());
-    let (mut n, mut first_plain, mut first_open, mut second_plain, mut second_open, mut both_plain, mut both_open) =
-        (0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
+    let (
+        mut n,
+        mut first_plain,
+        mut first_open,
+        mut second_plain,
+        mut second_open,
+        mut both_plain,
+        mut both_open,
+    ) = (0usize, 0usize, 0usize, 0usize, 0usize, 0usize, 0usize);
     let mut open_tails = 0usize;
     let mut open_heads = 0usize;
     let cy_min = layout.iter().map(|k| k.2).fold(f32::INFINITY, f32::min);
@@ -334,12 +452,31 @@ fn chained(records: &[Record], layout: &[(i32, f32, f32)], trie: &UserTrie) {
         }
         let keys = keymap(layout, a.width, a.height);
         let mut seg1 = a.points.clone();
-        seg1.extend(walk(a_last, Point { x: a_last.x, y: bar_top, t: a_last.t }, kw));
-        let mut seg2 = walk(Point { x: b_first.x, y: bar_top, t: b_first.t - 400 }, b_first, kw);
+        seg1.extend(walk(
+            a_last,
+            Point {
+                x: a_last.x,
+                y: bar_top,
+                t: a_last.t,
+            },
+            kw,
+        ));
+        let mut seg2 = walk(
+            Point {
+                x: b_first.x,
+                y: bar_top,
+                t: b_first.t - 400,
+            },
+            b_first,
+            kw,
+        );
         seg2.pop();
         seg2.extend(b.points.iter().cloned());
         let top = |decoder: &mut Decoder, seg: &[Point]| -> Option<String> {
-            decoder.decode(seg, &keys, kw, &sources, 4, None, 0).first().map(|c| String::from_utf16_lossy(&c.word).to_lowercase())
+            decoder
+                .decode(seg, &keys, kw, &sources, 4, None, 0)
+                .first()
+                .map(|c| String::from_utf16_lossy(&c.word).to_lowercase())
         };
         decoder.open_head = 0;
         decoder.open_tail = 0;
@@ -380,7 +517,10 @@ fn chained(records: &[Record], layout: &[(i32, f32, f32)], trie: &UserTrie) {
 /// Runs of consecutive words of one sentence by one person on one canvas, cut
 /// into phrases of `PHRASE_LEN` words, a trailing single word dropped.
 fn cut_phrases(records: &[Record]) -> Vec<&[Record]> {
-    let len: usize = std::env::var("PHRASE_LEN").ok().and_then(|v| v.parse().ok()).unwrap_or(4);
+    let len: usize = std::env::var("PHRASE_LEN")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(4);
     let mut out: Vec<&[Record]> = Vec::new();
     let mut start = 0;
     for i in 1..=records.len() {
@@ -408,7 +548,10 @@ struct Lcg(u64);
 
 impl Lcg {
     fn next(&mut self) -> f32 {
-        self.0 = self.0.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+        self.0 = self
+            .0
+            .wrapping_mul(6364136223846793005)
+            .wrapping_add(1442695040888963407);
         ((self.0 >> 33) as f32 / (1u64 << 31) as f32) - 0.5
     }
 }
@@ -418,7 +561,14 @@ impl Lcg {
 /// zero): a quadratic curve that carries that momentum for about four tenths
 /// of a key, a third of a key per sample, with a little jitter. `at` itself
 /// is not in the result; the bar end is.
-fn curved_walk(at: Point, heading: (f32, f32), to: (f32, f32), kw: f32, step_ms: i64, rng: &mut Lcg) -> Vec<Point> {
+fn curved_walk(
+    at: Point,
+    heading: (f32, f32),
+    to: (f32, f32),
+    kw: f32,
+    step_ms: i64,
+    rng: &mut Lcg,
+) -> Vec<Point> {
     let d = ((to.0 - at.x).powi(2) + (to.1 - at.y).powi(2)).sqrt();
     let steps = ((d / (kw * 0.33)).ceil() as usize).max(2);
     let control = (at.x + heading.0 * kw * 0.4, at.y + heading.1 * kw * 0.4);
@@ -450,7 +600,15 @@ fn heading(a: Point, b: Point) -> (f32, f32) {
 /// One word's stroke as a chained stroke's segment reaches the decoder: with
 /// a walk from the bar in front of it unless it is the phrase's first, and a
 /// walk to the bar after it unless it is the last.
-fn chained_segment(r: &Record, first: bool, last: bool, kw: f32, bar_top: f32, real: bool, rng: &mut Lcg) -> (Vec<Point>, usize, usize) {
+fn chained_segment(
+    r: &Record,
+    first: bool,
+    last: bool,
+    kw: f32,
+    bar_top: f32,
+    real: bool,
+    rng: &mut Lcg,
+) -> (Vec<Point>, usize, usize) {
     let mut pts = r.points.clone();
     // The bar spans the middle five keys; a finger makes for the near end of
     // it, a little inside, or straight down when it is already above it.
@@ -469,7 +627,10 @@ fn chained_segment(r: &Record, first: bool, last: bool, kw: f32, bar_top: f32, r
     }
     if !first && real {
         let start = pts[0];
-        let keep = pts.iter().position(|p| ((p.x - start.x).powi(2) + (p.y - start.y).powi(2)).sqrt() >= trim).unwrap_or(0);
+        let keep = pts
+            .iter()
+            .position(|p| ((p.x - start.x).powi(2) + (p.y - start.y).powi(2)).sqrt() >= trim)
+            .unwrap_or(0);
         if pts.len() - keep >= 4 {
             pts.drain(..keep);
         }
@@ -486,7 +647,15 @@ fn chained_segment(r: &Record, first: bool, last: bool, kw: f32, bar_top: f32, r
             back.reverse();
             out.extend(back);
         } else {
-            let mut up = walk(Point { x: start.x, y: bar_top, t: start.t - 400 }, start, kw);
+            let mut up = walk(
+                Point {
+                    x: start.x,
+                    y: bar_top,
+                    t: start.t - 400,
+                },
+                start,
+                kw,
+            );
             up.pop();
             out.extend(up);
         }
@@ -498,9 +667,24 @@ fn chained_segment(r: &Record, first: bool, last: bool, kw: f32, bar_top: f32, r
         let end = *pts.last().unwrap();
         if real {
             let out_dir = heading(pts[pts.len().saturating_sub(4)], end);
-            out.extend(curved_walk(end, out_dir, (bar_x(end.x), bar_top), kw, 16, rng));
+            out.extend(curved_walk(
+                end,
+                out_dir,
+                (bar_x(end.x), bar_top),
+                kw,
+                16,
+                rng,
+            ));
         } else {
-            out.extend(walk(end, Point { x: end.x, y: bar_top, t: end.t }, kw));
+            out.extend(walk(
+                end,
+                Point {
+                    x: end.x,
+                    y: bar_top,
+                    t: end.t,
+                },
+                kw,
+            ));
         }
     }
     let walked_tail = out.len() - drawn;
@@ -512,7 +696,12 @@ fn before(r: &Record) -> Vec<String> {
     r.sentence
         .split_whitespace()
         .take(r.word_idx.max(0) as usize)
-        .map(|w| w.chars().filter(|c| c.is_alphabetic() || *c == '\'').collect::<String>().to_lowercase())
+        .map(|w| {
+            w.chars()
+                .filter(|c| c.is_alphabetic() || *c == '\'')
+                .collect::<String>()
+                .to_lowercase()
+        })
         .collect()
 }
 
@@ -537,13 +726,24 @@ struct PhraseTally {
     by_len: [(usize, usize); 7],
 }
 
-fn phrases(records: &[Record], layout: &[(i32, f32, f32)], trie: &UserTrie, threads: usize, results: usize, dump: Option<&str>) {
+fn phrases(
+    records: &[Record],
+    layout: &[(i32, f32, f32)],
+    trie: &UserTrie,
+    threads: usize,
+    results: usize,
+    dump: Option<&str>,
+) {
     let real = std::env::var("WALK").map_or(true, |w| w != "straight");
     // `ORACLE=1` hands the decoder the walks' true lengths: what a perfect
     // `open_run` could reach.
     let oracle = std::env::var("ORACLE").is_ok_and(|v| v == "1");
     let cut = cut_phrases(records);
-    eprintln!("{} phrases, walk {}", cut.len(), if real { "real" } else { "straight" });
+    eprintln!(
+        "{} phrases, walk {}",
+        cut.len(),
+        if real { "real" } else { "straight" }
+    );
     let cy_min = layout.iter().map(|k| k.2).fold(f32::INFINITY, f32::min);
     let cy_max = layout.iter().map(|k| k.2).fold(f32::NEG_INFINITY, f32::max);
     let chunk = cut.len().div_ceil(threads).max(1);
@@ -700,22 +900,56 @@ fn phrases(records: &[Record], layout: &[(i32, f32, f32)], trie: &UserTrie, thre
 }
 
 fn keys_centres(layout: &[(i32, f32, f32)], width: f32, height: f32) -> Vec<(char, f32, f32)> {
-    layout.iter().map(|k| (char::from_u32(k.0 as u32).unwrap(), k.1 * width, k.2 * height)).collect()
+    layout
+        .iter()
+        .map(|k| {
+            (
+                char::from_u32(k.0 as u32).unwrap(),
+                k.1 * width,
+                k.2 * height,
+            )
+        })
+        .collect()
 }
 
 /// The one-letter word a segment that is nothing but its walks stands for.
-fn one_letter(seg: &[Point], head: usize, tail: usize, first: bool, last: bool, kw: f32, keys: &[(char, f32, f32)], trie: &UserTrie) -> Option<(String, f64)> {
-    let gate: f32 = std::env::var("ONE_GATE").ok().and_then(|v| v.parse().ok()).unwrap_or(0.6);
+fn one_letter(
+    seg: &[Point],
+    head: usize,
+    tail: usize,
+    first: bool,
+    last: bool,
+    kw: f32,
+    keys: &[(char, f32, f32)],
+    trie: &UserTrie,
+) -> Option<(String, f64)> {
+    let gate: f32 = std::env::var("ONE_GATE")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.6);
     if gate <= 0.0 || (first && last) || (head == 0 && !first) || (tail == 0 && !last) {
         return None;
     }
-    let cost: f64 = std::env::var("ONE_COST").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0);
-    let reach: f32 = std::env::var("ONE_REACH").ok().and_then(|v| v.parse().ok()).unwrap_or(1.0);
+    let cost: f64 = std::env::var("ONE_COST")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1.0);
+    let reach: f32 = std::env::var("ONE_REACH")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1.0);
     // The two walks of a V can meet or overlap: the closed part is what lies
     // between them, or the apex they share.
-    let (from, to) = if head + tail < seg.len() { (head, seg.len() - tail) } else { (seg.len() - tail - 1, head + 1) };
+    let (from, to) = if head + tail < seg.len() {
+        (head, seg.len() - tail)
+    } else {
+        (seg.len() - tail - 1, head + 1)
+    };
     let closed = &seg[from.min(seg.len() - 1)..to.min(seg.len())];
-    let arc: f32 = closed.windows(2).map(|p| ((p[1].x - p[0].x).powi(2) + (p[1].y - p[0].y).powi(2)).sqrt()).sum();
+    let arc: f32 = closed
+        .windows(2)
+        .map(|p| ((p[1].x - p[0].x).powi(2) + (p[1].y - p[0].y).powi(2)).sqrt())
+        .sum();
     if arc > gate * kw {
         return None;
     }

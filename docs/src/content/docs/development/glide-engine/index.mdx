@@ -141,9 +141,9 @@ and the engines.
 | Quantity | Value | Where it comes from |
 |---|---|---|
 | Resampled points per built-in stroke | 48 below 40 key widths, 64 at 40, up to 96 for long words | `GlideWorkspace` |
-| Frontier states per built-in decode | 12,288 | `GlideWorkspace.MAX_STATES` |
+| Frontier states per built-in decode | 12,288 lift / 8,192 preview | `GlideWorkspace.MAX_STATES` |
 | Longest word the built-in decoder spells | 32 letters | `GlideWorkspace.MAX_WORD_LENGTH` |
-| Pop budget per search | 4,000 | `GlideBeam.MAX_POPS` |
+| Pop budget per search | 4,000 lift / 2,000 preview | `GlideBeam.MAX_POPS` |
 | Neural input | 64 points at 60 Hz, 27 classes | `SwipeFrame`, `SwipeEmissions` |
 | Neural beam width | 100, 300 for a deep retry | `NeuralGlide` |
 | Default vocabulary cap | 300,000 words, 0 means all | `GlideVocabulary.LARGE` |

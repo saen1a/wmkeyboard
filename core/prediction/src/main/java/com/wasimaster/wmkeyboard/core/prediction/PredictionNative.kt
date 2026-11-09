@@ -278,6 +278,9 @@ internal object PredictionNative {
     external fun glideKeyMapOpen(keyX: FloatArray, keyY: FloatArray, codePoints: IntArray, keyOf: IntArray): Long
     external fun glideKeyMapClose(handle: Long)
 
+    /** The tuning array layout `glideDecode` reads; 2 is the `[2, count, fields...]` envelope. */
+    external fun glideTuningVersion(): Int
+
     /**
      * One decode, or its walk when [phase] is 1: `[words, doubles, ints]`
      * with each word's score and shape cost in `doubles` and its tier

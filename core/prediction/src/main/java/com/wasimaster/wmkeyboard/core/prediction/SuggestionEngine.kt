@@ -1388,6 +1388,16 @@ class SuggestionEngine(
     private var deepGlideBeam = GlideBeam(languageTuning.copy(vocabularyRank = 0))
 
     /**
+     * The same weights with a smaller per-decode budget, for a stroke still
+     * being drawn: a preview frame is redrawn every few frames, so it may stop
+     * its walk earlier than the lift. Only [glide]'s `preview` path uses it.
+     */
+    @Volatile
+    private var previewGlideBeam = GlideBeam(
+        languageTuning.copy(maxPops = GLIDE_PREVIEW_POPS, maxStates = GLIDE_PREVIEW_STATES),
+    )
+
+    /**
      * The glide engine the user picked in place of [glideBeam] (FUTO Swipe
      * for English on QWERTY, or Google's gesture library they imported), or
      * null for the built-in decoder. The keyboard service sets it before each
@@ -1405,6 +1415,14 @@ class SuggestionEngine(
      */
     @Volatile
     private var duetBeam = DuetBeam(languageTuning)
+    /**
+     * [duetBeam] with the preview budget, for the mid-swipe prefix path of
+     * [glideTokens] (`partial`). The lift keeps the full [duetBeam].
+     */
+    @Volatile
+    private var previewDuetBeam = DuetBeam(
+        languageTuning.copy(maxPops = GLIDE_PREVIEW_POPS, maxStates = GLIDE_PREVIEW_STATES),
+    )
     private val duetWorkspace = ThreadLocal.withInitial { DuetWorkspace() }
 
     /**
@@ -1447,7 +1465,13 @@ class SuggestionEngine(
         languageTuning = tuned
         glideBeam = GlideBeam(tuned)
         deepGlideBeam = GlideBeam(tuned.copy(vocabularyRank = 0))
+        previewGlideBeam = GlideBeam(
+            tuned.copy(maxPops = GLIDE_PREVIEW_POPS, maxStates = GLIDE_PREVIEW_STATES),
+        )
         duetBeam = DuetBeam(tuned)
+        previewDuetBeam = DuetBeam(
+            tuned.copy(maxPops = GLIDE_PREVIEW_POPS, maxStates = GLIDE_PREVIEW_STATES),
+        )
     }
 
     /**
@@ -1597,6 +1621,14 @@ class SuggestionEngine(
         previousWord2: String? = null,
         recentWords: List<String> = emptyList(),
         deep: Boolean = false,
+        /**
+         * The stroke is still being drawn, so this decode may stop at the
+         * preview budget ([GLIDE_PREVIEW_POPS] / [GLIDE_PREVIEW_STATES])
+         * instead of the lift's [GlideBeam.MAX_POPS] /
+         * [GlideWorkspace.MAX_STATES]. Ignored by a [tuning] replay and by the
+         * external engine, which have no preview budget.
+         */
+        preview: Boolean = false,
         previousWord3: String? = null,
         shapes: GlideShapeSource? = null,
         tiers: Set<FuzzyBeamSearch.Tier>? = null,
@@ -1665,6 +1697,7 @@ class SuggestionEngine(
         val beam = when {
             tuning != null -> GlideBeam(tuning)
             deep -> deepGlideBeam
+            preview -> previewGlideBeam
             else -> glideBeam
         }
         fun decodeTo(pool: Int) = beam.decode(
@@ -1799,6 +1832,10 @@ class SuggestionEngine(
      * [partial] asks instead for the spellings the gestures *begin*, for a word
      * still being built that finishes no word yet (#640). Those are not words,
      * so they skip the blacklist, the rerank and the casing; best first.
+     *
+     * [preview] marks a frame of a stroke still being drawn, which is not the
+     * same as [partial]: a mid-swipe frame reads whole spellings too, but must
+     * not spend the full duet budget. A settled read keeps [duetBeam].
      */
     @Suppress("LongParameterList")
     fun glideTokens(
@@ -1811,6 +1848,7 @@ class SuggestionEngine(
         previousWord3: String? = null,
         recentWords: List<String> = emptyList(),
         partial: Boolean = false,
+        preview: Boolean = false,
     ): List<GlideBeam.Candidate> {
         val romanization = glideRomanization
         val sources = if (romanization.isEmpty) {
@@ -1819,7 +1857,7 @@ class SuggestionEngine(
             romanization.walkSources()
         }
         if (sources.isEmpty()) return emptyList()
-        val decoded = duetBeam.decode(
+        val decoded = (if (preview || partial) previewDuetBeam else duetBeam).decode(
             tokens = tokens,
             keys = keys,
             keyWidth = keyWidth,
@@ -2273,12 +2311,17 @@ class SuggestionEngine(
     }
 
     /**
-     * The weighted trie sources one fuzzy walk covers. Built per call —
-     * cheap — with each language's mix confidence read once, not once per
-     * candidate (LanguageMixConfidence is synchronized; per-candidate reads
-     * were the one real lock-contention point on the hot path).
+     * The weighted trie sources one fuzzy walk covers. Rebuilt on
+     * invalidation, not every call: keyed on [generation] and the user
+     * lexicon's mutation count, the same keys [glideContractionSources] and
+     * [glideApostropheSources] use. Each language's mix confidence is read
+     * once per build, not once per candidate (LanguageMixConfidence is
+     * synchronized; per-candidate reads were the one real lock-contention
+     * point on the hot path).
      */
     private fun walkSources(): List<FuzzyBeamSearch.WalkSource> {
+        val stamp = generation.get() to userLexicon.mutationCount()
+        walkSourcesCache?.takeIf { it.stamp == stamp }?.let { return it.sources }
         val sources = ArrayList<FuzzyBeamSearch.WalkSource>()
         fun add(wordSource: WordSource, logWeight: Double, tier: FuzzyBeamSearch.Tier) {
             for (walker in wordSource.walkers()) {
@@ -2299,8 +2342,19 @@ class SuggestionEngine(
                 FuzzyBeamSearch.WalkSource(walker, LOG_USER_WORD_WEIGHT, FuzzyBeamSearch.Tier.USER)
             )
         }
-        return sources
+        // A read-only copy: the local ArrayList is never handed to callers,
+        // so the cached list cannot be mutated behind the cache's back.
+        return sources.toList().also { walkSourcesCache = CachedWalkSources(stamp, it) }
     }
+
+    /** [walkSources]' list with the keys it was built from. */
+    private class CachedWalkSources(
+        val stamp: Pair<Long, Long>,
+        val sources: List<FuzzyBeamSearch.WalkSource>,
+    )
+
+    @Volatile
+    private var walkSourcesCache: CachedWalkSources? = null
 
     /**
      * The dictionary tier of [walkSources], at the weights the mix gives it,
@@ -3205,6 +3259,20 @@ class SuggestionEngine(
          * guess, which is exactly the case a context model is there to fix.
          */
         private const val GLIDE_RERANK_POOL = 8
+
+        /**
+         * Pops a mid-swipe preview frame may spend. A preview is redrawn every
+         * few frames, so it does not need the final lift's [GlideBeam.MAX_POPS];
+         * the smaller backstop keeps a preview from competing with the
+         * keystroke it precedes. The lift always uses the full budget.
+         */
+        private const val GLIDE_PREVIEW_POPS = 2000
+
+        /**
+         * Frontier states a mid-swipe preview frame may hold, against the
+         * lift's [GlideWorkspace.MAX_STATES]. See [GLIDE_PREVIEW_POPS].
+         */
+        private const val GLIDE_PREVIEW_STATES = 8192
 
         /**
          * Completions read per source when a lift finishes a word early

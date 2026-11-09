@@ -91,8 +91,8 @@ their selection bias and the calibration gap are on
 | Resource | Bound | Why |
 |---|---|---|
 | Samples per stroke | 48 to 96 | Long compounds need more than 48; every stroke does not need 96 |
-| Frontier states | 12,288 | 3,072 saturated on long German strokes; at the 4,000-pop budget, 8,192 bound again and 12,288 recovered another 0.50 top-1 on the counted list |
-| Pops | 4,000 | A backstop; raising it from 2,000 recovered 0.35 top-1 on the counted list and 0.15 on the AOSP list, and only runs where the walk would otherwise stop |
+| Frontier states | 12,288 lift / 8,192 preview | 3,072 saturated on long German strokes; at the 4,000-pop lift budget, 8,192 bound again and 12,288 recovered another 0.50 top-1 on the counted list. A mid-swipe preview uses the old 8,192; the lift uses 12,288. |
+| Pops | 4,000 lift / 2,000 preview | A backstop; raising it from 2,000 recovered 0.35 top-1 on the counted list and 0.15 on the AOSP list, and only runs where the walk would otherwise stop. Preview frames stay at 2,000; the lift gets 4,000. |
 | Word length | 32 letters | A 26-letter compound has to fit |
 | Candidate pool | 8, 16 deep | The strip cannot show more, and the rerank needs a little depth |
 | Shapes per word | 3 by default, 20 at most | A hand changes; a fixed average freezes |
@@ -109,7 +109,7 @@ and it is why seeding can be considered at all on the decode thread.
 |---|---|---|---|
 | Accuracy | Real-stroke floor, parity, context rerank | A corpus shift rewards the wrong weight | This page, [pipeline](/development/glide-engine/pipeline/) |
 | Latency | Decode off the main thread, bounded frontier, preview generation guard | A late preview overwrites the strip; a long list blows the frame budget | [runtime](/development/glide-engine/runtime/) |
-| Memory | Up to ~4.5 MB frontier ceiling, 10,000-word shape cap, 500-entry reading buffer | Low-end devices pay for a long stroke; the frontier grows only when the stroke needs it | [state and data](/development/glide-engine/state-and-data/) |
+| Memory | Up to ~4.5 MB lift frontier (~3 MB preview), 10,000-word shape cap, 500-entry reading buffer | Low-end devices pay for a long stroke; the frontier grows only when the stroke needs it | [state and data](/development/glide-engine/state-and-data/) |
 | Privacy | No network on the decode path; stores are local | `GlideOutcomes` and the shape store contain words, not anonymous counters | [state and data](/development/glide-engine/state-and-data/) |
 | Availability | Built-in engine is the fallback for every external engine | A missing native library or model must degrade to a word, not an error | [languages and engines](/development/glide-engine/languages-and-engines/) |
 | Maintainability | Kotlin reference and native parity tests | Constants drift silently between the two implementations | [decisions](/development/glide-engine/decisions/) |

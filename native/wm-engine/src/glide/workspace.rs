@@ -137,6 +137,9 @@ pub struct Workspace {
     pub ideal_x: [f32; MAX_IDEAL_POINTS + 1],
     pub ideal_y: [f32; MAX_IDEAL_POINTS + 1],
     pub saturated: bool,
+    /// The frontier cap for the current decode: [`MAX_STATES`] unless the
+    /// caller asks for a smaller per-decode backstop. `push` refuses past it.
+    pub max_states: usize,
 }
 
 impl Workspace {
@@ -207,6 +210,7 @@ impl Workspace {
             ideal_x: [0.0; MAX_IDEAL_POINTS + 1],
             ideal_y: [0.0; MAX_IDEAL_POINTS + 1],
             saturated: false,
+            max_states: MAX_STATES,
         }
     }
 
@@ -271,7 +275,7 @@ impl Workspace {
         bound: f64,
         letter_cp: i32,
     ) -> Option<usize> {
-        if self.node.len() >= MAX_STATES {
+        if self.node.len() >= self.max_states.max(1) {
             self.saturated = true;
             return None;
         }
