@@ -65,6 +65,27 @@ class GlideLanguageProfilesTest {
     }
 
     @Test
+    fun `finnish uses the measured weights and leaves joins off`() {
+        val fi = GlideLanguageProfiles.forLanguage("fi")
+        assertEquals(0.75, fi.freqWeight, 0.0)
+        assertEquals(0.75, fi.freqWeightWithContext, 0.0)
+        assertEquals(2.0f, fi.gapWeight, 0.0f)
+        // The a-z slice moved 0/1,000 outcomes with joins on, and the app's
+        // join path uses a different downloaded lexicon, so joins stay off.
+        assertEquals(Double.POSITIVE_INFINITY, fi.joinCost, 0.0)
+        assertEquals(GlideBeam.Tuning.DEFAULT.joinMinPart, fi.joinMinPart)
+        assertEquals(GlideBeam.Tuning.DEFAULT.joinPartPenalty, fi.joinPartPenalty, 0.0)
+        // No Finnish context model ships, so the glide blend stays off on both
+        // list sizes and a model-aware decode keeps the same weights.
+        assertEquals(0.0, fi.glideLmBlend, 0.0)
+        assertEquals(0.0, fi.glideLmBlendLargeList, 0.0)
+        val without = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "fi")
+        val with = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "fi", hasContext = true)
+        assertEquals(without, with)
+        assertEquals(0.75, without.freqWeight, 0.0)
+    }
+
+    @Test
     fun `mixed german with a context model resolves to the shipped weights`() {
         val mixed = GlideLanguageProfiles.tune(
             GlideBeam.Tuning.DEFAULT, "de", mixed = true, hasContext = true,

@@ -89,6 +89,7 @@ so an English frequency weight outvotes the shape for German.
 |---|---|---|---|---|---|
 | Default | 1.0 | 1.33 | infinity | 3 | 0.0 |
 | German | 0.75 | 2.0 | 8.0 | 4 | 0.1 |
+| Finnish | 0.75 | 2.0 | infinity | 3 | 0.0 |
 | English | 1.0 | 1.33 | infinity | 3 | 0.0 |
 
 The merged profile uses `freqWeight` 0.75, fitted on the AOSP German list
@@ -101,6 +102,17 @@ out-of-fold check on the same 2,588 swipes put fixed 0.5 over 0.75 by
 **+1.20 pp** top-1 (42/11 paired, p = 2.25e-5, cluster CI [+0.65, +1.78]);
 top-4 is flat. English and mixed fields keep their own weights; do not copy
 either number to another language.
+
+Finnish is the first compounding row measured on its own strokes rather than
+copied from German: 1,000 single-finger a-z swipes drawn from HeliBoard's
+Finnish gesture data (CC BY-SA 4.0), over the app-preferred `fi_aosp` list.
+The German-style 0.75/2.0 pair lifts top-1 from 72.80 % to 76.90 % and top-4
+from 91.30 % to 95.10 % — paired +4.10 / +3.80 pp, CI [+2.70, +5.60] /
+[+2.70, +5.00]. A join guard at 8 / 4 / 0.1 moved 0 of 1,000 outcomes, and the
+app reads joins through a separate downloaded compound lexicon this slice did
+not exercise, so the shipped row leaves joins off. Finnish ships no context
+model either, so the weight is 0.75 with and without one. Dutch, Swedish and
+Norwegian are the next compounding candidates and each needs its own run.
 
 The glide context blend is opt-in per language **and list size**. German keeps
 0.5/5.0 with pieces on both the AOSP and counted lists. English uses 0.7/3.0

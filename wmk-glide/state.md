@@ -514,10 +514,16 @@ Deutsch (MIT, `content/2018/de/de_full.txt`). Details und `curl`-Zeilen im Issue
   without the model, 0.5 with it; OOF +1.20 pp top-1); on-device remains;
   (6) multilingual audit done: English small kept, large listed-only
   non-negative (p=0.121), FUTO has no fi/nl/sv/no/da/et/hu/tr strokes or
-  layouts, bn_rom has no corpus/layout, HeliBoard is the compounding
-  alternative, safe defaults confirmed; (7) the CTC first slice is blocked on
-  ExecuTorch, the encoder/HeliBoard assets, the two scripts and a pinned
-  baseline.
+  layouts, bn_rom has no corpus/layout; the first HeliBoard compounding run is
+  Finnish (1,000 a-z, +4.10/+3.80 pp, joins off because the app lexicon path
+  was not exercised, no model) and the row ships; Dutch/Swedish/Norwegian/
+  Danish/Estonian/Hungarian/Turkish still use the defaults; (7) the CTC first
+  slice is blocked on ExecuTorch, the encoder/HeliBoard assets, the two scripts
+  and a pinned baseline; (8) upstream `github/main` `7b4f13a87` (151 commits)
+  is merged in the worktree, including the upstream glide fixes
+  (`GlideOutcomes` corrections, apostrophe-over-wrong-glide learning, Khipro
+  spellings); the three `.so` were rebuilt from the merged source with
+  `glideTuningVersion` and `punctPredict`.
 - Das Issue **#966 ist gepostet**; der Nachtrag-Kommentar
   (`issue-966-followup.md`) und der deutsche `.wmlm`-Feature-Request
   (`issue-german-wmlm.md`) sind **noch nicht gepostet**. Neue Upstream-Issues/-Kommentare

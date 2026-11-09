@@ -1,3 +1,8 @@
+//! STALE RESEARCH COPY. The maintained harness is
+//! `native/wm-engine/examples/glide_lm_blend_eval.rs`; this copy keeps the
+//! historical German slice only. Both blend on empty context (BOS), as the app
+//! does; do not read a harness/app gap from this file.
+//!
 //! The glide pool re-ranked by a real `.wmlm` in score space, the way
 //! `SuggestionEngine.blendGlideContextModel` does it: score + clamp(w*(lp-lp_leader)).
 //!
@@ -99,8 +104,10 @@ fn main() {
                     let mut blend_top1 = false;
                     #[allow(unused_assignments)]
                     let mut blend_top4 = false;
-                    if !ctx.is_empty() && blended.len() > 1 {
+                    if !ctx.is_empty() {
                         with_prev += 1;
+                    }
+                    if blended.len() > 1 {
                         session.set_context(Prefix::default(), &ctx);
                         // Same pool and reference as the app: the 8-16
                         // candidates the strip can show, scored through their

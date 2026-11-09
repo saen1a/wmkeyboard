@@ -37,8 +37,8 @@ package com.wasimaster.wmkeyboard.core.gesture
  *     + joinCost 3.0, no guard                 70.63 %
  *     + joinCost 8.0, 4 letters, penalty 0.1   74.61 %
  *
- * Start with German; the compounding languages (Finnish, Dutch, Swedish,
- * Norwegian) are the next candidates, one harness run each
+ * German and Finnish have measured rows; Dutch, Swedish and Norwegian are
+ * the next candidates, one harness run each
  * (`native/wm-engine/examples/glide_beam_eval`, `COLS` set to the layout's
  * columns). A language with no row here decodes with the defaults, and the
  * English output is unchanged to the bit.
@@ -167,6 +167,26 @@ object GlideLanguageProfiles {
     )
 
     /**
+     * Finnish: the first compounding row measured on real HeliBoard strokes
+     * rather than copied from German. On 1,000 single-finger a-z swipes drawn
+     * from HeliBoard's Finnish gesture data (seed 20261109, 12 canvases) over
+     * the app-preferred `fi_aosp` list, the German-style 0.75/2.0 pair lifts
+     * top-1 from 72.80 % to 76.90 % and top-4 from 91.30 % to 95.10 % (paired
+     * +4.10 / +3.80 pp, CI [+2.70, +5.60] / [+2.70, +5.00]). The join guard
+     * moved 0 of 1,000 outcomes, and the app resolves joins through a separate
+     * downloaded compound lexicon this slice did not exercise, so the shipped
+     * row leaves joins off. No Finnish context model ships either, so
+     * [freqWeightWithContext] inherits 0.75.
+     */
+    val FINNISH = Profile(
+        freqWeight = 0.75,
+        gapWeight = 2.0f,
+        joinCost = GlideBeam.Tuning.DEFAULT.joinCost,
+        joinMinPart = GlideBeam.Tuning.DEFAULT.joinMinPart,
+        joinPartPenalty = GlideBeam.Tuning.DEFAULT.joinPartPenalty,
+    )
+
+    /**
      * English: the decoder defaults are its fit. The small bundled list uses
      * 0.7/3.0 with pieces: +4.9 top-1 on the original 2,129/1,824 hard slice,
      * +3.25 on the full 26,523 public set. The large list uses 0.5/5.0 on
@@ -193,6 +213,7 @@ object GlideLanguageProfiles {
     private val BY_LANGUAGE: Map<String, Profile> = mapOf(
         "de" to GERMAN,
         "en" to ENGLISH,
+        "fi" to FINNISH,
     )
 
     /**

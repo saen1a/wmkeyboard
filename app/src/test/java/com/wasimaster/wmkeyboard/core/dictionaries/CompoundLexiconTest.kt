@@ -32,5 +32,9 @@ class CompoundLexiconTest {
         assertTrue(CompoundLexiconDownloads.supports("de"))
         assertTrue(CompoundLexiconDownloads.supports("de-DE"))
         assertFalse(CompoundLexiconDownloads.supports("en"))
+        // Finnish moves frequency/gap only; its join row is off until the
+        // app's compound-lexicon path is measured.
+        assertFalse(CompoundLexiconDownloads.supports("fi"))
+        assertFalse(CompoundLexiconDownloads.supports("fi-FI"))
     }
 }

@@ -130,9 +130,11 @@ regressing English.
 3. Ask the user to tune the weights by hand.
 
 **Decision outcome.** Option 2. German moves the frequency and gap weights and
-enables a compound reading with a minimum part length and a join charge. Every
-other language keeps the shipped defaults. A profile changes only the weights no
-setting reaches. The exact values are in the
+enables a compound reading with a minimum part length and a join charge.
+Finnish followed on its own HeliBoard slice (same frequency and gap weights,
+joins still off, no context model). Every other language keeps the shipped
+defaults. A profile changes only the weights no setting reaches. The exact
+values are in the
 [languages profile table](/development/glide-engine/languages-and-engines/#language-profiles).
 
 **Consequences.** German gains on both ordinary and rare words in the measured
@@ -141,7 +143,8 @@ applied to it. The cost is a second set of numbers to keep documented.
 
 **Confirmation.** The measured table on the
 [languages page](/development/glide-engine/languages-and-engines/) and the
-`GlideLanguageProfilesTest`. A new compounding language needs its own run.
+`GlideLanguageProfilesTest`. A new compounding language needs its own run;
+Finnish's is recorded in `wmk-glide/experiments/finnish-profile.md`.
 
 ## 5. Look-ahead ships off, in confidence tiers
 

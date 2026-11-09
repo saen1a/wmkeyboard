@@ -23,10 +23,20 @@ list takes the large listed-only path 0.5/5.0.
 - Large listed-only is **non-negative, not proven**: +0.20 pp, CI [-0.05,
   +0.44], p = 0.121; the bundled-known subset is +0.41, CI [+0.15, +0.66],
   p = 0.0022. Do not present +0.20 as a gain.
-- Harness/app gap: 2,650/26,523 strokes (10.0%) have `word_idx=0`; the harness
-  skips the blend, the app would blend on BOS/unigram. Impact unverified.
+- Harness/app BOS: both blend on empty context, so the English numbers above
+  already include first-word strokes. 2,650/26,523 (10.0%) have `word_idx=0`.
+  On that subset, the 160,668 large list loses **0.72 pp** (p = 0.020), the
+  17,306 small list is neutral, and German gains **2.11 pp** (p = 0.07,
+  CI [+0.35, +4.23]) on its 2,588 strokes.
+- The gap claim came from the old research copy
+  `wmk-glide/experiments/glide_lm_blend_eval.rs`; it now blends on empty context
+  like the maintained harness
+  (`native/wm-engine/examples/glide_lm_blend_eval.rs`) and the app.
 
 **Decision:** keep both English rows; document the large one as non-negative.
+Keep the BOS blend: a global empty-context guard would cost German more than it
+recovers in English. If the English large first word is worth polishing later,
+scope it to that profile row rather than guarding globally.
 
 ## Compounding languages
 
@@ -42,10 +52,21 @@ copied.
 
 **Alternative:** HeliBoard gesture data has `fi`, `hu`, `et`, `nl`, `sv`, `da`,
 `nb`, `tr` directories, e.g. `fi-1.gestures.json.zst` 566,713 B, CC BY-SA 4.0.
-Record counts, single/dual split and layout mapping are unverified; this is the
-only real-stroke source and needs its own protocol.
+This is the only real-stroke source for those languages and needs its own
+protocol per language.
 
-**Decision: NO-GO for all eight; no row; built-in defaults.**
+**Finnish measured:** 1,000 single-finger a-z strokes (seed 20261109, 12
+geometries) over the app-preferred `fi_aosp` list, `COLS=11`. The German-style
+0.75/2.0 pair reads 76.90 / 95.10 against 72.80 / 91.30 at the built-in
+default: paired **+4.10 / +3.80 pp**, CI [+2.70, +5.60] / [+2.70, +5.00]. A
+join run at 8 / 4 / 0.1 moved 0 of 1,000 outcomes; the app join path uses a
+different downloaded compound lexicon (`fi_full`) this slice did not exercise,
+so the row ships with joins off. No Finnish model ships. Card:
+`wmk-glide/experiments/finnish-profile.md`.
+
+**Decision: GO for Finnish only, row shipped with joins off. The other seven
+remain NO-GO until each has its own 1,000-stroke run with a paired CI lower
+bound above zero.**
 
 ## Banglish
 
@@ -60,19 +81,23 @@ a profile.
 
 ## Safe defaults
 
-Confirmed: only `de`/`en` have rows; every other id resolves to `DEFAULT`
+Confirmed: `de`, `en` and `fi` have rows; every other id resolves to `DEFAULT`
 (freq 1.0, gap 1.33, joins off, glide blend 0.0/0.0); a zero blend returns the
-decoder order; no German/English number is copied. `fr` is pinned to 0.0 in
-the profile test; unknown/English decode with the shipped weights.
+decoder order; no German/English number is copied to another language. `fi`
+moves frequency and gap only and keeps joins off. `fr` is pinned to 0.0 in the
+profile test; unknown/English decode with the shipped weights.
 
 **Decision: GO / confirmed.**
 
 ## Next
 
-1. **HeliBoard compounding protocol** — pick a language, verify its layout and
-   single-finger records, run the built-in default vs German-style profile on
-   the same strokes; add a row only on a paired CI lower > 0.
-2. **English BOS/empty-context** — measure whether the app's BOS blend helps or
-   hurts; the harness currently skips it for 10% of strokes.
+1. **HeliBoard compounding protocol** — Finnish done (GO, +4.10 / +3.80 pp,
+   joins off). Dutch, Swedish and Norwegian are next: verify each layout and
+   its single-finger records, run the built-in default vs German-style profile
+   on 1,000 strokes, and add a row only on a paired CI lower > 0. Do not enable
+   joins from an a-z slice; the app's compound-lexicon path needs its own run.
+2. **English BOS/empty-context** — measured and closed: both harness and app
+   blend on BOS; keep it, no global guard; an English-large-only row flag is an
+   optional later polish.
 3. **CTC first slice** — still blocked on ExecuTorch, the encoder/HeliBoard
    assets, the two scripts, and a pinned baseline.
