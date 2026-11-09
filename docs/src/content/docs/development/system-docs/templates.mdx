@@ -1,0 +1,176 @@
+---
+title: "Documentation templates"
+description: "Copy-paste skeletons for context, container, component, runtime, data, state and dependency pages, plus the decision record."
+sidebar:
+  label: "Templates"
+  order: 41
+---
+
+These templates are intentionally small. Replace the bracketed text, delete the
+rows that do not apply, and keep the source anchor table.
+
+## Page frontmatter
+
+````mdx
+---
+title: "[Subsystem]"
+description: "One sentence that says what this subsystem does and why it exists."
+sidebar:
+  label: "[Sidebar label]"
+  order: 10
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** [What this page covers.] **Not covered:** [what a reader must find elsewhere.]
+
+**Verified against** release 0.6.4, commit `8f61dd563`, on 2026-11-04.
+````
+
+## Context view (C4 level 1)
+
+````mdx
+## Context
+
+[Mermaid context diagram: the system in the middle, people and external systems around it.]
+
+| Element | Type | Responsibility | Failure behavior |
+|---|---|---|---|
+| [User] | Person | [What they do] | [What they see when the system cannot answer] |
+| [System] | Software system | [The boundary you document] | |
+| [External service] | External system | [What it provides] | [Fallback or refusal] |
+
+**Reading order.** Start at [actor], follow [flow], end at [outcome].
+````
+
+## Container view (C4 level 2)
+
+````mdx
+## Containers
+
+[Mermaid diagram with one node per app, service, data store or native library.]
+
+| Container | Technology | Responsibility | State it owns |
+|---|---|---|---|
+| `:feature:ime` | Kotlin, Android service | [Input and UI] | [In-memory session state] |
+| `:core:prediction` | Kotlin | [Domain logic] | [Stores and caches] |
+| `:native` | Rust + JNI | [Hot path] | [Per-thread workspaces] |
+| [File store] | JSON | [Durability] | [What survives a restart] |
+````
+
+## Component view (C4 level 3)
+
+````mdx
+## Components
+
+[Mermaid component diagram. Group by responsibility, not by folder.]
+
+| Component | Responsibility | Depends on | Important type |
+|---|---|---|---|
+| [Input tracker] | [Turns pointer events into a candidate gesture] | [Platform touch] | [ClassName] |
+| [Decoder façade] | [Chooses an engine and normalizes results] | [Native bridge] | [ClassName] |
+| [Ranker] | [Reorders candidates with context] | [Language model] | [ClassName] |
+````
+
+## Runtime view (arc42 section 6)
+
+````mdx
+## Runtime: [scenario]
+
+[Mermaid sequence diagram. One scenario per diagram. Name the actors exactly as
+the component page names them.]
+
+1. [Actor] calls [entry point].
+2. [Entry point] validates [condition] and returns [failure shape] when it fails.
+3. [Worker] produces [result].
+4. [Owner] commits [effect] and records [evidence].
+
+**Cancellation and errors.** [What happens when the user lifts early, the
+dependency is missing, or the result arrives after the session moved on.]
+````
+
+## Data flow view
+
+````mdx
+## Data flow
+
+[Mermaid flowchart left to right. Nodes are transformations, edges are data.
+Do not encode call order here; that belongs in the sequence diagram.]
+
+| Stage | Input | Transformation | Output | Owner |
+|---|---|---|---|---|
+| 1 | [Raw input] | [Normalize] | [Typed value] | [Class] |
+| 2 | [Typed value] | [Search] | [Candidates] | [Class] |
+| 3 | [Candidates] | [Rank] | [Ordered words] | [Class] |
+````
+
+## State view
+
+````mdx
+## State
+
+[Mermaid state diagram. Include the initial state, every terminal state, and the
+paths a session can take when it is cancelled or a dependency is unavailable.]
+
+| State | Entered when | Exits when | Side effect |
+|---|---|---|---|
+| Idle | [condition] | [condition] | [none] |
+| Tracking | [condition] | [condition] | [preview work] |
+| Committed | [condition] | [reset] | [text change, learning] |
+````
+
+## Dependency view
+
+````mdx
+## Dependencies
+
+[Mermaid graph left to right. One node per module or external binary. Label edges
+with the API, not with "uses".]
+
+| From | To | Contract | Build gate |
+|---|---|---|---|
+| [module] | [module] | [public API or JNI symbol] | [flavor, task, or none] |
+
+**Forbidden edges.** [What must not depend on what, and the test that enforces it.]
+````
+
+## Decision record (MADR)
+
+````mdx
+### [Short decision title]
+
+- **Status:** accepted
+- **Date:** [YYYY-MM-DD]
+- **Deciders:** [names or roles]
+- **Related:** [page anchor], [ADR number]
+
+**Context.** [The forces: quality attributes, measurements, constraints.]
+
+**Decision drivers.** [Bullet the two or three forces that decide the outcome.]
+
+**Considered options.**
+1. [Option A] - [one-line trade-off]
+2. [Option B] - [one-line trade-off]
+
+**Decision outcome.** [Which option, in one sentence.]
+
+**Consequences.** [What becomes easier. What becomes harder. What must be
+monitored. What would reopen the decision.]
+
+**Confirmation.** [The test, metric, or review that shows the decision still holds.]
+````
+
+## Source anchors
+
+````mdx
+## Source anchors
+
+Line numbers are from the verified commit and will move. The class or function
+name is the stable reference.
+
+| Claim | Anchor |
+|---|---|
+| [Entry point] | `path/to/File.kt:123` |
+| [Persistence format] | `path/to/Store.kt:45` |
+| [Native contract] | `native/crate/src/module.rs:67` |
+````

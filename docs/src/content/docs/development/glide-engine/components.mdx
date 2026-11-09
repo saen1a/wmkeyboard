@@ -1,0 +1,151 @@
+---
+title: "Components"
+description: "The parts inside the glide engine: input arbitration, decode façades, post-processing, stores and the native search."
+sidebar:
+  label: "Components"
+  order: 22
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** The C4 level 3 view of the decode path and the components that own
+state around it. **Not covered:** the internal search algorithm, which the
+[pipeline page](/development/glide-engine/pipeline/) describes.
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+
+## Component view
+
+<Mermaid
+	caption="C4 level 3. The service owns the session; the engine owns ranking; the stores own what survives the session. The native box is a library boundary inside the same process, not a separate service."
+	chart={`
+flowchart TB
+  subgraph Input["Input and preview"]
+    Grid["Key grid pointer loop"]
+    Flick["FlickGlideArbiter"]
+    Dwell["GlideDwell"]
+    Preview["GlidePreviewGate"]
+    Space["GlideSpace"]
+  end
+  subgraph Decode["Decode"]
+    Facade["SuggestionEngine.glide"]
+    Sources["walkSources + glide sources"]
+    Beam["GlideBeam"]
+    Neural["NeuralGlide + CtcGlideBeam"]
+    Latin["LatinImeGlide"]
+    Duet["DuetBeam"]
+    Overhang["GlideOverhang"]
+  end
+  subgraph Post["Post-processing"]
+    Apostrophe["Apostrophe and contraction repair"]
+    Blend["blendGlideContextModel"]
+    Rerank["rerankGlide"]
+    Shift["shiftGlideScores"]
+    Slips["withLeaderSlips"]
+  end
+  subgraph Learn["Stores"]
+    Shapes["GlideShapeStore"]
+    Offsets["KeyOffsets"]
+    Outcomes["GlideOutcomes"]
+    Sandbox["GlideSandboxLadder"]
+    Checkup["GlideCheckup"]
+    Readings["GlideReadings"]
+  end
+  subgraph Native["Native"]
+    Bridge["NativeGlide + PredictionNative"]
+    Rust["glide::Decoder<br/>glide::CtcDecoder<br/>glide::DuetDecoder"]
+  end
+
+  Grid -->|stroke samples| Flick
+  Grid -->|stillness| Dwell
+  Grid -->|path| Facade
+  Facade -->|folded path| Overhang
+  Facade -->|active sources| Sources
+  Sources -->|walkers| Beam
+  Facade -->|external engine| Neural
+  Facade -->|external engine| Latin
+  Facade -->|token list| Duet
+  Beam -->|arrays| Bridge
+  Neural -->|frames| Bridge
+  Duet -->|tokens| Bridge
+  Bridge -->|JNI calls| Rust
+  Rust -->|candidates| Bridge
+  Bridge -->|candidates| Beam
+  Facade -->|words| Apostrophe
+  Apostrophe -->|words| Blend
+  Blend -->|scored words| Rerank
+  Rerank -->|ranked words| Shift
+  Shift -->|nudged words| Slips
+  Slips -->|strip| Preview
+  Preview -->|shown word| Grid
+  Shapes -->|learned shapes| Beam
+  Shapes -->|learned shapes| Neural
+  Offsets -->|shifted keys| Facade
+  Outcomes -->|nudges| Shift
+  Sandbox -->|tier filter| Facade
+  Readings -->|alternates| Grid
+  Checkup -->|tuning| Facade
+  Grid -->|commit| Space
+`}
+/>
+
+## Inventory
+
+| Component | Responsibility | Important type | Depends on |
+|---|---|---|---|
+| Key grid pointer loop | Samples one-finger and two-thumb strokes, claims a glide, publishes previews | `KeyboardScreen`, `ThumbStroke` | Compose pointer input |
+| `FlickGlideArbiter` | Decides whether a stroke belongs to a flick arm, a glided word, or the key | `FlickGlideArbiter` | Key cells and arm geometry |
+| `GlideDwell` | The ambiguity picker's clock: when a still finger has waited long enough | `GlideDwell` | Pointer samples |
+| `GlidePreviewGate` | Holds the word already on screen against challengers, and makes a lift type the shown word | `GlidePreviewGate` | `GlidePreviewSteadiness` |
+| `GlideSpace` | The spaces and punctuation a committed word earns, plus possessive and contraction flicks | `spacesBeforeGlidedWord`, `swallowsAutoSpace` | `WordContext` |
+| `SuggestionEngine.glide` | The single decode entry: fold, sources, engine choice, finish, rerank | `SuggestionEngine` | Word sources, stores |
+| `GlideBeam` | The built-in decoder's weights, results and façade over JNI | `GlideBeam`, `GlideBeam.Tuning` | `NativeGlide` |
+| `NeuralGlide` | Maps a QWERTY stroke into the FUTO frame and runs a CTC search | `NeuralGlide`, `CtcGlideBeam` | `SwipeModel`, native CTC |
+| `LatinImeGlide` | Adapts the imported AOSP gesture library and its own dictionary | `LatinImeGlide` | `LatinImeLibrary` |
+| `DuetBeam` | Orders taps and swipes from two thumbs into one word | `DuetBeam`, `GlideToken` | Native duet search |
+| `GlideOverhang` | Folds samples above the top letter row back onto it | `GlideOverhang.fold` | `GlideKeyMap.topEdge` |
+| `GlideShapeStore` | Stores a few ways this user draws each word | `GlideShapeSource` | Learning files |
+| `KeyOffsets` | Learns where this hand lands relative to the key centers | `KeyOffsets` | Learning files |
+| `GlideOutcomes` | Remembers pairwise corrections and undone words as score nudges | `GlideOutcomes.View` | Learning files |
+| `GlideSandboxLadder` | Measures whether learned-only decoding would serve this user | `GlideSandboxPolicy` | Learning files |
+| `GlideCheckup` | Replays strokes under candidate weights and proposes one change | `GlideCheckup` | Learning files, settings |
+| `GlideReadings` | Keeps the other readings of a glided word, tied to its caret anchor | `GlideReadings` | In-memory field state |
+| `NativeGlide` | The only JNI call site for glide, CTC and duet decodes | `NativeGlide` | `PredictionNative` |
+| `wm-engine` glide | The Rust search, workspace, loop scan and key map | `glide::Decoder` | `fuzzy` walks, `kernels` |
+
+## Engine selection
+
+The service picks one engine per decode from `GlideEngine`: the built-in
+`GlideBeam`, FUTO's `NeuralGlide`, or the imported `LatinImeGlide`. An external
+engine that cannot read the stroke returns `null`, and the built-in beam takes
+the request. The built-in path returns an empty list for a stroke below its
+minimum length and raises `NO_TWIN` when a source has no Rust twin; it never
+returns `null`.
+
+The conditions, build gates and the fallback flow live on
+[Languages and engines](/development/glide-engine/languages-and-engines/#engines).
+
+## Boundaries that matter
+
+- **The service owns the session.** `gestureGeneration` invalidates a preview
+  that arrives after a lift. A decode never mutates `KeyboardUiState` directly.
+- **The engine owns ranking.** The service does not reorder candidates except
+  through the documented gates: `GlideGuessGate`, the preview gate, and the
+  commit case.
+- **The stores own durability.** Each store publishes an immutable snapshot to
+  the decode thread and mutates under its own lock on the keyboard thread.
+- **The native layer owns the search.** Kotlin passes arrays and handles. It does
+  not walk the trie, score a path, or allocate a frontier.
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| Decode entry | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt:1477` |
+| Finish pipeline | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/SuggestionEngine.kt:1617` |
+| Built-in facade | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideBeam.kt:684` |
+| JNI facade | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/NativeGlide.kt:48` |
+| Neural engine | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/NeuralGlide.kt:37` |
+| Imported engine | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/latinime/LatinImeGlide.kt:114` |
+| Preview gate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/GlidePreviewGate.kt:61` |
+| Shape store | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideShapeStore.kt:111` |

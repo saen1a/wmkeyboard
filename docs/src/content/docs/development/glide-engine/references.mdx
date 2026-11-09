@@ -1,0 +1,381 @@
+---
+title: "References"
+description: "The bibliography behind the glide engine's research basis, with source type, status and link."
+sidebar:
+  label: "References"
+  order: 30
+---
+
+**Scope.** The sources used by [Research basis and prior work](/development/glide-engine/research/).
+**Verified** 2026-11-05. Links were checked on that date. Publisher DOI pages
+may return 403 to automated checks; their metadata was verified through Crossref
+on the same day. A source's status is part of its evidence: a vendor report is
+not a peer-reviewed study, and an internal measurement is not an independent
+benchmark.
+
+## Shape and gesture typing
+
+<a id="rubine1991"></a>
+
+### Rubine 1991
+
+Dean Rubine. "Specifying gestures by example." *SIGGRAPH '91*, 1991, pp. 329-337.
+[DOI 10.1145/122718.122753](https://doi.org/10.1145/122718.122753).
+Peer-reviewed. Feature-based, trainable single-stroke gesture recognition. The
+parametric baseline against which template and shape matchers are compared.
+
+<a id="kristensson2004"></a>
+
+### Kristensson and Zhai 2004
+
+Per-Ola Kristensson and Shumin Zhai. "SHARK2: A Large Vocabulary Shorthand
+Writing System for Pen-based Computers." *UIST '04*, 2004, pp. 43-52.
+[DOI 10.1145/1029632.1029640](https://doi.org/10.1145/1029632.1029640).
+Peer-reviewed. Introduces the shape channel, the location channel, resampling
+and lexicon templates for word-gesture decoding.
+
+<a id="kristensson2005"></a>
+
+### Kristensson and Zhai 2005
+
+Per-Ola Kristensson and Shumin Zhai. "Relaxing Stylus Typing Precision by
+Geometric Pattern Matching." *IUI '05*, 2005, pp. 151-158.
+[DOI 10.1145/1040830.1040867](https://doi.org/10.1145/1040830.1040867).
+Peer-reviewed. Extends geometric template matching to elastic stylus typing and
+location tolerance.
+
+<a id="zhai2012"></a>
+
+### Zhai and Kristensson 2012
+
+Shumin Zhai and Per-Ola Kristensson. "The Word-Gesture Keyboard: Reimagining
+Keyboard Interaction." *Communications of the ACM* 55(9), 2012, pp. 91-101.
+[DOI 10.1145/2330667.2330689](https://doi.org/10.1145/2330667.2330689).
+Peer-reviewed. The retrospective description of the word-gesture keyboard and
+the N-best candidate model.
+
+## Probabilistic decoding and neural paths
+
+<a id="li2010"></a>
+
+### Li 2010
+
+Yang Li. "Gesture Search: A Tool for Fast Mobile Data Access." *UIST '10*, 2010,
+pp. 87-96. [DOI 10.1145/1866029.1866044](https://doi.org/10.1145/1866029.1866044).
+Peer-reviewed. Probabilistic sequence decoding over plausible character
+interpretations, ranked against indexed data.
+
+<a id="ouyang2017"></a>
+
+### Ouyang et al. 2017
+
+Tom Ouyang, David Rybach, Françoise Beaufays and Michael Riley. "Mobile Keyboard
+Input Decoding with Finite-State Transducers." arXiv:1704.03987, 2017.
+[arXiv:1704.03987](https://arxiv.org/abs/1704.03987).
+Preprint and engineering report. Describes the production keyboard FST decoder,
+beam search, look-ahead filters and the spatial plus language score composition.
+
+<a id="alsharif2015"></a>
+
+### Alsharif et al. 2015
+
+Ouais Alsharif, Tom Ouyang, Françoise Beaufays, Shumin Zhai, Thomas Breuel and
+Johan Schalkwyk. "Long Short Term Memory Neural Network for Keyboard Gesture
+Decoding." *ICASSP 2015*, pp. 2076-2080.
+[DOI 10.1109/ICASSP.2015.7178336](https://doi.org/10.1109/ICASSP.2015.7178336).
+Peer-reviewed. LSTM emissions trained with CTC, combined with FST-based lexicon
+decoding.
+
+<a id="biju2020"></a>
+
+### Biju et al. 2020
+
+Emil Biju, Anirudh Sriram, Mitesh M. Khapra and Pratyush Kumar. "Joint
+Transformer/RNN Architecture for Gesture Typing in Indic Languages." *COLING
+2020*, pp. 999-1010.
+[ACL Anthology](https://aclanthology.org/2020.coling-main.87/).
+Peer-reviewed. Transformer and RNN path decoding for gesture typing, with
+released synthetic trace data.
+
+<a id="graves2006"></a>
+
+### Graves et al. 2006
+
+Alex Graves, Santiago Fernández, Faustino Gomez and Jürgen Schmidhuber.
+"Connectionist Temporal Classification: Labelling Unsegmented Sequence Data with
+Recurrent Neural Networks." *ICML 2006*, pp. 369-376.
+[DOI 10.1145/1143844.1143891](https://doi.org/10.1145/1143844.1143891).
+Peer-reviewed. The CTC objective and the blank-label marginalization used by the
+neural path.
+
+<a id="futo2026"></a>
+
+### FUTO 2026
+
+David Lee Miller and Aleksandras Kostarevas. "FUTO Swipe: Layout-Agnostic Neural
+Swipe Decoding." arXiv:2606.25247, 2026.
+[arXiv:2606.25247](https://arxiv.org/abs/2606.25247).
+Preprint and technical report, not peer-reviewed. Describes a layout-agnostic
+encoder, geometric layout conditioning and a donated swipe corpus.
+
+<a id="futo-model"></a>
+
+### FUTO model card
+
+FUTO. "FUTO Swipe model card." Hugging Face, 2026.
+[huggingface.co/futo-org/futo-swipe](https://huggingface.co/futo-org/futo-swipe).
+Engineering documentation. Encoder `honorable_sturgeon`, English QWERTY
+decoder `magic_macaw`, optional context model, input format and the FUTO Model
+Weights License.
+
+<a id="quinn2016"></a>
+
+### Quinn and Zhai 2016
+
+Philip Quinn and Shumin Zhai. "Modeling Gesture-Typing Movements."
+*Human-Computer Interaction* 33(3), 2018, pp. 234-280; online 2016.
+[DOI 10.1080/07370024.2016.1215922](https://doi.org/10.1080/07370024.2016.1215922).
+Peer-reviewed. A minimum-jerk movement model with speed-accuracy noise for
+synthesizing and evaluating gesture traces.
+
+## Language model, reranking and personalization
+
+<a id="zhang2024"></a>
+
+### Zhang et al. 2024
+
+Yanxiang Zhang, Yuanbo Zhang, Haicheng Sun, Yun Wang, Gary Sivek and Shumin Zhai.
+"Neural Search Space in Gboard Decoder." *EMNLP 2024 Industry Track*, pp.
+1245-1254. [ACL Anthology](https://aclanthology.org/2024.emnlp-industry.93/).
+Peer-reviewed. Replaces Gboard's n-gram FST language model with a neural LM in
+the production decoder and reports the latency trade-off.
+
+<a id="hard2018"></a>
+
+### Hard et al. 2018
+
+Andrew Hard, Kanishka Rao, Rajiv Mathews, Swaroop Ramaswamy, Françoise Beaufays,
+Sean Augenstein, Hubert Eichner, Chloé Kiddon and Daniel Ramage. "Federated
+Learning for Mobile Keyboard Prediction." arXiv:1811.03604, 2018.
+[arXiv:1811.03604](https://arxiv.org/abs/1811.03604).
+Preprint. On-device federated training of a next-word language model without
+exporting raw user text.
+
+<a id="adhikary2023"></a>
+
+### Adhikary and Vertanen 2023
+
+Jiban Adhikary and Keith Vertanen. "Language Model Personalization for Improved
+Touchscreen Typing." *Interspeech 2023*, pp. 1344-1348.
+[DOI 10.21437/Interspeech.2023-276](https://doi.org/10.21437/Interspeech.2023-276).
+Peer-reviewed. Per-user PPM and RNN language-model adaptation, with measured
+keystroke savings and word-error reductions.
+
+<a id="sivek2022"></a>
+
+### Sivek and Riley 2022
+
+Gary Sivek and Michael Riley. "Spatial Model Personalization in Gboard."
+*MobileHCI 2022*. [DOI 10.1145/3546737](https://doi.org/10.1145/3546737).
+Peer-reviewed. Per-user key-center offsets and learned spatial covariance for tap
+typing, with controls against overfitting.
+
+<a id="guo2017"></a>
+
+### Guo et al. 2017
+
+Chuan Guo, Geoff Pleiss, Yu Sun and Kilian Q. Weinberger. "On Calibration of
+Modern Neural Networks." *ICML 2017*. arXiv:1706.04599.
+[arXiv:1706.04599](https://arxiv.org/abs/1706.04599).
+Peer-reviewed. Reliability diagrams, expected calibration error and temperature
+scaling.
+
+<a id="kimrush2016"></a>
+
+### Kim and Rush 2016
+
+Yoon Kim and Alexander M. Rush. "Sequence-Level Knowledge Distillation."
+*EMNLP 2016*, pp. 1317-1327.
+[ACL Anthology](https://aclanthology.org/D16-1139/).
+Peer-reviewed. Word-level and sequence-level distillation objectives for
+sequence models.
+
+<a id="hinton2015"></a>
+
+### Hinton et al. 2015
+
+Geoffrey Hinton, Oriol Vinyals and Jeff Dean. "Distilling the Knowledge in a
+Neural Network." arXiv:1503.02531, 2015.
+[arXiv:1503.02531](https://arxiv.org/abs/1503.02531).
+Workshop paper and preprint. Temperature-softened soft targets and model
+compression. Relevant only to the internal WMLM work, not to the decoder.
+
+## Datasets and human factors
+
+<a id="futo-dataset"></a>
+
+### FUTO swipe dataset
+
+FUTO. "swipe.futo.org." Hugging Face dataset, 2025-2026.
+[huggingface.co/datasets/futo-org/swipe.futo.org](https://huggingface.co/datasets/futo-org/swipe.futo.org).
+Dataset, MIT licensed. Donated real swipe trajectories with session-level splits;
+the repository uses its English and German subsets.
+
+<a id="heliboard-data"></a>
+
+### HeliBoard gesture data
+
+The HeliBoard Gesture Data Project. Codeberg, 2026.
+[codeberg.org/eclexic/heliboard-gesture-data](https://codeberg.org/eclexic/heliboard-gesture-data).
+Dataset, CC BY-SA 4.0. Opt-in donated gesture strokes by batch and language, with
+documented selection bias and missing context.
+
+<a id="leiva2021"></a>
+
+### Leiva et al. 2021
+
+Luis A. Leiva, Sunjun Kim, Wenzhe Cui, Xiaojun Bi and Antti Oulasvirta. "How We
+Swipe: A Large-scale Shape-writing Dataset and Empirical Findings." *MobileHCI
+2021*. [DOI 10.1145/3447526.3472059](https://doi.org/10.1145/3447526.3472059).
+Peer-reviewed and dataset. A large public shape-writing corpus with speed, error
+and top-4 observations.
+
+<a id="palin2019"></a>
+
+### Palin et al. 2019
+
+Kseniia Palin, Anna Maria Feit, Sunjun Kim, Per Ola Kristensson and Antti
+Oulasvirta. "How do People Type on Mobile Devices? Observations from a Study with
+37,000 Volunteers." *MobileHCI 2019*.
+[DOI 10.1145/3338286.3340120](https://doi.org/10.1145/3338286.3340120).
+Peer-reviewed. A large mobile typing study with speed and uncorrected-error
+baselines; it is context for evaluation, not a swipe-decoder benchmark.
+
+<a id="reyal2015"></a>
+
+### Reyal et al. 2015
+
+Shyam Reyal, Shumin Zhai and Per Ola Kristensson. "Performance and User
+Experience of Touchscreen and Gesture Keyboards in a Lab Setting and in the
+Wild." *CHI 2015*.
+[DOI 10.1145/2702123.2702597](https://doi.org/10.1145/2702123.2702597).
+Peer-reviewed. Lab and field comparison of touchscreen and gesture keyboards;
+out-of-vocabulary words were a major gesture-typing failure.
+
+<a id="soukoreff2003"></a>
+
+### Soukoreff and MacKenzie 2003
+
+R. William Soukoreff and I. Scott MacKenzie. "Metrics for Text Entry Research: An
+Evaluation of MSD and KSPC, and a New Unified Error Metric." *CHI 2003*.
+[DOI 10.1145/642611.642632](https://doi.org/10.1145/642611.642632).
+Peer-reviewed. Definitions for corrected, uncorrected and total error rate, KSPC
+and correction efficiency.
+
+## Open source and patents
+
+### AOSP LatinIME
+
+Android Open Source Project. `packages/inputmethods/LatinIME`.
+[android.googlesource.com](https://android.googlesource.com/platform/packages/inputmethods/LatinIME/).
+Source code, Apache-2.0. As checked on 2026-11-05, the open tree contains stroke
+capture and trail code, not a word-level gesture decoder; the production Google
+decoder is not in this tree.
+
+### HeliBoard
+
+HeliBoard. [github.com/HeliBorg/HeliBoard](https://github.com/HeliBorg/HeliBoard).
+Source code, GPL-3.0. An AOSP-lineage IME with dictionary tooling. As checked on
+2026-11-05, its documentation says glide typing needs a library that is not part
+of the open repository.
+
+### FlorisBoard
+
+FlorisBoard. [github.com/florisboard/florisboard](https://github.com/florisboard/florisboard).
+Source code, Apache-2.0. A clean IME architecture. As checked on 2026-11-05,
+glide typing is planned, not shipped in the current stable release.
+
+### OpenBoard
+
+OpenBoard. [github.com/openboard-team/openboard](https://github.com/openboard-team/openboard).
+Source code, GPL-3.0. An AOSP-lineage IME. As checked on 2026-11-05, glide typing is not supported.
+
+### Unexpected Keyboard
+
+Unexpected Keyboard. [github.com/Julow/Unexpected-Keyboard](https://github.com/Julow/Unexpected-Keyboard).
+Source code, GPL-3.0. Lightweight IME. As checked on 2026-11-05, directional
+swipes select alternate keys, but there is no word-level swipe decoder.
+
+### FUTO Keyboard
+
+FUTO Keyboard. [gitlab.futo.org/keyboard/latinime](https://gitlab.futo.org/keyboard/latinime).
+Source-available, FUTO Source First License 1.1-kb. On-device neural swipe
+decoding with a lexicon beam; the swipe models use a separate FUTO model
+license.
+
+### CleverKeys
+
+CleverKeys. [github.com/tribixbite/CleverKeys](https://github.com/tribixbite/CleverKeys).
+Source code, GPL-3.0. Claims a CTC trie-beam engine and a SHARK2-style geometric
+engine. The performance claims are not independently verified here.
+
+<a id="us7098896b2"></a>
+
+### Swype patent
+
+US7098896B2, "System and method for continuous stroke word-based text input."
+Priority 2003. [Google Patents](https://patents.google.com/patent/US7098896B2/en).
+Patent. Continuous-stroke word input. Patent status and claim scope require
+legal review; this page is not a freedom-to-operate opinion.
+
+<a id="us9454240b2"></a>
+
+### Google patent
+
+US9454240B2, "Gesture keyboard input of non-dictionary character strings."
+Priority 2013. [Google Patents](https://patents.google.com/patent/US9454240B2/en).
+Patent. Gesture selection and non-dictionary output.
+
+<a id="us8059101b2"></a>
+
+### Apple patent
+
+US8059101B2, "Swipe gestures for touch screen keyboards." Priority 2007.
+[Google Patents](https://patents.google.com/patent/US8059101B2/en).
+Patent. Directional swipe gestures for editing, not word decoding.
+
+<a id="internal-artifacts"></a>
+
+## Internal research artifacts
+
+These are repository files, not publications. They are reproducible from the
+scripts and notes in the repository, but they are not peer-reviewed and have not
+been independently replicated.
+
+- `wmk-glide/README.md`: folder map, datasets and the headline German result.
+- `wmk-glide/state.md`: the live run log for German tuning, compounds, the
+  context model and the statistical checks.
+- `wmk-glide/kb-context-blend-optimizations.md`: the Glide and Typing context
+  blend audit, including the OOV gap and the pool-size measurements.
+- `wmk-glide/kb-student-architecture-de.md`: the student-model and distillation
+  audit, including the corrected OOV piece counts and the statistical power
+  calculation.
+- `wmk-glide/experiments-followup.md`: the negative and fair-split follow-ups,
+  including the in-sample blend caveat.
+- `wmk-glide/plans/research-notes.md`: the teacher-free distillation plan and
+  its external citations.
+
+## Adding a reference
+
+1. Choose a stable ID, lower case and no spaces.
+2. Record the exact title, authors, year, venue, DOI or official URL.
+3. Add the status: peer-reviewed, preprint, engineering report, dataset, source
+   code, patent or internal experiment.
+4. Name the claim the source supports. Do not add a source that supports only a
+   general impression.
+5. Check the link on the day you add it and record that date.
+6. Link it from [Research basis](/development/glide-engine/research/) by its
+   anchor.
+
+A vendor benchmark is not an independent study. A preprint is not peer review.
+An internal log is not a user study. Keep the label.

@@ -319,3 +319,85 @@
 		display: none;
 	}
 }
+
+/* ---------- Mermaid diagrams (developer pages) ---------- */
+
+.wm-diagram {
+	margin: 2rem 0;
+}
+
+.wm-mermaid {
+	display: grid;
+	align-content: center;
+	min-height: 14rem;
+	overflow-x: auto;
+	padding: 1rem;
+	border: 1px solid var(--sl-color-hairline);
+	border-radius: 0.75rem;
+	background: var(--sl-color-gray-7, transparent);
+}
+
+.wm-mermaid:not([data-rendered='true']):not([data-rendered='error'])::before {
+	content: '';
+	display: block;
+	width: 100%;
+	height: 10rem;
+	border-radius: 0.5rem;
+	background: var(--sl-color-gray-6, var(--sl-color-gray-5));
+	opacity: 0.35;
+	animation: wm-diagram-pulse 1.4s ease-in-out infinite;
+}
+
+@keyframes wm-diagram-pulse {
+	0%,
+	100% {
+		opacity: 0.25;
+	}
+	50% {
+		opacity: 0.45;
+	}
+}
+
+@media (prefers-reduced-motion: reduce) {
+	.wm-mermaid:not([data-rendered='true']):not([data-rendered='error'])::before {
+		animation: none;
+	}
+}
+
+.wm-mermaid svg {
+	display: block;
+	max-width: 100%;
+	height: auto;
+	margin-inline: auto;
+}
+
+.wm-diagram figcaption {
+	margin-top: 0.5rem;
+	color: var(--sl-color-gray-2);
+	font-size: var(--sl-text-sm);
+	text-align: center;
+}
+
+.wm-diagram-source {
+	margin-top: 0.5rem;
+	font-size: var(--sl-text-xs);
+}
+
+.wm-diagram-source summary {
+	cursor: pointer;
+	color: var(--sl-color-gray-2);
+}
+
+.wm-diagram-source pre {
+	overflow-x: auto;
+	margin-top: 0.5rem;
+	padding: 0.75rem;
+	border-radius: 0.5rem;
+	background: var(--sl-color-gray-7, transparent);
+}
+
+.wm-diagram-error {
+	margin: 0;
+	color: var(--sl-color-text);
+	font-size: var(--sl-text-sm);
+}

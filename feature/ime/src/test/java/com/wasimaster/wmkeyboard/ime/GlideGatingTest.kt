@@ -5,6 +5,7 @@ import android.view.View
 import android.view.inputmethod.BaseInputConnection
 import android.view.inputmethod.InputConnection
 import com.wasimaster.wmkeyboard.core.gesture.GesturePoint
+import com.wasimaster.wmkeyboard.core.gesture.GlideCase
 import com.wasimaster.wmkeyboard.core.gesture.KeyCenter
 import com.wasimaster.wmkeyboard.core.layout.KeyAction
 import com.wasimaster.wmkeyboard.core.prediction.OctopusKind
@@ -13,7 +14,6 @@ import com.wasimaster.wmkeyboard.core.settings.KeyboardSettings
 import com.wasimaster.wmkeyboard.ime.ui.GlideVerdict
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
@@ -22,8 +22,8 @@ import org.robolectric.Shadows.shadowOf
 
 /**
  * Every reason [WMKeyboardService] refuses a glide, asserted from the field's
- * side: a refused stroke types nothing and leaves the keyboard's state exactly
- * as it found it.
+ * side: a refused stroke types nothing and retires its preview, while the rest
+ * of the keyboard state stays exactly as it found it.
  *
  * The rules themselves are pure and tested as such (`GlideSpaceTest`,
  * `PossessiveFlickTest`, `OctopusFlickTest`). What is only true of the service
@@ -40,11 +40,11 @@ import org.robolectric.Shadows.shadowOf
  * refusal:
  *  - the recording [InputConnection], which is the one that would catch a
  *    committed word;
- *  - a live glide preview planted in the state before the stroke. Every path
- *    past the gate — commit, cancel, possessive — goes through
- *    `clearGlidePreview`, so the sentinel surviving is proof that nothing
- *    downstream of the gate ran at all. That is what catches the two guards
- *    whose fall-through commits nothing even when deleted.
+ *  - a live glide preview planted in the state before the stroke. A refusal
+ *    retires it, and every path past the gate — commit, cancel, possessive —
+ *    also clears it, so the assertion is that only the preview fields changed.
+ *    That is what catches the two guards whose fall-through commits nothing
+ *    even when deleted.
  *
  * Deliberately not covered: the typing-test branch of `glideAllowed`, where the
  * test's own switch overrules the field and the word never reaches it (there is
@@ -93,9 +93,21 @@ class GlideGatingTest {
         seeded: KeyboardUiState,
     ) {
         assertEquals("$reason: the stroke reached the field", "", editor.typed)
-        assertSame(
-            "$reason: the stroke got past the gate and republished the state",
-            seeded,
+        val retired = seeded.copy(
+            glideWord = null,
+            glideCase = GlideCase.None,
+            glideCased = emptyMap(),
+            glideExpansions = emptyMap(),
+            glideChoices = emptyList(),
+            glideCloseCall = false,
+            glidePreviewSegment = NO_GLIDE_PREVIEW_SEGMENT,
+            octopusGlide = emptyMap(),
+            autocorrectWord = seeded.autocorrectWord
+                ?.takeUnless { it.equals(seeded.glideWord, ignoreCase = true) },
+        )
+        assertEquals(
+            "$reason: the stroke changed state beyond retiring its preview",
+            retired,
             service.uiState.value,
         )
     }

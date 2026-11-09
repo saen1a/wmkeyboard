@@ -62,6 +62,15 @@ import com.wasimaster.wmkeyboard.core.tools.WeatherInfo
 import com.wasimaster.wmkeyboard.core.tools.WpmSample
 import java.io.File
 
+/** A preview request that carries no drawn segment: two-thumb pings and bar touches. */
+internal const val SIGNAL_GLIDE_SEGMENT = 0L
+
+/** The first drawn segment of a stroke. */
+internal const val FIRST_GLIDE_SEGMENT = 1L
+
+/** No preview has been published for the current state. */
+internal const val NO_GLIDE_PREVIEW_SEGMENT = -1L
+
 enum class ShiftState { OFF, ON, CAPS_LOCK }
 
 /**
@@ -3463,6 +3472,13 @@ data class KeyboardUiState(
      * two readings.
      */
     val glideCloseCall: Boolean = false,
+    /**
+     * The segment the latest preview belongs to. The picker's clock is only
+     * armed while this matches the segment the finger is drawing; a late
+     * preview from the previous segment must not open the picker with its
+     * words.
+     */
+    val glidePreviewSegment: Long = NO_GLIDE_PREVIEW_SEGMENT,
     /**
      * The two-thumb all-thumbs-up pause running now, for the band on the strip
      * that shrinks until the word is typed (#747); null while none is.

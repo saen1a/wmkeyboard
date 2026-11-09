@@ -1,0 +1,186 @@
+---
+title: "State and data"
+description: "The session state machine, the core types a decode passes between layers, the persisted stores, and the ownership rules that keep them safe."
+sidebar:
+  label: "State and data"
+  order: 25
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** Session states, the value types on the decode path, the five
+persisted stores and their threading. **Not covered:** the settings model, which
+the [integration page](/development/glide-engine/integration/) covers.
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+
+## Session state
+
+The service does not use one session enum. It uses the pointer loop, a
+generation counter, the preview gate, the dwell clock and a `GlideVerdict` to
+represent the same states. The diagram is therefore conceptual: it names the
+states the code behaves as if it had, and the guard that moves between them.
+
+<Mermaid
+	caption="A stroke session. Unavailable is a state the user can reach without doing anything, because it depends on the word list, the composer and the field. The picker is inside Previewing until the dwell deadline, not a separate mode of the keyboard."
+	chart={`
+stateDiagram-v2
+  [*] --> Unavailable: no list, converting layout, secure field
+  [*] --> Idle: glide ready
+  Unavailable --> Idle: list arrives or layout changes
+  Idle --> Tracking: pointer down
+  Tracking --> Idle: lift as tap or flick
+  Tracking --> Previewing: travel past claim distance
+  Previewing --> Previewing: move, decode, publish
+  Previewing --> Picker: dwell deadline
+  Previewing --> Committed: lift on leader
+  Picker --> Committed: lift on a word
+  Picker --> Cancelled: drag down and lift
+  Previewing --> Cancelled: generation invalidated
+  Committed --> Idle: reset
+  Cancelled --> Idle: reset
+`}
+/>
+
+| State | Entered when | Exits when | What it owns |
+|---|---|---|---|
+| Unavailable | Word list missing, coverage below 90 percent, converting composer, secure field, engine absent | Language or layout changes, list downloads | The reason chip shown to the user |
+| Idle | No stroke down, glide ready | Pointer down | The field's existing strip |
+| Tracking | Pointer down, not yet a glide | Lift as tap or flick, or travel past the claim distance | The raw samples and flick arbitration |
+| Previewing | The stroke claimed as a glide | Lift, cancel, or picker | The preview gate and the published reading |
+| Picker | The dwell deadline fires with at least two choices | Lift on a word or in the cancel zone | The target list and its geometry |
+| Committed | A word is chosen | Reset after the commit | The ledger, the space, the undo guard |
+| Cancelled | Generation changes, or the picker cancel zone | Reset | Nothing; the preview is retired |
+
+## Core types
+
+<Mermaid
+	caption="The values on the decode path. A stroke carries its grid, because the grid may change before the stroke is recalled. A reading carries scores only for its own words, because scores from two frames of the same stroke are not comparable."
+	chart={`
+classDiagram
+  class GesturePoint { Float x; Float y; Long t }
+  class KeyCenter { Int codePoint; Float x; Float y }
+  class GlideKeyMap { FloatArray keyX; FloatArray keyY; Int keyCount; Float topEdge }
+  class GlideStroke { List points; List keys; Float keyWidthPx; GlideShapeSample shape }
+  class GlideToken { Tap tap; Swipe swipe }
+  class Tuning { Float sigma; Double freqWeight; Float nearRadius }
+  class Candidate { String word; Double score; Double shapeCost; Tier tier; Int ahead }
+  class Alignment { IntArray keys; FloatArray x; FloatArray y; IntArray samples }
+  class GlideReading { List words; List scores; Boolean closeCall; Boolean sandboxAnswered }
+  class GlideShapeSample { Long layoutKey; ByteArray shape }
+
+  GesturePoint --> GlideStroke : points
+  KeyCenter --> GlideStroke : keys
+  GlideKeyMap --> GlideStroke : grid
+  Tuning --> Candidate : scores
+  Candidate --> GlideReading : words
+  GlideReading --> Alignment : case cuts
+  GlideShapeSample --> GlideStroke : learned shape
+  GlideToken --> GlideStroke : duet input
+`}
+/>
+
+| Type | Meaning | Invariant |
+|---|---|---|
+| `GesturePoint` | One touch sample | Coordinates in the keyboard view's pixels; `t` is uptime ms, `0` means no clock |
+| `KeyCenter` | One character a key can produce | Coordinates in pixels; several characters may share a center |
+| `GlideKeyMap` | The letter grid the decoder uses | Coordinates in key widths; keyed by code point; case folded; `topEdge` is half a row above the top key |
+| `GlideStroke` | A path kept whole for recall | The grid goes with the path, because the layout may change before recall |
+| `GlideToken` | A tap or swipe in a multi-gesture word | A swipe is never empty; times come from the samples |
+| `GlideBeam.Tuning` | The decoder's weights | Immutable; a language profile returns a copy only when a value moves |
+| `GlideBeam.Candidate` | One scored word | `score` is nats, higher is better; `shapeCost` is a cost, lower is better; `ahead > 0` means the word carries letters the stroke did not draw |
+| `GlideBeam.Alignment` | Where a word's keys landed on the stroke | Samples are indices into the resampled stroke; `chars` maps a visit to the letters it wrote |
+| `GlideReading` | What one decode offers the UI | Scores are comparable only within this reading; `guesses` maps a guess to the letters actually drawn |
+| `GlideShapeSample` | One kept shape | `layoutKey` is a fingerprint of the drawn grid; `shape` is 96 quantized bytes |
+
+## Persisted stores
+
+| Store | File | What it keeps | Caps | Writer | Reader |
+|---|---|---|---|---|---|
+| `GlideShapeStore` | `learning/glide_shapes.json` (binary v1; reads JSON v2) | Up to a few ways this hand draws each word, per layout; [testing budgets](/development/glide-engine/testing/#budgets) own the caps | Merge radius 0.35 key widths, reject radius 0.60 | Keyboard thread, after a word settles | Decode thread, from an immutable snapshot |
+| `KeyOffsets` | `learning/key_offsets.json` | Where the hand lands relative to key centers, per cell and globally | 40 observations per cell, 200 global, 512 cells, shift at most 0.9 key widths | Keyboard thread | Decode thread, through a shifted key map |
+| `GlideOutcomes` | `learning/glide_outcomes.json` | Pairwise corrections and undone words as score nudges | Lift at most +1.2 nats, drop at most -0.4, undo 0.10; decays every 64 observations | Keyboard thread | Decode thread, from a published view |
+| `GlideSandboxLadder` | `learning/glide_sandbox.json` | The accepted rung, declined rungs and a hit-rate window | Promotes at 800 lexicon words; second rung after 200 strokes at 95 percent | Keyboard thread | Settings and decode |
+| `GlideCheckup` | `learning/glide_checkup.json` | Replayed strokes, a proposal and its confirmation window | 200 records, 30 strokes minimum, 40-stroke confirmation window | Keyboard thread, check-up replay and settings | Settings screen |
+| `GlideReadings` | none | The other readings of a recent glided word, tied to its caret anchor | 500 entries; the newest 24 keep their path | Keyboard thread | Keyboard thread |
+
+`GlideShapeStore` is the only store whose size grows with the user's vocabulary.
+Its decoder view is an immutable per-layout snapshot: `forLayout` is constant
+time, `shapeDistance` compares one stored shape in place at its arena offset,
+`shapesOf` is proportional to the shapes for one word and copies them for the
+JNI `byte[][]`, and `wordsNear` uses the 3x3 start-cell index. A learn or
+reject rebuilds only the changed layout and shares point arrays; the start-cell
+index is lazy and is warmed on the keyboard thread when shape seeding is
+enabled. The file is a compact binary v1 arena with a JSON v2 read fallback.
+Its 80-byte header carries a SHA-256 digest over the header and the whole
+payload, so a damaged tick, count, offset or point fails the load; the file is
+written through a `.part`, fsync'd, then renamed, and the previous live file is
+kept as `.bak` for one generation. A bad live file is copied to `.corrupt` and
+the `.bak` is tried before the store starts empty. Backup and export convert
+the verified file back to v2 JSON on demand, so older builds can restore it; a
+restored JSON file becomes binary again on the next save. A file written by
+0.6.4 is that same JSON v2: 0.6.4 omitted fields that held their defaults,
+including `v` itself, and the reader supplies the same default values, so such
+a file loads directly and converts on the next save. A direct downgrade after a
+binary save cannot read the runtime file; export a backup before downgrading.
+Both loads apply one shape-limit selector
+(`topShapeIndices` over the arena arrays, `readable` over the mutable list), so
+they cannot keep a different subset of a word's shapes. The IME constructs the
+store with `autoLoad = false` and calls `loadNow()` on `Dispatchers.Default`, so
+the service thread does not wait for the shape snapshot; the shape channel
+is empty until the swap lands.
+
+Every file-backed store follows the same contract. The file is nullable, so
+direct boot runs memory only. A mutation marks the store dirty and saves on a
+dismissal or settle boundary, not on every touch. `reload()` supersedes a file
+the settings app replaced. Reads take a published immutable view, so the decode
+thread never takes the writer's lock.
+
+## Threading and ownership
+
+| Owner | Thread | What it may touch | What it must not touch |
+|---|---|---|---|
+| Pointer loop | Main thread | Samples, flick arbitration, dwell, callbacks | The trie search |
+| Preview consumer | `serviceScope`, decode on `Dispatchers.Default` | `SuggestionEngine`, stores' read views | `InputConnection` writes |
+| Lift handler | `serviceScope`, decode on `Dispatchers.Default` | The same engine, then the commit on the main thread | The next gesture's state |
+| Native decoder | One decoding thread at a time | Thread-local `Decoder`, `CtcDecoder`, `DuetDecoder` | Another thread's workspace |
+| Store writer | Keyboard thread, under the store lock | Mutable store maps | The published snapshot |
+| Settings screen | Settings process activity | The store files through the repository | The live decode caches |
+
+The two-phase shape decode has one extra rule: both JNI calls for a decode must
+run on the same thread, because the pending walk is kept in a thread-local. The
+Kotlin caller does this by performing the whole decode inside one
+`withContext(Dispatchers.Default)` block.
+
+`LatinImeGlide` synchronizes every native call, because the AOSP dictionary and
+session are not thread-safe. `NeuralGlide` synchronizes its frame cache for the
+same reason: a key map change rebuilds the fitted frame.
+
+## Invariants worth preserving
+
+- A shape is learned only after the word settles. A backspace or a replacement
+  rejects the shape instead.
+- A stored shape is keyed by the drawn grid's geometry, not by the device or the
+  orientation. Two layouts with the same geometry share shapes.
+- `GlideOutcomes` stores the folded spelling of each word, a strength and a
+  logical age. It is not a content-free hash: the file holds the words, with
+  case and apostrophes folded away. Treat it as personal data in the same way
+  as the personal lexicon.
+- A candidate's `ahead` value is never lost in post-processing. It decides
+  whether a lift may type the word and whether the picker may count it.
+- `GlideReading.scores` travels with the word list. Reordering a reading without
+  reordering its scores turns the preview gate into a guess.
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| Session values | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:26824` |
+| Gate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27710` |
+| Shape format | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideShapeBinary.kt:65` |
+| Shape caps | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/GlideShapeStore.kt:810` |
+| Outcome bounds | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/GlideOutcomes.kt:326` |
+| Sandbox thresholds | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/GlideSandbox.kt:322` |
+| Check-up limits | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/prediction/GlideCheckup.kt:427` |
+| Hand model | `core/prediction/src/main/java/com/wasimaster/wmkeyboard/core/gesture/KeyOffsets.kt:78` |
+| File names | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:4682` |

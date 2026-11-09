@@ -1,0 +1,221 @@
+---
+title: "Runtime"
+description: "Sequence diagrams for one swipe, the live preview, the ambiguity picker, engine fallback, and words built from several gestures."
+sidebar:
+  label: "Runtime"
+  order: 24
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** Architecturally relevant scenarios: a single glide, a preview, the
+picker, an external engine, a chained stroke and a two-thumb word. **Not
+covered:** drawing the trail and the pill, which are view code.
+
+**Verified against** the `v0.6.4` base plus the uncommitted glide-engine work at commit `8f61dd563`, on 2026-11-05. This is not release `v0.6.5`; see the [sync note](/development/glide-engine/#version-and-sync).
+
+## One swipe, from touch to commit
+
+<Mermaid
+	caption="The lift decodes the stroke again. The preview is not reused, but it is not ignored either: the preview gate makes the shown word win when the finished stroke still ranks it close to its own leader."
+	chart={`
+sequenceDiagram
+  autonumber
+  actor User
+  participant Grid as Key grid
+  participant Service as WMKeyboardService
+  participant Engine as SuggestionEngine
+  participant Native as wm-engine
+  participant Store as Learning stores
+
+  User->>Grid: pointer down
+  Grid->>Grid: sample and arbitrate tap, flick or glide
+  User->>Grid: drag across letters
+  Grid->>Service: onGesturePreview(path)
+  Service->>Engine: glide(path, keys, sources)
+  Engine->>Native: glideDecode or ctcDecode
+  Native-->>Engine: ranked candidates
+  Engine-->>Service: GlideReading
+  Service-->>Grid: preview words and pill
+  User->>Grid: lift
+  Grid->>Service: onGesture(path, GlideVerdict)
+  Service->>Engine: glide(path, keys, sources)
+  Engine->>Native: decode with the same look-ahead
+  Native-->>Engine: ranked candidates
+  Engine-->>Service: GlideReading
+  Service->>Service: choose leader or picker word, apply case
+  Service->>Store: learn word, shape, outcome
+  Service->>Grid: commit word, space and strip
+`}
+/>
+
+The lift path checks `glideAllowed` before any decode. A typing test, a capture
+target, a secure field, or an unavailable word list can stop the stroke before it
+reaches the engine. The generation counter is incremented on a cancel and on a
+new gesture, and the preview consumer drops any result whose generation no longer
+matches. That is the guard against a slow preview overwriting the strip after the
+finger has already committed.
+
+## Preview and the ambiguity picker
+
+<Mermaid
+	caption="The preview is a loop. The picker is a deadline inside that loop: the service publishes choices on every reading, and the dwell clock decides when the words appear."
+	chart={`
+sequenceDiagram
+  autonumber
+  actor User
+  participant Grid as Key grid
+  participant Service as WMKeyboardService
+  participant Gate as GlidePreviewGate
+  participant Dwell as GlideDwell
+  participant Engine as SuggestionEngine
+
+  loop while the finger moves
+    Grid->>Service: onGesturePreview(path)
+    Service->>Engine: decode
+    Engine-->>Service: words, scores, closeCall
+    Service->>Gate: steady(words, scores)
+    Gate-->>Service: shown word and side slots
+    Service-->>Grid: publish strip, pill, key words
+    Service->>Dwell: sample stillness
+  end
+  alt close call or hold-to-ask
+    Dwell-->>Service: timeout
+    Service-->>Grid: open picker with choices
+    User->>Grid: slide onto a word or down to cancel
+    Grid->>Service: GlideVerdict.Word or Cancel
+  else no picker
+    User->>Grid: lift
+    Grid->>Service: GlideVerdict.Leader
+  end
+  Service->>Engine: final decode
+  Service->>Service: Gate.commit(shownAtLift, final words)
+`}
+/>
+
+Three rules keep the preview honest.
+
+- The steadiest word on screen wins a lift only while the finished stroke still
+  ranks it within the tier's margin. Past that margin the stroke has become a
+  different word and the screen was merely behind.
+- A word that drops out of the reading is replaced at once, whatever its age.
+- A side slot is display only. `GlidePreviewGate.commit` never reads it, so a
+  held neighbour cannot change what the lift types.
+
+A cancel in the picker types nothing and teaches nothing. It retires the preview
+and restores the strip to the field's state before the stroke.
+
+## External engine fallback
+
+<Mermaid
+	caption="The chosen external engine gets the first answer. A null answer is a deliberate refusal, not an error, and the built-in beam takes the stroke."
+	chart={`
+sequenceDiagram
+  autonumber
+  participant Service as WMKeyboardService
+  participant Engine as SuggestionEngine
+  participant External as NeuralGlide or LatinImeGlide
+  participant Beam as GlideBeam
+  participant Native as wm-engine
+
+  Service->>Service: glideEngineNow()
+  alt FUTO Swipe selected, English, model loaded
+    Service->>External: NeuralGlide
+  else Google library selected, imported, unlocked
+    Service->>External: LatinImeGlide
+  else otherwise
+    Service->>Beam: no external engine
+  end
+  Service->>Engine: externalGlide = engine
+  Service->>Engine: glide(path, keys, sources)
+  Engine->>External: decode(path, keys, sources)
+  alt engine can read the stroke
+    External-->>Engine: candidates
+  else null
+    External-->>Engine: null
+    Engine->>Beam: decode(path, keys, sources)
+    Beam->>Native: glideDecode
+    Native-->>Beam: candidates
+    Beam-->>Engine: candidates
+  end
+`}
+/>
+
+The service selects FUTO only for English on a QWERTY grid. The Google engine
+returns `null` until its dictionary for the language is built; the FUTO engine
+returns `null` for a non-QWERTY frame, a short stroke, or a missing model or
+runtime. Every `null` sends the stroke to the built-in decoder, so the user sees
+a word rather than an error. The canonical rules are on
+[Languages and engines](/development/glide-engine/languages-and-engines/#engines).
+
+## Chained words
+
+<Mermaid
+	caption="A chained stroke is split at the spacebar. Only the last segment may guess ahead, because only it ends where the finger lifted."
+	chart={`
+flowchart TB
+  A["Gesture ends"] --> B{"Crossed the spacebar<br/>and multi-word is on?"}
+  B -- yes --> C["Split into segments"]
+  C --> D["Read open head and open tail"]
+  D --> E["Decode each segment"]
+  E --> F{"Early segment empty?"}
+  F -- yes --> G["Re-decode with a closed end"]
+  F -- no --> H["Commit each word in order"]
+  G --> H
+  B -- no --> I["Single-word path"]
+`}
+/>
+
+`GlideStroke.openRun` measures how many samples at an end are a walk from or to
+the spacebar. Those samples cost nothing and may hold the first or last letter
+anywhere on the run. The last segment is the only one that may guess ahead,
+because the earlier segments end where the finger turned into the spacebar, not
+where it lifted.
+
+## Two-thumb words
+
+<Mermaid
+	caption="A two-thumb word is a different input shape: taps and swipes from two fingers, ordered by time, then read as one token list."
+	chart={`
+flowchart TB
+  A["Two thumbs and several gestures"] --> B["Build GlideToken list"]
+  B --> C["DuetBeam.decode"]
+  C --> D["Commit one word"]
+`}
+/>
+
+## Commit semantics
+
+| Event | What happens | Where |
+|---|---|---|
+| Lift on the leader | The shown word wins if it is within the steadiness margin; otherwise the finished stroke's leader wins | `GlidePreviewGate.commit` |
+| Lift on a picker word | The picked word commits in place of the leader and is treated identically afterwards | `GlideVerdict.Word` |
+| Lift in the picker's cancel zone | Nothing commits, nothing is learned, previews retire | `cancelGlide` |
+| Space after the word | The keyboard adds it, and a following punctuation mark takes it back | `GlideSpace` |
+| Space press right after | Confirms the typed space instead of doubling it | `commitGestureSpace` |
+| Backspace right after | Removes the whole glided word and its space, unless the setting is off | `armRevertGuard` |
+| Alternate tapped | Replaces the word; `GlideOutcomes` learns the pair | Suggestion path |
+| Undo plus retry | A deep decode runs without the vocabulary cap and with a wider pool | `glideDeepRetry` |
+| Word settles | The shape, the word and the outcome evidence are learned | `LearningBuffer` |
+
+Shape learning is deliberately after settlement, not at commit. A word the user
+backspaces or replaces teaches no shape; the correction or undo is still recorded
+by `GlideOutcomes`. A word they leave alone settles, and only then does its shape
+reach `GlideShapeStore`.
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| Pointer loop | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ui/KeyboardScreen.kt:19173` |
+| Two-thumb loop | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ui/KeyboardScreen.kt:22087` |
+| Preview request | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27863` |
+| Preview consumer | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27927` |
+| Steady preview | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:28028` |
+| Cancel | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:28154` |
+| Lift entry | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:29071` |
+| Chained words | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:29679` |
+| Commit space | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:29595` |
+| Deep retry | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:27284` |
+| Preview gate commit | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/GlidePreviewGate.kt:102` |
+| Dwell | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ui/GlideDwell.kt:25` |

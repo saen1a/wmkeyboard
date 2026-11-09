@@ -63,6 +63,11 @@
            phone never made.
         -->
         <exclude domain="file" path="netlog" />
+        <!-- Shape-store recovery copies: the live snapshot is backed up, these
+             would only double its size and can push the whole backup over quota. -->
+        <exclude domain="file" path="learning/glide_shapes.json.bak" />
+        <exclude domain="file" path="learning/glide_shapes.json.part" />
+        <exclude domain="file" path="learning/glide_shapes.json.corrupt" />
     </cloud-backup>
 
     <device-transfer>
@@ -89,5 +94,8 @@
            phone never made.
         -->
         <exclude domain="file" path="netlog" />
+        <exclude domain="file" path="learning/glide_shapes.json.bak" />
+        <exclude domain="file" path="learning/glide_shapes.json.part" />
+        <exclude domain="file" path="learning/glide_shapes.json.corrupt" />
     </device-transfer>
 </data-extraction-rules>

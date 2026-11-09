@@ -18,6 +18,7 @@ import qwertyAfar from '../../../../../app/src/main/assets/layouts/aa.wmlayout.j
 import bengali from '../../../../../app/src/main/assets/layouts/bpy_bengali.wmlayout.json';
 import midnight from '@assets/themes/midnight.wmtheme.json';
 import FilterTable from '@components/FilterTable.astro';
+import Mermaid from '@components/Mermaid.astro';
 import languages from '@data/languages.json';
 
 Every component in `CONTENT_GUIDE.md`'s table, rendered live. Import them from
@@ -96,3 +97,20 @@ recording when you need the *real* behaviour. Four types:
 <GestureDemo type="glide" caption="glide: trace a word without lifting" />
 
 All four freeze to a static end-state under `prefers-reduced-motion`.
+
+## Mermaid
+
+Source-first diagrams for developer pages. The caption is the text alternative,
+the source stays in a disclosure, and the drawing follows the site theme. See the
+[diagram guide](/development/system-docs/diagrams/) for which view answers which
+question.
+
+<Mermaid
+	caption="A gallery diagram: one input, one decision, two outcomes."
+	chart={`
+flowchart LR
+  A["Diagram source"] --> B{"Build and render?"}
+  B -- yes --> C["SVG in the page"]
+  B -- no --> D["Source remains readable"]
+`}
+/>

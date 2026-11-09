@@ -1,0 +1,153 @@
+---
+title: "System documentation"
+description: "How WM Keyboard documents a subsystem: C4 views, arc42 sections, Mermaid diagrams, and evidence that stays true to the code."
+sidebar:
+  label: "System documentation"
+  order: 40
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+
+Good architecture documentation answers three questions at three distances. What
+does the subsystem do for the product? Which parts carry that work? How does one
+request move through those parts? This page is the contract for answering them
+in this repository, and the [glide engine](/development/glide-engine/) is the
+worked example.
+
+Use it when you document a new engine, a feature that crosses modules, or a data
+pipeline that a reader cannot reconstruct from a file tree. A single class rarely
+needs a page. A subsystem with runtime behavior, persistence, and a native or
+network boundary does.
+
+## The method
+
+The site uses four established ideas together, each for one job.
+
+| Idea | What it gives us | How it appears here |
+|---|---|---|
+| [C4 model](https://c4model.com/) | A shared vocabulary for static structure at four zoom levels | Context, Container and Component diagrams. Code diagrams stay out. |
+| [arc42](https://arc42.org/overview) | A section template that forces runtime, crosscutting and risk sections | Scope, context, building blocks, runtime, crosscutting concepts, decisions, quality, risks. |
+| [Diátaxis](https://diataxis.fr/) | A rule for keeping page modes apart | Explanation for why, reference for types and settings, how-to for a task, tutorial only when someone must learn by doing. |
+| [MADR](https://adr.github.io/madr/) | A decision record that an auditor can check | Decision log with context, options, outcome, consequences, and confirmation. |
+
+The C4 levels we keep, and the ones we drop:
+
+| Level | Question | Keep? |
+|---|---|---|
+| Context | Who and what does the system talk to? | Yes, one diagram per subsystem. |
+| Container | Which deployable or logical units run the work? | Yes, one diagram. |
+| Component | Which parts inside one container carry the behavior? | Yes, for the subsystem under discussion. |
+| Code | Which class calls which method? | No. Cite the class and the line instead. Generated class diagrams drift quickly. |
+
+## The page contract
+
+Every architecture page carries the same six things.
+
+1. **Scope.** One sentence that names what is inside and what is deliberately
+   outside. A page that documents everything documents nothing.
+2. **A verified line.** The release, the commit, and the date the claims were
+   checked against the code. Line numbers move. The verification record tells a
+   reader when the page last matched.
+3. **The view for its job.** A context page carries a context diagram. A runtime
+   page carries sequence diagrams. A data page carries a class or state diagram.
+   Do not repeat the same view on three pages.
+4. **Evidence.** Inline class and function names, plus a source anchor table at
+   the bottom with `path:line`. The anchor is not decoration. It is how the next
+   author checks the claim instead of trusting the prose.
+5. **Consequences and failure modes.** What the design buys, what it costs, and
+   what happens when a dependency is missing.
+6. **Links.** A user-facing page links down to the engineering page, and the
+   engineering page links back up. The user page explains what a person sees.
+   The architecture page explains why the machine behaves that way.
+
+## Evidence discipline
+
+The content guide already forbids invented behavior. Architecture pages need one
+more rule: a diagram is a claim, not an illustration.
+
+- Name every element that carries behavior. "Backend" and "misc" are not
+  elements.
+- Label every arrow with the data or control that crosses it, or with the
+  protocol. An unlabeled arrow is a guess.
+- Mark a boundary you are unsure about as an open question. Do not smooth it
+  over.
+- When two sources disagree, the code wins. Record the contradiction in the
+  page and in the review.
+- If a value is measured, say where the measurement came from. If it is a
+  default, say so. They are different kinds of fact.
+
+## Freshness
+
+Documentation drifts when a behavior change lands without a page change. The
+repository already treats a feature commit as carrying its doc edits. For
+architecture pages, add a second check:
+
+```text
+verified: 2026-11-04
+release: 0.6.4
+commit: 8f61dd563
+```
+
+Before changing a decision or a pipeline, read the page that owns it. After the
+change, update the verified line and the source anchors. If the page and the code
+cannot be reconciled in the time you have, mark the section `:::caution[Stale]`
+and name the missing check. A marked gap is honest. A confident stale paragraph
+is not.
+
+## Review checklist
+
+An architecture page is ready when all of these are true.
+
+- [ ] The scope sentence excludes something real.
+- [ ] Every C4 element has a name, a responsibility, and a technology or type.
+- [ ] Every diagram has a caption and a one-line reading order.
+- [ ] Runtime scenarios use component names that exist on the component page.
+- [ ] The state machine includes the cancel, error, and unavailable paths.
+- [ ] The page names at least one failure mode and how the system degrades.
+- [ ] Every non-obvious claim has a source anchor.
+- [ ] The page links to the user-facing behavior it explains.
+- [ ] The verified line names the release and the commit.
+- [ ] The docs build and link check pass. On PowerShell, set
+      `CHECK_LINKS=1` before `npm run build --prefix docs`.
+
+## Adding a subsystem
+
+1. Copy the shape from the [templates](/development/system-docs/templates/).
+2. Draw the context and container views first. If they do not make the subsystem
+   obvious, the subsystem boundary is wrong.
+3. Read the code for the runtime path. Write the sequence before the component
+   inventory, because the sequence exposes parts the file tree hides.
+4. Add the component view only after the sequence stops changing.
+5. Record the decisions that a future author would otherwise reverse.
+6. Run the review checklist, then build the site.
+
+## Worked example and further reading
+
+<CardGrid>
+	<LinkCard
+		title="Glide engine"
+		description="The full subsystem: context, components, decode pipeline, runtime, state, integration, engines, tests and decisions."
+		href="/development/glide-engine/"
+	/>
+	<LinkCard
+		title="Templates"
+		description="Copy-paste page and diagram skeletons for a new subsystem."
+		href="/development/system-docs/templates/"
+	/>
+	<LinkCard
+		title="Diagram guide"
+		description="Which Mermaid view answers which question, and the house style for both."
+		href="/development/system-docs/diagrams/"
+	/>
+	<LinkCard
+		title="Module architecture"
+		description="The repository-level layering that every subsystem page assumes."
+		href="/development/architecture/"
+	/>
+</CardGrid>
+
+- C4 model: [c4model.com](https://c4model.com/) and the [diagram review checklist](https://c4model.com/diagrams/checklist).
+- arc42: [arc42.org/overview](https://arc42.org/overview) and the [section guide](https://docs.arc42.org/).
+- Diátaxis: [diataxis.fr](https://diataxis.fr/).
+- MADR: [adr.github.io/madr](https://adr.github.io/madr/).
+- Mermaid: [mermaid.js.org](https://mermaid.js.org/).
