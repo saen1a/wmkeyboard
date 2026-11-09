@@ -41,4 +41,7 @@ internal object ImeTrace {
 
     /** A field gaining the keyboard: field classification, layout, strip reset. */
     const val START_INPUT_VIEW = "WM:startInputView"
+
+    /** One text copy's off-main capture: classify, tidy, add to history, save. */
+    const val CLIPBOARD_CAPTURE = "WM:clipboardCapture"
 }

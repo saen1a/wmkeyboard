@@ -1,8 +1,8 @@
 package com.wasimaster.wmkeyboard.ime
 
 import android.content.ClipData
-import android.content.ClipboardManager
 import android.content.Context
+import android.os.PersistableBundle
 
 /**
  * Where the keyboard's own copies go (#392).
@@ -19,6 +19,13 @@ import android.content.Context
  * generator, the scanner), and they only have a [Context].
  */
 object KeyboardClipboard {
+    /**
+     * Android 13's `ClipDescription.EXTRA_IS_SENSITIVE`, spelled out so the
+     * constant is usable on older compile paths too. A copying app uses it to
+     * tell the system, and every clipboard preview, that the clip is a secret.
+     */
+    const val EXTRA_IS_SENSITIVE = "android.content.extra.IS_SENSITIVE"
+
     /** Whether copies stay inside the keyboard. Turning it off forgets [held]. */
     @Volatile
     var isPrivate: Boolean = false
@@ -33,12 +40,13 @@ object KeyboardClipboard {
         private set
 
     /**
-     * Told of every private copy, so the service can keep it in the history
-     * the system clipboard's listener never hears about. Null outside a
-     * running service.
+     * Told of every keyboard copy, private or system, so the service can keep
+     * it in the history the system clipboard's listener never hears about.
+     * The second argument is the copy's sensitivity. Null outside a running
+     * service.
      */
     @Volatile
-    var onPrivateCopy: ((String) -> Unit)? = null
+    var onPrivateCopy: ((String, Boolean) -> Unit)? = null
 
     /**
      * A copy made anywhere else (#612): the system clipboard now holds
@@ -56,17 +64,26 @@ object KeyboardClipboard {
         if (gone(kept)) held = null
     }
 
+    /** Marks [clip] sensitive before it reaches the system clipboard. */
+    fun markSensitive(clip: ClipData) {
+        clip.description.extras = PersistableBundle().apply {
+            putBoolean(EXTRA_IS_SENSITIVE, true)
+        }
+    }
+
     /** Copies [text]: into [held] while private, else onto the system clipboard. */
-    fun copy(context: Context, text: CharSequence, label: String = "") {
+    fun copy(
+        context: Context,
+        text: CharSequence,
+        label: String = "",
+        sensitive: Boolean = false,
+    ) {
         if (isPrivate) {
             val kept = text.toString()
             held = kept
-            onPrivateCopy?.invoke(kept)
+            onPrivateCopy?.invoke(kept, sensitive)
             return
         }
-        runCatching {
-            (context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                .setPrimaryClip(ClipData.newPlainText(label, text))
-        }
+        ClipboardWriteGate.writeText(context, text, label, sensitive)
     }
 }

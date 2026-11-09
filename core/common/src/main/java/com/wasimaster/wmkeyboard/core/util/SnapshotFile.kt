@@ -79,17 +79,43 @@ class SnapshotFile(val file: File) {
     }
 
     companion object {
+        /** Serializes writers from different [SnapshotFile] instances per path. */
+        private val writeLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+
         /**
          * Replaces [file] with [text] in one step: written to a sibling, then
          * renamed over it, which on Android's file systems is atomic.
          */
+        @Suppress("SwallowedException")
         fun writeAtomically(file: File, text: String) {
-            file.parentFile?.mkdirs()
-            val part = File(file.parentFile, file.name + ".part")
-            part.writeText(text)
-            if (!part.renameTo(file)) {
-                part.delete()
-                error("could not replace ${file.name}")
+            val lock = writeLocks.computeIfAbsent(file.absolutePath) { Any() }
+            synchronized(lock) {
+                file.parentFile?.mkdirs()
+                // A unique sibling: the IME and a sync/ConfigBackup restore can
+                // write the same history file from two instances. A shared
+                // "history.json.part" let one writer truncate the other's part.
+                val part = File(file.parentFile, file.name + "." + java.util.UUID.randomUUID() + ".part")
+                part.writeText(text)
+                // File.renameTo does not replace an existing file on Windows,
+                // so the snapshot stayed in .part and the store loaded an
+                // empty file. Files.move with REPLACE_EXISTING is portable.
+                try {
+                    java.nio.file.Files.move(
+                        part.toPath(),
+                        file.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                    )
+                } catch (atomicUnsupported: java.nio.file.AtomicMoveNotSupportedException) {
+                    java.nio.file.Files.move(
+                        part.toPath(),
+                        file.toPath(),
+                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    )
+                } catch (failure: Throwable) {
+                    part.delete()
+                    throw failure
+                }
             }
         }
     }

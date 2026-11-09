@@ -66,10 +66,9 @@ data class ClipItem(
      * Android's sensitive-content flag on it, or it reads as a password or a
      * one-time code (see `ClipSensitivity`).
      *
-     * Sensitive clips are drawn masked in the panel and expire on their own
-     * short timer rather than the history one — see
-     * [ClipboardStore.sensitiveExpiryMillis]. Pinning still overrides both:
-     * pinning is an explicit "keep this".
+     * Sensitive clips are drawn masked in the panel and live only in
+     * [SecretMemoryStore]; they never enter the snapshot. Pinning does not keep
+     * them: a secret has no pin.
      */
     val sensitive: Boolean = false,
     /**
@@ -191,9 +190,9 @@ fun clipQueryMatcher(query: String, regex: Boolean): (ClipItem) -> Boolean {
     if (trimmed.isEmpty()) return { true }
     val pattern = if (regex) runCatching { Regex(trimmed, RegexOption.IGNORE_CASE) }.getOrNull() else null
     return if (pattern != null) {
-        { item -> item.searchParts().any { pattern.containsMatchIn(it) } }
+        { item -> !item.sensitive && item.searchParts().any { pattern.containsMatchIn(it) } }
     } else {
-        { item -> item.searchHaystack().contains(trimmed, ignoreCase = true) }
+        { item -> !item.sensitive && item.searchHaystack().contains(trimmed, ignoreCase = true) }
     }
 }
 
@@ -293,9 +292,14 @@ class ClipboardStore(
 ) {
 
     @Serializable
-    private data class Snapshot(val items: List<ClipItem> = emptyList())
+    private data class Snapshot(val items: List<ClipItem> = emptyList(), val version: Int = 2)
 
     private val items = ArrayList<ClipItem>()
+    /**
+     * Sensitive clips never enter [items] or the snapshot. They live here, in
+     * process memory only, and are merged into [items] for the panel.
+     */
+    private val secrets = SecretMemoryStore()
     /**
      * Clips taken out by [detach] whose Undo is still on offer. They are gone
      * from [items], so nothing lists, caps or expires them, but an image clip
@@ -305,6 +309,16 @@ class ClipboardStore(
     private val detached = ArrayList<ClipItem>()
     private val json = Json { ignoreUnknownKeys = true }
     private var nextId = 1L
+    /** Last modified stamp of the file this store last read or wrote. */
+    private var fileStamp = 0L
+    /**
+     * Clear clips changed since the last successful save. Only these are kept
+     * when an external sync/ConfigBackup write replaces the file; an external
+     * delete of an untouched clip must stay deleted.
+     */
+    private val dirtyIds = mutableSetOf<Long>()
+    /** Clear clips deleted since the last save; a reload must not resurrect them. */
+    private val removedIds = mutableSetOf<Long>()
 
     /** Where [save] writes, so the encode and the write can run off the caller's thread. */
     private val snapshotFile = storageFile?.let(::SnapshotFile)
@@ -313,6 +327,18 @@ class ClipboardStore(
         const val DEFAULT_EXPIRY_MILLIS = 24L * 60 * 60 * 1000 // 1 day
         const val DEFAULT_MAX_ITEMS = 100
         const val DEFAULT_SENSITIVE_EXPIRY_MILLIS = 5L * 60 * 1000 // 5 minutes
+
+        /** The most text characters one clip may keep, whatever the user setting says. */
+        const val HARD_MAX_TEXT_CHARS = 100_000
+
+        /** The most bytes of rich-text markup one clip may keep. */
+        const val HARD_MAX_HTML_BYTES = 262_144
+
+        /** The most bytes of copied image this store may keep. */
+        const val HARD_MAX_IMAGE_BYTES = 8_388_608
+
+        /** The most bytes the encoded clear history may occupy on disk. */
+        const val HARD_MAX_SNAPSHOT_BYTES = 8_388_608
 
         /**
          * How far past the clock [move] puts a clip dragged to the top of its
@@ -340,35 +366,115 @@ class ClipboardStore(
         snapshotFile?.supersede()
         items.clear()
         nextId = 1L
+        dirtyIds.clear()
+        removedIds.clear()
         restore()
     }
 
-    private fun restore() {
+    /**
+     * An external writer deleted or emptied the history file. That is a user
+     * clear, not a failed save: drop the in-memory list too, or the next save
+     * would resurrect it.
+     */
+    private fun clearFromExternal() {
+        items.clear()
+        detached.clear()
+        secrets.clear()
+        nextId = 1L
+        fileStamp = 0L
+        dirtyIds.clear()
+        removedIds.clear()
+    }
+
+    private fun restore(preserve: List<ClipItem> = emptyList()) {
         storageFile?.takeIf { it.exists() }?.let { file ->
-            runCatching {
-                val snapshot = json.decodeFromString<Snapshot>(file.readText())
-                items.addAll(
-                    snapshot.items.filter {
+            // An empty file is not a loaded history; keep the stamp at 0 so a
+            // fresh save does not mistake it for an external clear.
+            fileStamp = if (file.length() > 0) file.lastModified() else 0L
+            items.clear()
+            val snapshot = runCatching { json.decodeFromString<Snapshot>(file.readText()) }.getOrNull()
+            if (snapshot == null) {
+                // A file that does not parse cannot be read back, and keeping
+                // it would leave a plaintext artifact behind. Delete it and
+                // start empty.
+                file.delete()
+                fileStamp = 0L
+            } else {
+                snapshot.items.forEach { item ->
+                    // A sensitive item from an older build is never loaded
+                    // back. Its image file, if any, is deleted with it; a
+                    // text secret from a previous process is gone by design.
+                    if (item.sensitive) {
+                        item.imagePath?.let { File(it).delete() }
+                    } else if (
                         when {
-                            it.kind == ClipKind.IMAGE -> it.imagePath != null
-                            it.kind.isUriBacked -> it.uriString != null
+                            item.kind == ClipKind.IMAGE -> item.imagePath != null
+                            item.kind.isUriBacked -> item.uriString != null
                             else -> true
                         }
+                    ) {
+                        items.add(item)
                     }
-                )
+                }
             }
         }
         // A clip waiting on its Undo still owns its id, or a new clip could
         // take it and Undo would put back two clips with one id.
-        nextId = ((items + detached).maxOfOrNull { it.id } ?: 0L) + 1
+        nextId = ((items + detached).maxOfOrNull { it.id } ?: 0L)
+            .let { maxOf(it, secrets.maxId(), preserve.maxOfOrNull { item -> item.id } ?: 0L) + 1 }
         // Image files whose item is gone (crash between file copy and save).
         // A detached clip's file is not an orphan yet: Undo may still want it.
         // One left behind by a process death is swept on the next start.
         imagesDir?.listFiles()?.let { files ->
-            val referenced = (items + detached).mapNotNull { it.imagePath }.toSet()
+            val referenced = (items + detached + preserve).mapNotNull { it.imagePath }.toSet()
             files.filter { it.absolutePath !in referenced }.forEach { it.delete() }
         }
     }
+
+    /**
+     * Keeps the in-memory clear clips a reload did not already contain. A sync
+     * or ConfigBackup restore can replace the file while a copy, pin or edit is
+     * still only in memory; the file wins for the same id, the in-memory item
+     * wins for a new id or a text that is not in the file. Returns the number
+     * of items kept.
+     */
+    private fun mergeExternal(previous: List<ClipItem>): Int {
+        if (previous.isEmpty()) return 0
+        var kept = 0
+        val merged = items.toMutableList()
+        previous.forEach { old ->
+            val sameId = merged.indexOfFirst { it.id == old.id }
+            if (sameId >= 0 && sameContent(merged[sameId], old)) {
+                // Preserve a pin or edit made since the last save.
+                merged[sameId] = old
+                kept++
+            } else if (merged.none { sameContent(it, old) }) {
+                // A different item may share an id with the external store;
+                // give the in-memory copy a fresh id rather than dropping
+                // either one.
+                val id = if (sameId >= 0) nextId++ else old.id
+                merged.add(old.copy(id = id))
+                kept++
+            }
+        }
+        if (kept > 0) {
+            items.clear()
+            items.addAll(merged)
+            nextId = maxOf(nextId, (items.maxOfOrNull { it.id } ?: 0L) + 1)
+        }
+        return kept
+    }
+
+    /** Same logical clip, ignoring id, pin and timestamp. */
+    private fun sameContent(first: ClipItem, second: ClipItem): Boolean = when {
+        first.uriString != null || second.uriString != null -> first.uriString == second.uriString
+        first.kind.isTextual && second.kind.isTextual -> first.text == second.text
+        first.imagePath != null || second.imagePath != null -> first.imagePath == second.imagePath
+        else -> first.id == second.id
+    }
+
+    /** The shorter leash when set, else the normal history expiry. */
+    private fun secretExpiry(): Long = if (sensitiveExpiryMillis > 0) sensitiveExpiryMillis else expiryMillis
 
     @Synchronized
     fun add(
@@ -406,6 +512,18 @@ class ClipboardStore(
         sourcePackage: String? = null,
     ): ClipItem? {
         if (!imageFile.exists()) return null
+        // A picture over the hard cap is not retained; the file the service
+        // just wrote is ours, so take it with the rejection.
+        if (imageFile.length() > HARD_MAX_IMAGE_BYTES) {
+            imageFile.delete()
+            return null
+        }
+        // A sensitive image is not retained at all: there is no memory-only
+        // image path that survives a process death without a disk write.
+        if (sensitive) {
+            imageFile.delete()
+            return null
+        }
         val item = ClipItem(
             id = nextId++,
             text = "",
@@ -418,6 +536,7 @@ class ClipboardStore(
             sensitive = sensitive,
         )
         items.add(0, item)
+        dirtyIds.add(item.id)
         prune(now)
         return item.takeIf { items.contains(item) }
     }
@@ -441,6 +560,13 @@ class ClipboardStore(
         sourcePackage: String? = null,
     ): ClipItem? {
         if (uriString.isBlank()) return null
+        // A sensitive URI is a reference to bytes another app owns; keeping
+        // it in memory would still expose it later and cannot be encrypted
+        // without a file. Drop it, and any clear copy of the same URI.
+        if (sensitive) {
+            removeWhere { it.uriString == uriString }
+            return null
+        }
         // Re-copying the same file moves it to the top instead of duplicating.
         items.firstOrNull { it.uriString == uriString }?.let { existing ->
             items.remove(existing)
@@ -450,6 +576,7 @@ class ClipboardStore(
                 sourcePackage = sourcePackage ?: existing.sourcePackage,
             )
             items.add(0, refreshed)
+            dirtyIds.add(refreshed.id)
             return refreshed
         }
         val item = ClipItem(
@@ -471,6 +598,7 @@ class ClipboardStore(
             sensitive = sensitive,
         )
         items.add(0, item)
+        dirtyIds.add(item.id)
         prune(now)
         return item
     }
@@ -488,9 +616,38 @@ class ClipboardStore(
         // A cut can land after a space; the clip should not end in one.
         val trimmed = capClipText(whole, maxTextChars).trimEnd()
         // Markup for the whole text would paste back what the cut dropped;
-        // and none at all when the user has asked for plain text (#414).
-        val html = html.takeIf { keepRichText && trimmed.length == whole.length }
-        val isLink = html == null && ClipLinks.asUrl(trimmed) != null
+        // and none at all when the user has asked for plain text (#414) or
+        // when the markup alone exceeds the hard byte cap.
+        val richHtml = html?.takeIf {
+            keepRichText && trimmed.length == whole.length &&
+                it.toByteArray(Charsets.UTF_8).size <= HARD_MAX_HTML_BYTES
+        }
+        val isLink = richHtml == null && ClipLinks.asUrl(trimmed) != null
+        if (sensitive) {
+            // A secret never shares a text with a clear entry: a later clear
+            // copy must not make the same text visible and persistent.
+            removeWhere { it.kind.isTextual && it.text == trimmed }
+            val secret = ClipItem(
+                id = nextId++,
+                text = trimmed,
+                timestamp = now,
+                kind = when {
+                    richHtml != null -> ClipKind.HTML
+                    isLink -> ClipKind.LINK
+                    else -> ClipKind.TEXT
+                },
+                htmlText = richHtml,
+                mimeType = if (richHtml != null) "text/html" else "text/plain",
+                sourceApp = null,
+                sourcePackage = null,
+                sensitive = true,
+            )
+            secrets.expiryMillis = secretExpiry()
+            return secrets.add(secret, now)
+        }
+        // A clear re-copy of a text that is already a secret must not
+        // downgrade it: the secret stays the one entry for that text.
+        secrets.findTextual(trimmed, now)?.let { return secrets.bump(it.id, now) ?: it }
         // Re-copying an existing item moves it to the top instead of duplicating.
         val existing = items.firstOrNull { it.kind.isTextual && it.text == trimmed }
         if (existing != null) {
@@ -498,18 +655,17 @@ class ClipboardStore(
             val refreshed = existing.copy(
                 timestamp = now,
                 kind = when {
-                    html != null -> ClipKind.HTML
+                    richHtml != null -> ClipKind.HTML
                     isLink -> ClipKind.LINK
                     else -> existing.kind
                 },
-                htmlText = html ?: existing.htmlText,
+                htmlText = richHtml ?: existing.htmlText,
                 sourceApp = sourceApp ?: existing.sourceApp,
                 sourcePackage = sourcePackage ?: existing.sourcePackage,
-                // Sensitivity only ever tightens on a re-copy: the same text
-                // arriving once without the flag is not evidence it is safe.
-                sensitive = existing.sensitive || sensitive,
+                sensitive = false,
             )
             items.add(0, refreshed)
+            dirtyIds.add(refreshed.id)
             return refreshed
         }
         val item = ClipItem(
@@ -517,17 +673,18 @@ class ClipboardStore(
             text = trimmed,
             timestamp = now,
             kind = when {
-                html != null -> ClipKind.HTML
+                richHtml != null -> ClipKind.HTML
                 isLink -> ClipKind.LINK
                 else -> ClipKind.TEXT
             },
-            htmlText = html,
-            mimeType = if (html != null) "text/html" else "text/plain",
+            htmlText = richHtml,
+            mimeType = if (richHtml != null) "text/html" else "text/plain",
             sourceApp = sourceApp,
             sourcePackage = sourcePackage,
-            sensitive = sensitive,
+            sensitive = false,
         )
         items.add(0, item)
+        dirtyIds.add(item.id)
         prune(now)
         return item
     }
@@ -535,7 +692,9 @@ class ClipboardStore(
     @Synchronized
     fun items(now: Long = System.currentTimeMillis()): List<ClipItem> {
         prune(now)
-        if (pinnedInPlace) return items.sortedByDescending { it.orderKey }
+        secrets.expiryMillis = secretExpiry()
+        val all = if (secrets.maxId() == 0L) items else items + secrets.items(now)
+        if (pinnedInPlace) return all.sortedByDescending { it.orderKey }
         // Within each group (pinned / unpinned) newest-first; [pinnedLast] only
         // flips which group leads. compareBy puts pinned=false first (pinned
         // last); compareByDescending puts pinned=true first (pinned first).
@@ -544,7 +703,7 @@ class ClipboardStore(
         } else {
             compareByDescending<ClipItem> { it.pinned }
         }
-        return items.sortedWith(byPin.thenByDescending { it.orderKey })
+        return all.sortedWith(byPin.thenByDescending { it.orderKey })
     }
 
     /**
@@ -561,6 +720,7 @@ class ClipboardStore(
     fun move(id: Long, toIndex: Int, now: Long = System.currentTimeMillis()): Boolean {
         val listed = items(now)
         val item = listed.firstOrNull { it.id == id } ?: return false
+        if (item.sensitive) return false
         val group = if (pinnedInPlace) listed else listed.filter { it.pinned == item.pinned }
         val from = group.indexOf(item)
         val others = group - item
@@ -576,6 +736,7 @@ class ClipboardStore(
         }
         val index = items.indexOfFirst { it.id == id }
         items[index] = items[index].copy(position = key)
+        dirtyIds.add(id)
         return true
     }
 
@@ -600,6 +761,7 @@ class ClipboardStore(
             else -> (newer.orderKey + older.orderKey) / 2.0
         }
         items[index] = items[index].copy(position = key)
+        dirtyIds.add(id)
         return true
     }
 
@@ -615,39 +777,51 @@ class ClipboardStore(
         val bumped = items[index].copy(timestamp = now, position = null)
         items.removeAt(index)
         items.add(0, bumped)
+        dirtyIds.add(id)
         return bumped
     }
 
-    /** Most recent textual clip, for snippet {clip} expansion. */
+    /** Most recent clear textual clip, for snippet {clip} expansion. */
     @Synchronized
     fun latestText(now: Long = System.currentTimeMillis()): String? =
-        items(now).firstOrNull { it.kind.isTextual }?.text
+        items(now).firstOrNull { it.kind.isTextual && !it.sensitive }?.text
 
     /** Link clips still missing metadata, oldest-first in display order. */
     @Synchronized
     fun linksNeedingPreview(now: Long = System.currentTimeMillis()): List<ClipItem> =
-        items(now).filter { it.kind == ClipKind.LINK && it.linkPreview == null }
+        items(now).filter { it.kind == ClipKind.LINK && !it.sensitive && it.linkPreview == null }
 
     @Synchronized
     fun setLinkPreview(id: Long, preview: LinkPreview) {
         val index = items.indexOfFirst { it.id == id }
-        if (index >= 0) items[index] = items[index].copy(linkPreview = preview)
+        if (index >= 0) {
+            items[index] = items[index].copy(linkPreview = preview)
+            dirtyIds.add(id)
+        }
     }
 
     /**
-     * Clears the sensitive mark from every clip, for when the user stops
-     * treating secrets specially. Without it, the clips marked while hiding was
-     * on would stay masked (and uneditable) with no short timer left to take
-     * them away. Returns whether anything changed, so the caller saves only then.
+     * Drops every retained secret. A secret is never unmasked and made
+     * persistent: the only safe response to "stop treating secrets specially"
+     * is to forget the secrets, not to reveal them.
+     *
+     * Returns whether anything changed, so the caller saves only then.
      */
     @Synchronized
     fun clearSensitive(): Boolean {
-        var changed = false
-        for (index in items.indices) {
-            if (items[index].sensitive) {
-                items[index] = items[index].copy(sensitive = false)
-                changed = true
+        var changed = secrets.clear()
+        // Legacy clear-list entries can still carry the flag after a downgrade.
+        // They are dropped, never unmasked: making a secret persistent is the
+        // one thing this method must not do.
+        val legacy = items.filter { it.sensitive }
+        if (legacy.isNotEmpty()) {
+            items.removeAll { it.sensitive }
+            legacy.forEach { item ->
+                removedIds.add(item.id)
+                dirtyIds.remove(item.id)
+                item.imagePath?.let { File(it).delete() }
             }
+            changed = true
         }
         return changed
     }
@@ -656,7 +830,10 @@ class ClipboardStore(
     @Synchronized
     fun clearLinkPreviews() {
         for (index in items.indices) {
-            if (items[index].linkPreview != null) items[index] = items[index].copy(linkPreview = null)
+            if (items[index].linkPreview != null) {
+                items[index] = items[index].copy(linkPreview = null)
+                dirtyIds.add(items[index].id)
+            }
         }
     }
 
@@ -670,13 +847,17 @@ class ClipboardStore(
         val index = items.indexOfFirst { it.id == id }
         if (index < 0 || items[index].tags == tags) return false
         items[index] = items[index].copy(tags = tags)
+        dirtyIds.add(id)
         return true
     }
 
     @Synchronized
     fun setPinned(id: Long, pinned: Boolean) {
         val index = items.indexOfFirst { it.id == id }
-        if (index >= 0) items[index] = items[index].copy(pinned = pinned)
+        if (index >= 0) {
+            items[index] = items[index].copy(pinned = pinned)
+            dirtyIds.add(id)
+        }
     }
 
     /**
@@ -709,6 +890,9 @@ class ClipboardStore(
         if (!item.kind.isTextual) return null
         val trimmed = capClipText(text.trim(), maxTextChars).trimEnd()
         if (trimmed.isEmpty()) return null
+        // Editing a clear clip onto a secret's text must not create a clear
+        // duplicate of the secret.
+        secrets.findTextual(trimmed)?.let { return it }
         // Saved without a change: nothing to lose, so rich text keeps its markup.
         if (trimmed == item.text) return item
         val duplicate = items.firstOrNull { it.id != id && it.kind.isTextual && it.text == trimmed }
@@ -725,12 +909,14 @@ class ClipboardStore(
             editedAt = now,
         )
         items[index] = edited
+        dirtyIds.add(id)
         if (duplicate != null) removeWhere { it === duplicate }
         return edited
     }
 
     @Synchronized
     fun remove(id: Long) {
+        if (secrets.remove(id)) return
         removeWhere { it.id == id }
     }
 
@@ -746,6 +932,8 @@ class ClipboardStore(
         val item = items.firstOrNull { it.id == id } ?: return null
         items.remove(item)
         detached.add(item)
+        removedIds.add(id)
+        dirtyIds.remove(id)
         return item
     }
 
@@ -767,13 +955,15 @@ class ClipboardStore(
         val copiedAgain = items.any {
             (held.kind.isTextual && it.kind.isTextual && it.text == held.text) ||
                 (held.uriString != null && it.uriString == held.uriString)
-        }
+        } || (held.kind.isTextual && secrets.findTextual(held.text) != null)
         if (copiedAgain || (held.kind == ClipKind.IMAGE && held.imagePath?.let { File(it).exists() } != true)) {
             held.imagePath?.let { File(it).delete() }
             return null
         }
         val restored = if (items.any { it.id == held.id }) held.copy(id = nextId++) else held
         items.add(restored)
+        removedIds.remove(held.id)
+        dirtyIds.add(restored.id)
         prune(now)
         return restored.takeIf { items.contains(it) }
     }
@@ -788,6 +978,7 @@ class ClipboardStore(
 
     @Synchronized
     fun clearUnpinned() {
+        secrets.clear()
         removeWhere { !it.pinned }
     }
 
@@ -799,26 +990,93 @@ class ClipboardStore(
     @Synchronized
     fun detachUnpinned(now: Long = System.currentTimeMillis()): List<ClipItem> {
         prune(now)
+        secrets.clear()
         val unpinned = items.filter { !it.pinned }.sortedByDescending { it.timestamp }
         items.removeAll { !it.pinned }
+        unpinned.forEach {
+            removedIds.add(it.id)
+            dirtyIds.remove(it.id)
+        }
         detached.addAll(unpinned)
         return unpinned
     }
 
     @Synchronized
-    fun search(query: String): List<ClipItem> = items().filter { it.matchesQuery(query) }
+    fun search(query: String): List<ClipItem> =
+        items().filter { !it.sensitive && it.matchesQuery(query) }
+
+    /** Whether a secret is currently retained, for window capture protection. */
+    @Synchronized
+    fun hasSensitive(now: Long = System.currentTimeMillis()): Boolean {
+        secrets.expiryMillis = secretExpiry()
+        return secrets.items(now).isNotEmpty()
+    }
 
     /**
-     * Writes the history. The list is copied under the store's lock; the
-     * encoding — the whole history, every time, text and markup included —
-     * and the write happen outside it, so the caller can run this on any
-     * thread and the store stays usable meanwhile. Saves on different
-     * threads land in the order their copies were taken ([SnapshotFile]).
+     * Writes the history. The list is copied under the store's lock. The hard
+     * snapshot cap is measured on the encoded bytes, so the encoding has to
+     * run under that same lock: an oversized history is cut down there before
+     * the write is drawn and run outside it.
      */
     fun save() {
         val file = snapshotFile ?: return
-        val (ticket, snapshot) = synchronized(this) { file.ticket() to Snapshot(items.toList()) }
-        file.write(ticket) { json.encodeToString(snapshot) }
+        val now = System.currentTimeMillis()
+        var dirtySnapshot = emptySet<Long>()
+        var removedSnapshot = emptySet<Long>()
+        var ticket = 0L
+        var encoded = ""
+        synchronized(this) {
+            // A sync or ConfigBackup restore can replace the file while the IME
+            // is alive. A missing or emptied file is an explicit external
+            // clear; a newer non-empty file is merged with the clips changed
+            // since the last save, so neither side loses an edit.
+            val storeFile = storageFile
+            val missing = storeFile != null && !storeFile.exists() && fileStamp > 0
+            val emptied = storeFile != null && storeFile.exists() &&
+                storeFile.length() == 0L && fileStamp > 0
+            if (missing || emptied) {
+                clearFromExternal()
+            } else {
+                val external = storeFile?.lastModified() ?: 0
+                if (storeFile != null && external > fileStamp && storeFile.length() > 0) {
+                    val unsaved = items.filter { it.id in dirtyIds }
+                    restore(preserve = unsaved)
+                    items.removeAll { it.id in removedIds }
+                    mergeExternal(unsaved)
+                }
+            }
+            prune(now)
+            secrets.expiryMillis = secretExpiry()
+            secrets.items(now)
+            // The snapshot cap: evict the oldest unpinned clear clips until
+            // the encoded form fits, or only pinned clips remain.
+            while (true) {
+                encoded = json.encodeToString(Snapshot(items.filter { !it.sensitive }))
+                if (encoded.toByteArray(Charsets.UTF_8).size <= HARD_MAX_SNAPSHOT_BYTES) break
+                if (!dropOldestUnpinnedClear()) break
+            }
+            dirtySnapshot = dirtyIds.toSet()
+            removedSnapshot = removedIds.toSet()
+            ticket = file.ticket()
+        }
+        val written = file.write(ticket) { encoded }
+        if (written) {
+            synchronized(this) {
+                dirtyIds.removeAll(dirtySnapshot)
+                removedIds.removeAll(removedSnapshot)
+                storageFile?.let { fileStamp = if (it.length() > 0) it.lastModified() else 0L }
+            }
+        }
+    }
+
+    /**
+     * Drops the oldest unpinned clear clip, for the snapshot cap. Returns false
+     * when only pinned clips (or none) are left.
+     */
+    private fun dropOldestUnpinnedClear(): Boolean {
+        val oldest = items.filter { !it.pinned && !it.sensitive }.minByOrNull { it.timestamp } ?: return false
+        removeWhere { it === oldest }
+        return true
     }
 
     private fun prune(now: Long) {
@@ -839,7 +1097,11 @@ class ClipboardStore(
     private fun removeWhere(predicate: (ClipItem) -> Boolean) {
         val removed = items.filter(predicate)
         items.removeAll(predicate)
-        removed.forEach { item -> item.imagePath?.let { File(it).delete() } }
+        removed.forEach { item ->
+            removedIds.add(item.id)
+            dirtyIds.remove(item.id)
+            item.imagePath?.let { File(it).delete() }
+        }
     }
 }
 
@@ -859,11 +1121,18 @@ fun ClipItem.expiresAt(expiryMillis: Long, sensitiveExpiryMillis: Long): Long? {
 
 /**
  * [text] cut to [max] characters, one fewer rather than splitting a surrogate
- * pair; unchanged when it fits or [max] is 0 or less (no limit).
+ * pair. The hard cap always applies: [max] of 0 or less means the hard cap,
+ * and a larger user setting is lowered to it. User settings may lower the
+ * cap, never raise it.
  */
 fun capClipText(text: String, max: Int): String {
-    if (max <= 0 || text.length <= max) return text
-    var end = max
+    val limit = when {
+        max <= 0 -> ClipboardStore.HARD_MAX_TEXT_CHARS
+        max > ClipboardStore.HARD_MAX_TEXT_CHARS -> ClipboardStore.HARD_MAX_TEXT_CHARS
+        else -> max
+    }
+    if (text.length <= limit) return text
+    var end = limit
     if (Character.isHighSurrogate(text[end - 1])) end--
     return text.substring(0, end)
 }

@@ -843,6 +843,7 @@ import android.inputmethodservice.InputMethodService
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -939,6 +940,15 @@ open class WMKeyboardService : InputMethodService() {
      */
     @OptIn(ExperimentalCoroutinesApi::class)
     private val suggestionDispatcher = Dispatchers.Default.limitedParallelism(1, "wmkb-suggest")
+
+    /**
+     * Where one copied text is processed: sensitivity, tidy, write-back and
+     * the history add, off the main thread. Serial so two copies arriving in
+     * quick succession are recorded in the order the system delivered them.
+     * A view over [Dispatchers.Default], so it costs no thread of its own.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val clipboardCaptureDispatcher = Dispatchers.Default.limitedParallelism(1, "wmkb-capture")
 
     /**
      * Where the learning stores are written: one at a time, off the main
@@ -1257,11 +1267,6 @@ open class WMKeyboardService : InputMethodService() {
      * while the Undo bar is up so Undo can put it back there too.
      */
     private var clipUndoSystemClip: android.content.ClipData? = null
-    /**
-     * The text Undo is putting back on the system clipboard, so the copy
-     * listener does not record it as a new copy (see [restoreSystemClipOnUndo]).
-     */
-    private var restoringSystemClipText: String? = null
     /**
      * The last copy Remove trackers from copied links changed (#762): the
      * copy as it came, and the clean text it became. Undo with the clean text
@@ -3828,22 +3833,51 @@ open class WMKeyboardService : InputMethodService() {
         return !(incognito && state.settings.incognitoPausesClipboard)
     }
 
+    /**
+     * Screenshots, screen recording and Android 17 content capture must not
+     * see a password field, incognito or a clipboard panel holding a secret.
+     * Android 17 deprecates setContentCaptureEnabled for target 37; FLAG_SECURE
+     * is the supported window-level protection.
+     */
+    private fun updateSecureWindow(state: KeyboardUiState = _uiState.value) {
+        if (!::clipboardStore.isInitialized) return
+        val surface = window.window ?: return
+        val secure = state.secureField ||
+            state.incognitoOn ||
+            (state.panel == PanelMode.CLIPBOARD && clipboardStore.hasSensitive())
+        if (secure) {
+            surface.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        } else {
+            surface.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+        }
+    }
+
     private val clipboardListener = ClipboardManager.OnPrimaryClipChangedListener {
         // A private copy never reaches the system clipboard, so whatever just
         // landed there is newer than it, and the paste keys paste that now
         // (#612). Not the picture a paste put back as a fallback: that is the
         // keyboard's own, and no copy the user made.
         if (KeyboardClipboard.held != null && !holdsOwnFallbackClip()) KeyboardClipboard.yieldToSystem()
-        restoringSystemClipText?.let { restoring ->
-            restoringSystemClipText = null
-            val back = runCatching {
-                (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                    .primaryClip?.getItemAt(0)?.text?.toString()
-            }.getOrNull()
-            // Undo's own copy: the clip is already back in the history, where it was.
-            if (back == restoring) return@OnPrimaryClipChangedListener
-        }
         val state = _uiState.value
+        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        val clip = runCatching { clipboard.primaryClip }.getOrNull()
+        // The keyboard's own write-back: it is already in the history, where
+        // it belongs, and must not be recorded a second time.
+        if (clip != null && ClipboardWriteGate.consumeSelfWrite(clip)) {
+            ClipboardDiagnostics.onSelfWriteSkip()
+            return@OnPrimaryClipChangedListener
+        }
+        // A URI fallback the keyboard put back is an own write too. Check it
+        // before counting the attempt, or every image paste fallback would
+        // inflate capture_attempts.
+        val ownFallback = runCatching {
+            clip?.getItemAt(0)?.uri?.authority == clipboardFileProviderAuthority
+        }.getOrDefault(false)
+        if (ownFallback) {
+            ClipboardDiagnostics.onSelfWriteSkip()
+            return@OnPrimaryClipChangedListener
+        }
+        ClipboardDiagnostics.onCaptureAttempt()
         kdeClipboardChanged(state)
         sendLinkClipboardChanged(state)
         noteCopyForReply(state)
@@ -3851,42 +3885,53 @@ open class WMKeyboardService : InputMethodService() {
         if (!isClipboardAccessible() ||
             !state.settings.clipboard.history ||
             (clipCapturePaused(state) && !secureMasked)
-        ) return@OnPrimaryClipChangedListener
-        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-        val clip = clipboard.primaryClip ?: return@OnPrimaryClipChangedListener
-        val item = clip.getItemAt(0) ?: return@OnPrimaryClipChangedListener
+        ) {
+            ClipboardDiagnostics.onGateDrop()
+            return@OnPrimaryClipChangedListener
+        }
+        val primary = clip ?: run {
+            ClipboardDiagnostics.onGateDrop()
+            return@OnPrimaryClipChangedListener
+        }
+        val item = primary.getItemAt(0) ?: run {
+            ClipboardDiagnostics.onAbortedTextCapture()
+            return@OnPrimaryClipChangedListener
+        }
 
         val uri = item.uri
-        // Skip clips we set ourselves (pasting an image re-copies it to the
-        // system clipboard as a fallback); re-adding would duplicate it.
-        if (uri != null && uri.authority == clipboardFileProviderAuthority) return@OnPrimaryClipChangedListener
 
         // Which app the user copied from, resolved now while it's still the
         // foreground app (best-effort; null unless opted in and permitted).
         val sourcePackage = if (state.settings.clipboard.trackSource) resolveClipSourcePackage() else null
         val source = sourcePackage?.let(::clipSourceLabel)
 
-        // The copying app's own claim that this clip holds a secret. Nothing
-        // else in the system acts on it, so honoring it is entirely up to us —
-        // and under KEEP the user has said not to, so the flag is dropped here
-        // rather than at each of the places that would otherwise act on it.
+        // The copying app's own claim that this clip holds a secret. The flag
+        // is authoritative now: KEEP only selects memory retention, never
+        // "ignore the source". A secret is never written to disk.
         val handling = state.settings.clipboard.sensitiveHandling
-        val flaggedSensitive = secureMasked ||
-            (handling != SensitiveClipHandling.KEEP && clipMarkedSensitive(clip))
+        val flaggedSensitive = secureMasked || clipMarkedSensitive(primary)
         if (flaggedSensitive && handling == SensitiveClipHandling.NEVER_SAVE) {
+            ClipboardDiagnostics.onSensitiveDrop()
             return@OnPrimaryClipChangedListener
         }
 
         val imageMime = uri?.let { u ->
             runCatching { contentResolver.getType(u) }.getOrNull()?.takeIf { it.startsWith("image/") }
         }
+        // A sensitive image or file is not retained at all. Copying its bytes
+        // would create a plaintext file, and keeping its URI would leave a
+        // reference that cannot be removed again.
+        if (flaggedSensitive && uri != null) {
+            ClipboardDiagnostics.onSensitiveMediaDrop()
+            return@OnPrimaryClipChangedListener
+        }
         // Non-image URIs are files, folders or videos copied from a file
         // manager or gallery; record them by reference (see [addFileClips])
         // rather than copying — a copied movie is routinely gigabytes.
         if (uri != null && imageMime == null && item.text == null) {
-            val uris = (0 until clip.itemCount).mapNotNull { clip.getItemAt(it)?.uri }
+            val uris = (0 until primary.itemCount).mapNotNull { primary.getItemAt(it)?.uri }
             if (uris.isNotEmpty()) {
-                serviceScope.launch(Dispatchers.IO) { addFileClips(uris, source, flaggedSensitive, sourcePackage) }
+                serviceScope.launch(Dispatchers.IO) { addFileClips(uris, source, false, sourcePackage) }
                 return@OnPrimaryClipChangedListener
             }
         }
@@ -3904,81 +3949,129 @@ open class WMKeyboardService : InputMethodService() {
                     }
                     val target = File(dir, "clip_${System.currentTimeMillis()}.$extension")
                     contentResolver.openInputStream(uri)?.use { input ->
-                        target.outputStream().use { output -> input.copyTo(output) }
+                        if (!copyImageCapped(input, target)) return@runCatching null
                     } ?: return@runCatching null
                     target
                 }.getOrNull()
                 if (copied != null) {
                     val added = clipboardStore.addImage(
-                        copied, imageMime, source, sensitive = flaggedSensitive, sourcePackage = sourcePackage,
+                        copied, imageMime, source, sensitive = false, sourcePackage = sourcePackage,
                     )
                     saveClipboardSoon()
                     _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
+                    if (added != null) {
+                        ClipboardDiagnostics.onStoredImage()
+                    } else {
+                        ClipboardDiagnostics.onAbortedImageCapture()
+                    }
                     if (added != null && state.settings.clipboard.suggestRecent) {
                         showClipboardSuggestion(added)
                     }
+                } else {
+                    ClipboardDiagnostics.onAbortedImageCapture()
                 }
             }
             return@OnPrimaryClipChangedListener
         }
 
-        val copied = item.coerceToText(this)?.toString() ?: return@OnPrimaryClipChangedListener
-        // The user's copy rules tidy it first (#612). Not a clip its app marked
-        // secret: a password is kept exactly as it was copied.
-        val ruled = if (flaggedSensitive) copied else tidyCopy(copied, state.settings.clipboard)
-        // Then the links lose their trackers (#665), when asked. Always onto
-        // the system clipboard as well: a clean paste is the point of it.
-        val cleaned = if (state.settings.clipboard.cleanCopiedLinks && !flaggedSensitive) {
-            SelectionMacros.stripTrackersInText(ruled, state.settings.clipboard.extraTrackers)
-        } else {
-            null
+        // The text work - sensitivity, tidy, write-back and the store add - is
+        // regex and disk work, so it runs on the capture dispatcher, not here.
+        serviceScope.launch(clipboardCaptureDispatcher) {
+            captureTextClip(primary, item, state, flaggedSensitive, source, sourcePackage)
         }
-        // Undo right after pasting the clean link puts this one back (#762).
-        lastCleanedCopy = cleaned?.let { ruled to it }
-        val text = cleaned ?: ruled
-        val tidied = text != copied
-        if (tidied && text.isNotBlank() && (state.settings.clipboard.copyRulesToSystem || cleaned != null)) {
-            // Back onto the system clipboard as changed, so the app's own paste
-            // gets it too; the listener lets this one copy of ours go by.
-            restoringSystemClipText = text
-            runCatching {
-                clipboard.setPrimaryClip(android.content.ClipData.newPlainText(clip.description?.label, text))
+    }
+
+    /**
+     * The off-main half of a text copy: classify it, tidy it, write the clean
+     * text back when asked, and add it to the history. The UI refresh and the
+     * strip chip go back to the main thread afterwards.
+     */
+    private suspend fun captureTextClip(
+        clip: ClipData,
+        item: ClipData.Item,
+        state: KeyboardUiState,
+        flaggedSensitive: Boolean,
+        source: String?,
+        sourcePackage: String?,
+    ) {
+        var aborted = false
+        var sensitiveDrop = false
+        var added: com.wasimaster.wmkeyboard.core.clipboard.ClipItem? = null
+        var cleanedForUndo: Pair<String, String>? = null
+        trace(ImeTrace.CLIPBOARD_CAPTURE) {
+            val copied = item.coerceToText(this)?.toString()
+            if (copied == null) {
+                aborted = true
+            } else {
+                // Our own read of the text, for the password managers that predate the
+                // flag and the codes copied by hand out of a message. It is decided
+                // before any write-back so a secret is never re-written as a clear
+                // clip, and before KEEP so the source flag still forces memory only.
+                val sensitive = flaggedSensitive ||
+                    (state.settings.clipboard.detectSensitive && ClipSensitivity.looksSensitive(copied))
+                if (sensitive && state.settings.clipboard.sensitiveHandling == SensitiveClipHandling.NEVER_SAVE) {
+                    sensitiveDrop = true
+                } else {
+                    // The user's copy rules tidy it first (#612). Not a clip its app
+                    // marked secret, and not a heuristic secret: a password is kept
+                    // exactly as it was copied.
+                    val ruled = if (sensitive) copied else tidyCopy(copied, state.settings.clipboard)
+                    // Then the links lose their trackers (#665), when asked. Always onto
+                    // the system clipboard as well: a clean paste is the point of it.
+                    val cleaned = if (state.settings.clipboard.cleanCopiedLinks && !sensitive) {
+                        SelectionMacros.stripTrackersInText(ruled, state.settings.clipboard.extraTrackers)
+                    } else {
+                        null
+                    }
+                    cleanedForUndo = cleaned?.let { ruled to it }
+                    val text = cleaned ?: ruled
+                    val tidied = text != copied
+                    if (!sensitive && tidied && text.isNotBlank() &&
+                        (state.settings.clipboard.copyRulesToSystem || cleaned != null)
+                    ) {
+                        // Back onto the system clipboard as changed, so the app's own paste
+                        // gets it too; the token lets this one copy of ours go by.
+                        ClipboardWriteGate.writeText(this, text, clip.description?.label, selfWrite = true)
+                    }
+                    // Markup for the text as copied would paste back what a rule took out.
+                    val html = item.htmlText?.takeIf { !tidied }
+                    added = if (html != null) {
+                        clipboardStore.addHtml(text, html, source, sensitive = sensitive, sourcePackage = sourcePackage)
+                    } else {
+                        clipboardStore.add(text, source, sensitive = sensitive, sourcePackage = sourcePackage)
+                    }
+                    saveClipboardSoon()
+                }
             }
         }
-        // Our own read of the text, for the password managers that predate the
-        // flag and the codes copied by hand out of a message.
-        val sensitive = flaggedSensitive || (
-            handling != SensitiveClipHandling.KEEP &&
-                state.settings.clipboard.detectSensitive &&
-                ClipSensitivity.looksSensitive(text)
-            )
-        if (sensitive && handling == SensitiveClipHandling.NEVER_SAVE) {
-            return@OnPrimaryClipChangedListener
+        if (sensitiveDrop) {
+            ClipboardDiagnostics.onSensitiveDrop()
+            return
         }
-        // Markup for the text as copied would paste back what a rule took out.
-        val html = item.htmlText?.takeIf { !tidied }
-        val added = if (html != null) {
-            clipboardStore.addHtml(text, html, source, sensitive = sensitive, sourcePackage = sourcePackage)
-        } else {
-            clipboardStore.add(text, source, sensitive = sensitive, sourcePackage = sourcePackage)
+        if (aborted || added == null) {
+            ClipboardDiagnostics.onAbortedTextCapture()
+            return
         }
-        saveClipboardSoon()
-        _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
-        // A secret is never offered as a strip chip: the whole point of the chip
-        // is that it sits in view above the keys while you type something else.
-        // A copy made while the reply panel is open is almost always the next
-        // message being gathered (#234).
-        if (added != null) noteClipForReply(added)
-        if (added != null && added.kind.isTextual && !added.sensitive &&
-            state.settings.clipboard.suggestRecent
-        ) {
-            showClipboardSuggestion(added)
-        } else if (added != null) {
-            // A code copied with the code box already focused — the case the
-            // rule above would otherwise leave with nothing on the strip.
-            maybeShowCopiedCodeSuggestion()
+        ClipboardDiagnostics.onStoredText()
+        withContext(Dispatchers.Main) {
+            lastCleanedCopy = cleanedForUndo
+            _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
+            // A secret is never offered as a strip chip: the whole point of the chip
+            // is that it sits in view above the keys while you type something else.
+            // A copy made while the reply panel is open is almost always the next
+            // message being gathered (#234).
+            if (added != null) noteClipForReply(added)
+            if (added != null && added.kind.isTextual && !added.sensitive &&
+                state.settings.clipboard.suggestRecent
+            ) {
+                showClipboardSuggestion(added)
+            } else if (added != null) {
+                // A code copied with the code box already focused — the case the
+                // rule above would otherwise leave with nothing on the strip.
+                maybeShowCopiedCodeSuggestion()
+            }
+            if (added?.kind == ClipKind.LINK) fetchLinkPreviews()
         }
-        if (added?.kind == ClipKind.LINK) fetchLinkPreviews()
     }
 
     /** Whether the system clipboard holds a picture this keyboard put there itself. */
@@ -4003,21 +4096,31 @@ open class WMKeyboardService : InputMethodService() {
      * incognito, which records nothing, nor wherever the listener itself
      * would have stood down.
      */
-    private fun recordPrivateCopy(text: String) {
+    private fun recordPrivateCopy(text: String, sensitive: Boolean) {
+        ClipboardDiagnostics.onCaptureAttempt()
         val state = _uiState.value
         val secureMasked = secureCopyKeptMasked(state)
         if (state.incognitoOn || !isClipboardAccessible() || !state.settings.clipboard.history ||
             (clipCapturePaused(state) && !secureMasked)
-        ) return
-        val tidied = if (secureMasked) text else tidyCopy(text, state.settings.clipboard)
-        val added = clipboardStore.add(tidied, sensitive = secureMasked) ?: return
+        ) {
+            ClipboardDiagnostics.onGateDrop()
+            return
+        }
+        val tidied = if (secureMasked || sensitive) text else tidyCopy(text, state.settings.clipboard)
+        val secret = sensitive || secureMasked ||
+            (state.settings.clipboard.detectSensitive && ClipSensitivity.looksSensitive(tidied))
+        if (secret && state.settings.clipboard.sensitiveHandling == SensitiveClipHandling.NEVER_SAVE) {
+            ClipboardDiagnostics.onSensitiveDrop()
+            return
+        }
+        val added = clipboardStore.add(tidied, sensitive = secret) ?: return
+        ClipboardDiagnostics.onStoredPrivate()
         saveClipboardSoon()
         _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
         // The chip the listener would have put up for a system copy: the one
         // sign on the strip that the copy happened (#679).
         // Never a secret, read the way the listener reads one.
-        val secret = state.settings.clipboard.detectSensitive && ClipSensitivity.looksSensitive(tidied)
-        if (added.kind.isTextual && !added.sensitive && !secret && state.settings.clipboard.suggestRecent) {
+        if (added.kind.isTextual && !added.sensitive && state.settings.clipboard.suggestRecent) {
             showClipboardSuggestion(added)
             _uiState.update { it.copy(clipChipHeld = true) }
         }
@@ -4164,7 +4267,7 @@ open class WMKeyboardService : InputMethodService() {
                         }
                         val target = File(dir, "clip_${System.currentTimeMillis()}.$extension")
                         contentResolver.openInputStream(uri)?.use { input ->
-                            target.outputStream().use { output -> input.copyTo(output) }
+                            if (!copyImageCapped(input, target)) return@runCatching null
                         } ?: return@runCatching null
                         target
                     }.getOrNull()
@@ -4270,7 +4373,7 @@ open class WMKeyboardService : InputMethodService() {
             runCatching {
                 contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
             }
-            clipboardStore.addUri(
+            val stored = clipboardStore.addUri(
                 uriString = uri.toString(),
                 displayName = info.name,
                 mimeType = info.mimeType,
@@ -4281,12 +4384,42 @@ open class WMKeyboardService : InputMethodService() {
                 sensitive = sensitive,
                 sourcePackage = sourcePackage,
             )
-            added = true
+            if (stored != null) {
+                added = true
+                ClipboardDiagnostics.onStoredFiles()
+            }
         }
         if (!added) return
         saveClipboardSoon()
         _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
     }
+
+    /**
+     * Copies [input] into [target], refusing to write more than
+     * [ClipboardStore.HARD_MAX_IMAGE_BYTES]. A copy that would pass the cap
+     * leaves no partial file behind. Returns false when the target was over
+     * the cap or the copy failed.
+     */
+    private fun copyImageCapped(input: InputStream, target: File): Boolean =
+        runCatching {
+            var total = 0L
+            target.outputStream().use { output ->
+                val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+                while (true) {
+                    val read = input.read(buffer)
+                    if (read < 0) break
+                    total += read
+                    if (total > ClipboardStore.HARD_MAX_IMAGE_BYTES) {
+                        throw IOException("clipboard image exceeds the hard cap")
+                    }
+                    output.write(buffer, 0, read)
+                }
+            }
+            true
+        }.getOrElse {
+            target.delete()
+            false
+        }
 
     private data class ClipFileInfo(
         val name: String,
@@ -4427,6 +4560,9 @@ open class WMKeyboardService : InputMethodService() {
         // keyboard without a word to the user, so the crash record has to be
         // armed before anything that could crash runs.
         DebugLog.attach(this)
+        // The first inline request of a fresh process is built before the board
+        // has drawn; reuse the last resolved palette so a cold start is themed.
+        inlineChipPalette = cachedInlineChipPalette()
         // The keyboard's own strings in a language the standard GitHub build
         // downloaded (LanguagePackResources); nothing on other builds.
         com.wasimaster.wmkeyboard.core.modules.LanguagePackResources.attach(resources)
@@ -4456,6 +4592,7 @@ open class WMKeyboardService : InputMethodService() {
         serviceScope.launch {
             _uiState.collect {
                 if (windowOnScreen) _shownState.value = it
+                updateSecureWindow(it)
                 jankMonitor.screen(it.panel.name)
             }
         }
@@ -4894,10 +5031,10 @@ open class WMKeyboardService : InputMethodService() {
                 lastStoredSettings = stored
                 // Locked, the history is in memory only, so nothing on disk is at stake.
                 if (clipboardLimitsKnown || !userUnlocked) configureClipboardStore(settings)
-                // "Keep it like any other clip" means the mark is ignored, so
-                // clips marked while hiding was on unmask rather than staying
-                // dots forever with no short timer left to sweep them.
-                if (settings.clipboard.sensitiveHandling == SensitiveClipHandling.KEEP &&
+                // "Never save" means drop what is already in memory. The
+                // other two options keep it in memory only; they do not make
+                // it persistent, and they never reveal it.
+                if (settings.clipboard.sensitiveHandling == SensitiveClipHandling.NEVER_SAVE &&
                     clipboardStore.clearSensitive()
                 ) {
                     saveClipboardSoon()
@@ -8802,7 +8939,7 @@ open class WMKeyboardService : InputMethodService() {
                 platformBudget = platformBudget,
                 palette = inlineChipPalette,
             )
-        }.getOrNull()
+        }.getOrNull()?.also { ClipboardDiagnostics.onRequest() }
     }
 
     /**
@@ -8838,9 +8975,35 @@ open class WMKeyboardService : InputMethodService() {
     @Volatile
     private var inlineChipPalette: InlineChipPalette? = null
 
+    /** Last resolved chip colours, so the first request after a cold start is themed. */
+    private val inlinePalettePrefs by lazy {
+        // Device-protected: onCreate runs before the first unlock and the
+        // credential-encrypted store is unavailable there.
+        DirectBoot.deviceContext(this).getSharedPreferences("inline_chip_palette", MODE_PRIVATE)
+    }
+
+    private fun cachedInlineChipPalette(): InlineChipPalette? {
+        if (!inlinePalettePrefs.getBoolean("saved", false)) return null
+        return InlineChipPalette(
+            background = inlinePalettePrefs.getInt("background", 0),
+            title = inlinePalettePrefs.getInt("title", 0),
+            subtitle = inlinePalettePrefs.getInt("subtitle", 0),
+        )
+    }
+
+    private fun saveInlineChipPalette(palette: InlineChipPalette) {
+        inlinePalettePrefs.edit()
+            .putBoolean("saved", true)
+            .putInt("background", palette.background)
+            .putInt("title", palette.title)
+            .putInt("subtitle", palette.subtitle)
+            .apply()
+    }
+
     /** Stable across recompositions, as [systemNavBarPainter] is. */
     private val inlineChipPaletteReporter = InlineChipPaletteReporter { palette ->
         inlineChipPalette = palette
+        if (palette != null) saveInlineChipPalette(palette)
     }
 
     /**
@@ -8859,6 +9022,12 @@ open class WMKeyboardService : InputMethodService() {
             autofillBudget = autofillBudget,
             platformBudget = platformBudget,
         )
+        ClipboardDiagnostics.onResponse(
+            rawSuggestions = response.inlineSuggestions.size,
+            autofill = lanes.autofill.size,
+            platform = lanes.platform.size,
+        )
+        DebugLog.d("autofill", ClipboardDiagnostics.summary())
         InlineAutofill.inflateAll(
             context = inlineChipContext(),
             lanes = lanes,
@@ -8869,6 +9038,7 @@ open class WMKeyboardService : InputMethodService() {
             // a late one would put back chips the platform already withdrew,
             // whose surfaces are dead and draw blank (#398).
             if (generation != inlineResponseGeneration) return@inflateAll
+            ClipboardDiagnostics.onInflation(chips.autofill.size + chips.platform.size)
             _uiState.update {
                 it.copy(autofillChips = chips.autofill, smartReplyChips = chips.platform)
             }
@@ -8975,6 +9145,7 @@ open class WMKeyboardService : InputMethodService() {
      * screen instead, with no withdrawal, and that tap stays silent.
      */
     private fun onInlineChipsWithdrawn() {
+        ClipboardDiagnostics.onWithdrawn()
         val state = _uiState.value
         if (state.autofillChips.isEmpty() && state.smartReplyChips.isEmpty()) return
         if (!windowOnScreen) return
@@ -9142,6 +9313,9 @@ open class WMKeyboardService : InputMethodService() {
         rememberTypedNumber()
         super.onFinishInputView(finishingInput)
         keyboardVisible = false
+        // The window is going away; do not carry a secure flag into the next
+        // field. The state collector sets it again when the next view starts.
+        window.window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
         // A continuation asked for in the closing field has nowhere to go.
         clearAiSuggest()
         // A speed test under way when the keyboard goes has nobody watching it.
@@ -9390,6 +9564,7 @@ open class WMKeyboardService : InputMethodService() {
             saveLearningStores()
             clipboardStore.save()
         }
+        DebugLog.i("clipboard", ClipboardDiagnostics.summary())
         micBlockWatcher.stop()
         voiceEngine.cancel()
         whisperRecorder?.let { rec -> whisperRecorder = null; runCatching { rec.stop() } }
@@ -30721,15 +30896,7 @@ open class WMKeyboardService : InputMethodService() {
     private fun kdeClipboardArrived(text: String, from: String) {
         if (text.isEmpty() || !isClipboardAccessible()) return
         val secret = ClipSensitivity.looksSensitive(text)
-        runCatching {
-            val clip = android.content.ClipData.newPlainText(from, text)
-            if (secret) {
-                clip.description.extras = android.os.PersistableBundle().apply {
-                    putBoolean(EXTRA_IS_SENSITIVE, true)
-                }
-            }
-            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(clip)
-        }
+        ClipboardWriteGate.writeText(this, text, from, sensitive = secret)
         // A newer clip from the computer replaces the old one, so the old timer
         // has nothing left to clear.
         kdeSecretClearJob?.cancel()
@@ -30754,13 +30921,7 @@ open class WMKeyboardService : InputMethodService() {
         }.getOrNull() ?: return
         val current = runCatching { manager.primaryClip?.getItemAt(0)?.text?.toString() }.getOrNull()
         if (current != text) return
-        runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                manager.clearPrimaryClip()
-            } else {
-                manager.setPrimaryClip(android.content.ClipData.newPlainText("", ""))
-            }
-        }
+        ClipboardWriteGate.clear(this)
         val stored = text.trim()
         val gone = clipboardStore.items().filter { it.kind.isTextual && !it.pinned && it.text.trim() == stored }
         if (gone.isNotEmpty()) {
@@ -34483,11 +34644,7 @@ open class WMKeyboardService : InputMethodService() {
         ic.deleteSurroundingText(clean.length, 0)
         ic.commitText(original, 1)
         ic.endBatchEdit()
-        restoringSystemClipText = original
-        runCatching {
-            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                .setPrimaryClip(android.content.ClipData.newPlainText(null, original))
-        }
+        ClipboardWriteGate.writeText(this, original, selfWrite = true)
         return true
     }
 
@@ -43067,10 +43224,7 @@ open class WMKeyboardService : InputMethodService() {
             },
             settings = { _uiState.value.settings.emoji.kaomoji },
             insertText = ::onTextArtTapped,
-            copyText = { text ->
-                (getSystemService(CLIPBOARD_SERVICE) as? ClipboardManager)
-                    ?.setPrimaryClip(ClipData.newPlainText("kaomoji", text))
-            },
+            copyText = { text -> ClipboardWriteGate.copyText(this, text, "kaomoji") },
             haptic = { vibrate() },
             openSettings = { openRoute("kaomoji") },
             beginText = { entry ->
@@ -48837,6 +48991,35 @@ open class WMKeyboardService : InputMethodService() {
     fun onClipboardItemTapped(item: com.wasimaster.wmkeyboard.core.clipboard.ClipItem) {
         if (!isClipboardAccessible()) return
         vibrate()
+        // A file, folder or video is only a reference, and its grant may be
+        // gone by now. Opening the provider is I/O, so the check runs off the
+        // main thread before any commitContent attempt.
+        val uriString = item.uriString
+        if (item.kind.isUriBacked && uriString != null) {
+            serviceScope.launch {
+                val uri = runCatching { Uri.parse(uriString) }.getOrNull()
+                val readable = withContext(Dispatchers.IO) { uri != null && uriIsReadable(uri) }
+                if (!readable) {
+                    clipboardStore.remove(item.id)
+                    saveClipboardSoon()
+                    _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
+                    withContext(Dispatchers.Main) { toast(R.string.ime_service_file_copy_error_toast) }
+                    return@launch
+                }
+                withContext(Dispatchers.Main) {
+                    when (item.kind) {
+                        ClipKind.FILE, ClipKind.VIDEO -> commitFileClip(item)
+                        ClipKind.FOLDER -> commitFolderClip(item)
+                        else -> Unit
+                    }
+                    clearClipboardSuggestion()
+                    purgeAfterPasswordPaste(item)
+                    bumpPastedClip(item)
+                    closePanelAfterInsertIfEnabled()
+                }
+            }
+            return
+        }
         when (item.kind) {
             ClipKind.IMAGE -> commitImageClip(item)
             // A video is a file whose bytes another app owns — the same
@@ -48845,15 +49028,7 @@ open class WMKeyboardService : InputMethodService() {
             // A folder is a container, not content — there is nothing to attach
             // to a text field, so insert its name and hand the URI back to the
             // system clipboard for a file manager to paste.
-            ClipKind.FOLDER -> {
-                commitToField(item.fileName.orEmpty())
-                item.uriString?.let { copyUriToSystemClipboard(Uri.parse(it), item.fileName.orEmpty()) }
-                Toast.makeText(
-                    this,
-                    getString(R.string.ime_service_folder_insert_toast),
-                    Toast.LENGTH_SHORT,
-                ).show()
-            }
+            ClipKind.FOLDER -> commitFolderClip(item)
             // A clip that is nothing but a code is pasted into a code box far
             // more often than anywhere else, so it goes in character by
             // character like the chips do. Any other clip goes in the same
@@ -48882,6 +49057,29 @@ open class WMKeyboardService : InputMethodService() {
     }
 
     /**
+     * A folder clip is a container, not content: insert its name and hand the
+     * URI back to the system clipboard for a file manager to paste.
+     */
+    private fun commitFolderClip(item: com.wasimaster.wmkeyboard.core.clipboard.ClipItem) {
+        commitToField(item.fileName.orEmpty())
+        item.uriString?.let { copyUriToSystemClipboard(Uri.parse(it), item.fileName.orEmpty()) }
+        Toast.makeText(
+            this,
+            getString(R.string.ime_service_folder_insert_toast),
+            Toast.LENGTH_SHORT,
+        ).show()
+    }
+
+    /**
+     * Whether [uri] can still be opened for reading by its provider. The
+     * descriptor is closed at once; only readability is being tested.
+     */
+    private fun uriIsReadable(uri: Uri): Boolean =
+        runCatching {
+            contentResolver.openAssetFileDescriptor(uri, "r")?.use { true } ?: false
+        }.getOrDefault(false)
+
+    /**
      * Moves a clip just pasted to the top of the history and puts it back on
      * the system clipboard, when [ClipboardSettings.bumpOnPaste] asks (#970),
      * so the app's own Paste gives the same thing next time.
@@ -48897,10 +49095,7 @@ open class WMKeyboardService : InputMethodService() {
         clipboardStore.bump(item.id) ?: return
         clipboardStore.save()
         if (item.kind.isTextual && !item.sensitive && !KeyboardClipboard.isPrivate) {
-            runCatching {
-                (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                    .setPrimaryClip(android.content.ClipData.newPlainText(null, item.text))
-            }
+            ClipboardWriteGate.copyText(this, item.text)
         }
         _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
     }
@@ -48920,10 +49115,7 @@ open class WMKeyboardService : InputMethodService() {
         // system clipboard, so the copy listener files it in the history like
         // any other copy, and the next paste anywhere is this part.
         if (_uiState.value.settings.clipboard.entityToClipboard) {
-            runCatching {
-                (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                    .setPrimaryClip(android.content.ClipData.newPlainText(null, entity.value))
-            }
+            ClipboardWriteGate.copyText(this, entity.value)
             // Android 13 and later say so themselves.
             if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
                 Toast.makeText(this, getString(R.string.ime_clip_entity_copied_toast), Toast.LENGTH_SHORT).show()
@@ -48997,13 +49189,7 @@ open class WMKeyboardService : InputMethodService() {
             _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
         }
         if (!clearPrimary) return
-        runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                manager.clearPrimaryClip()
-            } else {
-                manager.setPrimaryClip(android.content.ClipData.newPlainText("", ""))
-            }
-        }
+        ClipboardWriteGate.clear(this)
         clearClipboardSuggestion()
     }
 
@@ -49244,10 +49430,7 @@ open class WMKeyboardService : InputMethodService() {
     }
 
     private fun copyUriToSystemClipboard(uri: Uri, label: String) {
-        runCatching {
-            (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-                .setPrimaryClip(android.content.ClipData.newUri(contentResolver, label, uri))
-        }
+        ClipboardWriteGate.copyUri(this, uri, "", label)
     }
 
     /**
@@ -49401,8 +49584,7 @@ open class WMKeyboardService : InputMethodService() {
         val contentUri = runCatching {
             FileProvider.getUriForFile(this, clipboardFileProviderAuthority, file)
         }.getOrNull() ?: return
-        (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-            .setPrimaryClip(android.content.ClipData.newUri(contentResolver, "image", contentUri))
+        ClipboardWriteGate.copyUri(this, contentUri, "", "image")
         toast(R.string.ime_camera_copied_toast)
     }
 
@@ -49450,8 +49632,7 @@ open class WMKeyboardService : InputMethodService() {
         val contentUri = runCatching {
             FileProvider.getUriForFile(this, clipboardFileProviderAuthority, file)
         }.getOrNull() ?: return
-        (getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager)
-            .setPrimaryClip(android.content.ClipData.newUri(contentResolver, "image", contentUri))
+        ClipboardWriteGate.copyUri(this, contentUri, "", "image")
         Toast.makeText(
             this,
             getString(R.string.ime_service_image_not_accepted_toast),
@@ -49673,6 +49854,15 @@ open class WMKeyboardService : InputMethodService() {
      * a delete should, and the next start sweeps the file up as an orphan.
      */
     fun onClipboardDelete(item: com.wasimaster.wmkeyboard.core.clipboard.ClipItem) {
+        // A secret has no Undo: keeping a deleted password alive in a detached
+        // list for five seconds is the opposite of the guarantee.
+        if (item.sensitive) {
+            clipboardStore.remove(item.id)
+            clearSystemClipAfterDelete(listOf(item))
+            saveClipboardSoon()
+            _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
+            return
+        }
         if (!_uiState.value.settings.clipboard.undoDelete) {
             clipboardStore.remove(item.id)
             clearSystemClipAfterDelete(listOf(item))
@@ -49702,6 +49892,10 @@ open class WMKeyboardService : InputMethodService() {
             return
         }
         val removed = clipboardStore.detachUnpinned()
+        // Secrets are dropped with no Undo, so the panel must refresh even when
+        // only secrets were cleared.
+        saveClipboardSoon()
+        _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
         if (removed.isEmpty()) return
         clearSystemClipAfterDelete(removed, clearAll = true)
         offerClipUndo(removed)
@@ -49746,13 +49940,7 @@ open class WMKeyboardService : InputMethodService() {
         )
         val kept = clipboardStore.items()
         if (!clearsSystemClip(primary, removed, kept, clearAll, clipboardStore.maxTextChars)) return
-        runCatching {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-                manager.clearPrimaryClip()
-            } else {
-                manager.setPrimaryClip(android.content.ClipData.newPlainText("", ""))
-            }
-        }
+        ClipboardWriteGate.clear(this)
         clearClipboardSuggestion()
         // Only text goes back on Undo: the app that shared a picture or a
         // file granted its address to that one copy, not to ours.
@@ -49772,8 +49960,13 @@ open class WMKeyboardService : InputMethodService() {
         }.getOrNull() ?: return
         val current = runCatching { manager.primaryClip?.takeIf { it.itemCount > 0 }?.getItemAt(0) }.getOrNull()
         if (current != null && !SystemClip(current.text?.toString(), current.uri?.toString()).isEmpty) return
-        restoringSystemClipText = clip.getItemAt(0)?.text?.toString()
-        runCatching { manager.setPrimaryClip(clip) }
+        // The stored clip may be the only place the secret was detected. Mark
+        // it again on the way back; Undo must not turn a masked clip clear.
+        val text = runCatching { clip.getItemAt(0)?.coerceToText(this)?.toString() }.getOrNull()
+        val sensitive = clipMarkedSensitive(clip) ||
+            (text != null && _uiState.value.settings.clipboard.detectSensitive &&
+                ClipSensitivity.looksSensitive(text))
+        ClipboardWriteGate.writeClip(this, clip, sensitive = sensitive, selfWrite = true)
     }
 
     /**
@@ -50186,7 +50379,7 @@ open class WMKeyboardService : InputMethodService() {
      */
     fun onClipCombineStart(ids: List<Long>) {
         if (!isClipboardAccessible()) return
-        val textual = clipboardStore.items().filter { it.kind.isTextual }.map { it.id }.toSet()
+        val textual = clipboardStore.items().filter { it.kind.isTextual && !it.sensitive }.map { it.id }.toSet()
         val picked = ids.filter { it in textual }
         if (picked.size < 2) return
         vibrate()
@@ -50226,7 +50419,7 @@ open class WMKeyboardService : InputMethodService() {
     /** What [combine]'s rule makes of its clips, or null for nothing. */
     private fun combinedText(combine: ClipCombineDraft): String? {
         val byId = clipboardStore.items().associateBy { it.id }
-        val texts = combine.ids.mapNotNull { byId[it]?.takeIf { clip -> clip.kind.isTextual }?.text }
+        val texts = combine.ids.mapNotNull { byId[it]?.takeIf { clip -> clip.kind.isTextual && !clip.sensitive }?.text }
         return com.wasimaster.wmkeyboard.core.clipboard.ClipCombine.combine(
             texts, combine.joiner, combine.base, combine.append, combine.template,
         )
@@ -50256,6 +50449,9 @@ open class WMKeyboardService : InputMethodService() {
      */
     fun onClipCombineSave() {
         val combine = _uiState.value.clipCombine ?: return
+        // A stale selection from before a clip became secret must not turn it
+        // into a clear joined clip.
+        if (clipboardStore.items().any { it.id in combine.ids && it.sensitive }) return
         val joined = combine.result?.takeIf { it.isNotBlank() } ?: combinedText(combine) ?: return
         vibrate()
         // The joined clips go first, so the new one is not taken for one of
@@ -50303,9 +50499,14 @@ open class WMKeyboardService : InputMethodService() {
             _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
             return
         }
-        val removed = ids.mapNotNull(clipboardStore::detach)
+        val selected = clipboardStore.items().filter { it.id in ids }
+        // Secrets go at once; only clear clips get an Undo.
+        selected.filter { it.sensitive }.forEach { clipboardStore.remove(it.id) }
+        val removed = selected.filterNot { it.sensitive }.mapNotNull { clipboardStore.detach(it.id) }
+        clearSystemClipAfterDelete(selected, clearAll = true)
+        saveClipboardSoon()
+        _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
         if (removed.isEmpty()) return
-        clearSystemClipAfterDelete(removed, clearAll = true)
         offerClipUndo(removed)
     }
 

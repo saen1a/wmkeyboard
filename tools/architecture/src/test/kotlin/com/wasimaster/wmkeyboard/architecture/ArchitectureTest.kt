@@ -171,6 +171,28 @@ class ArchitectureTest {
         return properties.isFile && properties.readLines().any { it.trim().startsWith("sdk=") }
     }
 
+    // ---- clipboard --------------------------------------------------------
+
+    /**
+     * Every keyboard-originated clipboard write goes through
+     * `ClipboardWriteGate`, so sensitivity flagging, private holds and any
+     * future self-write token have one owner. A new direct call compiles and
+     * passes every other test, then silently bypasses that policy.
+     */
+    @Test
+    fun `keyboard clipboard writes go through the write gate`() {
+        val offenders = trackedFiles { it.endsWith(".kt") && "/feature/ime/src/main/" in it }
+            .filterNot { it.endsWith("/ClipboardWriteGate.kt") }
+            .filter { path ->
+                val text = code(File(root, path).readText())
+                "setPrimaryClip(" in text || "clearPrimaryClip(" in text
+            }
+        assertTrue(
+            "write the clipboard through ClipboardWriteGate: ${offenders.joinToString("\n")}",
+            offenders.isEmpty(),
+        )
+    }
+
     // ---- sources ----------------------------------------------------------
 
     /**

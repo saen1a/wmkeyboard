@@ -1,5 +1,7 @@
 package com.wasimaster.wmkeyboard.core.clipboard
 
+import kotlinx.serialization.encodeToString
+import kotlinx.serialization.json.Json
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -189,18 +191,19 @@ class ClipboardStoreTest {
         assertEquals(listOf(keep.id), store.items(now = 3000).map { it.id })
     }
 
-    @Test fun editKeepsSensitivity() {
+    @Test fun secretsAreNotEditable() {
         val store = ClipboardStore(null)
         val secret = store.add("hunter2", now = 1000, sensitive = true)!!
-        assertTrue(store.editText(secret.id, "hunter3")!!.sensitive)
+        assertNull(store.editText(secret.id, "hunter3"))
+        assertTrue(store.items(now = 2000).single().sensitive)
     }
 
-    @Test fun clearSensitiveUnmasksAndReportsChange() {
+    @Test fun clearSensitiveDropsSecretsAndReportsChange() {
         val store = ClipboardStore(null)
         store.add("hunter2", now = 1000, sensitive = true)
         store.add("plain", now = 2000)
         assertTrue(store.clearSensitive())
-        assertTrue(store.items(now = 3000).none { it.sensitive })
+        assertEquals(listOf("plain"), store.items(now = 3000).map { it.text })
         assertFalse(store.clearSensitive())
     }
 
@@ -465,18 +468,103 @@ class ClipboardStoreTest {
         assertEquals(listOf("ordinary"), store.items(now = 1600).map { it.text })
     }
 
-    @Test fun pinningKeepsASensitiveClip() {
+    @Test fun pinningDoesNotKeepASecret() {
         val store = ClipboardStore(null, expiryMillis = 0, sensitiveExpiryMillis = 500)
         val secret = store.add("secret", now = 1000, sensitive = true)!!
         store.setPinned(secret.id, true)
-        assertEquals(listOf("secret"), store.items(now = 99_000).map { it.text })
+        assertTrue(store.items(now = 99_000).isEmpty())
     }
 
     @Test fun reCopyingOnlyEverTightensSensitivity() {
         val store = ClipboardStore(null, expiryMillis = 0)
+        val secret = store.add("hunter2", now = 1000, sensitive = true)!!
+        val again = store.add("hunter2", now = 2000, sensitive = false)!!
+        assertTrue(again.sensitive)
+        assertEquals(secret.id, again.id)
+        assertEquals(1, store.items(now = 3000).size)
+    }
+
+    @Test fun saveNeverWritesASecret() {
+        val file = Files.createTempFile("history", ".json").toFile()
+        val store = ClipboardStore(file, expiryMillis = 0)
         store.add("hunter2", now = 1000, sensitive = true)
-        val again = store.add("hunter2", now = 2000, sensitive = false)
-        assertTrue(again!!.sensitive)
+        store.add("plain", now = 2000)
+        store.save()
+        val saved = file.readText()
+        assertFalse(saved.contains("hunter2"))
+        assertTrue(saved.contains("plain"))
+    }
+
+    @Test fun secretDoesNotSurviveReload() {
+        val file = Files.createTempFile("history", ".json").toFile()
+        val store = ClipboardStore(file, expiryMillis = 0)
+        store.add("hunter2", now = 1000, sensitive = true)
+        store.add("plain", now = 2000)
+        store.save()
+        store.reload()
+        assertEquals(listOf("plain"), store.items(now = 3000).map { it.text })
+    }
+
+    @Test fun saveMergesAnExternalSyncWithoutLosingANewCopy() {
+        val file = Files.createTempFile("history", ".json").toFile()
+        val mine = ClipboardStore(file, expiryMillis = 0)
+        mine.add("local", now = 1000)
+        mine.save()
+        val other = ClipboardStore(file, expiryMillis = 0)
+        other.add("external", now = 2000)
+        other.save()
+        file.setLastModified(System.currentTimeMillis() + 2_000)
+        mine.add("fresh", now = 3000)
+        mine.save()
+        val texts = mine.items(now = 4_000).map { it.text }.toSet()
+        assertEquals(setOf("local", "external", "fresh"), texts)
+    }
+
+    @Test fun anExternalFileDeleteClearsMemoryOnSave() {
+        val file = Files.createTempFile("history", ".json").toFile()
+        val store = ClipboardStore(file, expiryMillis = 0)
+        store.add("local", now = 1000)
+        store.save()
+        file.delete()
+        store.add("fresh", now = 2000)
+        store.save()
+        assertTrue(store.items(now = 3000).isEmpty())
+        assertFalse(file.readText().contains("fresh"))
+    }
+
+    @Test fun searchNeverFindsASecret() {
+        val store = ClipboardStore(null, expiryMillis = 0)
+        store.add("hunter2", now = 1000, sensitive = true)
+        store.add("plain", now = 2000)
+        assertTrue(store.search("hunter2").isEmpty())
+        assertEquals(listOf("plain"), store.search("plain").map { it.text })
+    }
+
+    @Test fun secretsNeverRequestALinkPreview() {
+        val store = ClipboardStore(null, expiryMillis = 0)
+        store.add("https://secret.example/login?token=1", now = 1000, sensitive = true)
+        assertTrue(store.linksNeedingPreview(now = 2000).isEmpty())
+    }
+
+    @Test fun sensitiveUriIsNotRetained() {
+        val store = ClipboardStore(null, expiryMillis = 0)
+        store.addUri("content://files/1", "report.pdf", "application/pdf", isDirectory = false, now = 1000)
+        assertNull(
+            store.addUri(
+                "content://files/1", "report.pdf", "application/pdf", isDirectory = false,
+                now = 2000, sensitive = true,
+            ),
+        )
+        assertTrue(store.items(now = 3000).isEmpty())
+    }
+
+    @Test fun sensitiveImageIsDeletedAndNotRetained() {
+        val dir = Files.createTempDirectory("clips").toFile()
+        val store = ClipboardStore(null, imagesDir = dir)
+        val file = tempImage(dir, "secret.png")
+        assertNull(store.addImage(file, "image/png", now = 1000, sensitive = true))
+        assertFalse(file.exists())
+        assertTrue(store.items(now = 2000).isEmpty())
     }
 
     @Test fun videoUrisBecomeVideoClips() {
@@ -496,10 +584,20 @@ class ClipboardStoreTest {
         assertFalse(clip.kind.isTextual)
     }
 
-    @Test fun noTextLimitByDefault() {
+    @Test fun noTextLimitSettingStillHitsTheHardCap() {
         val store = ClipboardStore(null)
         val long = "x".repeat(200_000)
-        assertEquals(long, store.add(long, now = 1)!!.text)
+        val stored = store.add(long, now = 1)!!
+        assertEquals(ClipboardStore.HARD_MAX_TEXT_CHARS, stored.text.length)
+        assertEquals("x".repeat(ClipboardStore.HARD_MAX_TEXT_CHARS), stored.text)
+    }
+
+    @Test fun aLargerUserLimitCannotRaiseTheHardCap() {
+        val store = ClipboardStore(null, maxTextChars = 500_000)
+        assertEquals(
+            ClipboardStore.HARD_MAX_TEXT_CHARS,
+            store.add("x".repeat(200_000), now = 1)!!.text.length,
+        )
     }
 
     @Test fun textLimitCutsALongCopy() {
@@ -552,5 +650,61 @@ class ClipboardStoreTest {
         assertEquals(1_000L + 100, clip.copy(sensitive = true).expiresAt(0, 100))
         assertNull(clip.expiresAt(0, 100))
         assertNull(clip.copy(pinned = true, sensitive = true).expiresAt(500, 100))
+    }
+
+    @Test fun oversizedImageIsDeletedAndNotRetained() {
+        val dir = Files.createTempDirectory("clips").toFile()
+        val store = ClipboardStore(null, imagesDir = dir)
+        val file = File(dir, "big.png").apply {
+            writeBytes(ByteArray(ClipboardStore.HARD_MAX_IMAGE_BYTES + 1))
+        }
+        assertNull(store.addImage(file, "image/png", now = 1000))
+        assertFalse(file.exists())
+        assertTrue(store.items(now = 2000).isEmpty())
+    }
+
+    @Test fun snapshotCapDropsOldestUnpinnedClearItems() {
+        val file = Files.createTempFile("history", ".json").toFile()
+        val store = ClipboardStore(file, expiryMillis = 0, maxItems = 0)
+        // Each clip is just under the text cap but takes three UTF-8 bytes per
+        // character, so 30 of them encode to more than the snapshot cap.
+        repeat(30) { index ->
+            store.add("$index:" + "\u20ac".repeat(99_990), now = 1000L + index)
+        }
+        store.save()
+        assertTrue(file.length() <= ClipboardStore.HARD_MAX_SNAPSHOT_BYTES)
+        val kept = store.items(now = 9000).map { it.text }
+        assertTrue(kept.size < 30)
+        assertTrue(kept.none { it.startsWith("0:") })
+        assertTrue(kept.any { it.startsWith("29:") })
+    }
+
+    @Test fun legacySensitiveItemAndImageAreCleanedOnRestore() {
+        val dir = Files.createTempDirectory("clips").toFile()
+        val image = tempImage(dir, "secret.png")
+        val sensitive = ClipItem(
+            id = 1,
+            text = "hunter2",
+            timestamp = 1000,
+            kind = ClipKind.IMAGE,
+            imagePath = image.absolutePath,
+            mimeType = "image/png",
+            sensitive = true,
+        )
+        val clear = ClipItem(id = 2, text = "plain", timestamp = 2000)
+        val file = Files.createTempFile("history", ".json").toFile()
+        file.writeText("""{"version":1,"items":${Json.encodeToString(listOf(sensitive, clear))}}""")
+
+        val store = ClipboardStore(file, expiryMillis = 0, imagesDir = dir)
+        assertEquals(listOf("plain"), store.items(now = 3000).map { it.text })
+        assertFalse(image.exists())
+    }
+
+    @Test fun corruptSnapshotIsRemovedAndTheStoreStartsEmpty() {
+        val file = Files.createTempFile("history", ".json").toFile()
+        file.writeText("{not json")
+        val store = ClipboardStore(file, expiryMillis = 0)
+        assertFalse(file.exists())
+        assertTrue(store.items(now = 1000).isEmpty())
     }
 }

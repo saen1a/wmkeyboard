@@ -163,7 +163,7 @@ internal fun PasswordPanel(
 
     fun copyGenerated() {
         if (generated.isEmpty()) return
-        KeyboardClipboard.copy(context, generated, "Password")
+        KeyboardClipboard.copy(context, generated, "Password", sensitive = true)
         Toast.makeText(context, copiedMessage, Toast.LENGTH_SHORT).show()
     }
 

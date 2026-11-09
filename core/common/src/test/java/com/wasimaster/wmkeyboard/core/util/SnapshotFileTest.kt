@@ -64,4 +64,19 @@ class SnapshotFileTest {
         assertFalse(file.write(file.ticket()) { error("encoding failed") })
         assertEquals("good", target().readText())
     }
+
+    @Test
+    fun twoWritersOnOnePathDoNotCollideInThePartFile() {
+        val first = SnapshotFile(target())
+        val second = SnapshotFile(target())
+        val threads = listOf(
+            Thread { repeat(20) { first.write(first.ticket()) { "first" } } },
+            Thread { repeat(20) { second.write(second.ticket()) { "second" } } },
+        )
+        threads.forEach(Thread::start)
+        threads.forEach(Thread::join)
+        assertTrue(target().readText() in setOf("first", "second"))
+        val parts = target().parentFile.listFiles { file -> file.name.endsWith(".part") }.orEmpty()
+        assertEquals(0, parts.size)
+    }
 }

@@ -36,8 +36,8 @@
         <!-- Scratch space for the camera and document scanner. -->
         <exclude domain="file" path="camera" />
         <exclude domain="file" path="docscan" />
-        <!-- Copied images backing clipboard entries; the text history stays. -->
-        <exclude domain="file" path="clipboard/images" />
+        <!-- Clipboard history and images: a secret must never travel in an OS backup. -->
+        <exclude domain="file" path="clipboard" />
         <!--
            The photos stickers were cut out of. The stickers themselves are
            backed up; these are the uncropped originals behind them, they are
@@ -75,7 +75,7 @@
         <exclude domain="file" path="emoji_keywords" />
         <exclude domain="file" path="camera" />
         <exclude domain="file" path="docscan" />
-        <exclude domain="file" path="clipboard/images" />
+        <exclude domain="file" path="clipboard" />
         <exclude domain="file" path="stickers/.originals" />
         <!-- The Send files tool's uploads: each link carries the file's secret and
              the owner token that can delete it. One device's business. -->
