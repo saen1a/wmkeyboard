@@ -1,0 +1,103 @@
+{
+  "schema": "agent-gate-verdict/1",
+  "verdict_id": "plan-review-clipboard-test-matrix-r1",
+  "unit": "clipboard-test-matrix",
+  "gate": "plan-review",
+  "verdict": "pass",
+  "mode": "block",
+  "attempt": 3,
+  "implementer": "code-agent",
+  "verifier": "oracle-plan-review",
+  "verifier_kind": "agent",
+  "fresh_context": true,
+  "artifacts": [
+    {
+      "path": ".kilo/orchestrator/clipboard-test-matrix-plan.md",
+      "sha256": "6dc6a4753924883575fedfa490858d24063f03c23273d02187d81791567748fb",
+      "bytes": 9720,
+      "non_whitespace_chars": 8235,
+      "shape": "ok"
+    }
+  ],
+  "checks": [],
+  "criteria": [
+    {
+      "id": "goal",
+      "severity": "MUST",
+      "criterion": "One decidable goal plus real scope boundaries and a named emulator pre-flight",
+      "state": "met",
+      "evidence": ".kilo/orchestrator/clipboard-test-matrix-plan.md"
+    },
+    {
+      "id": "request-coverage",
+      "severity": "MUST",
+      "criterion": "Every local and emulator matrix request maps to a unit, and every unit traces back",
+      "state": "met",
+      "evidence": ".kilo/orchestrator/clipboard-test-matrix-plan.md"
+    },
+    {
+      "id": "acceptance",
+      "severity": "MUST",
+      "criterion": "Each unit carries checkable MUST or SHOULD criteria and a named owner",
+      "state": "met",
+      "evidence": ".kilo/orchestrator/clipboard-test-matrix-plan.md"
+    },
+    {
+      "id": "verification",
+      "severity": "MUST",
+      "criterion": "Every MUST names a check that exists today and distinguishes local, emulator and manual evidence",
+      "state": "met",
+      "evidence": ".kilo/orchestrator/clipboard-test-matrix-plan.md"
+    },
+    {
+      "id": "ownership-order",
+      "severity": "MUST",
+      "criterion": "One writer per shared surface, units ordered by dependency, T8 reviewed by a non-author",
+      "state": "met",
+      "evidence": ".kilo/orchestrator/clipboard-test-matrix-plan.md"
+    },
+    {
+      "id": "risk-halt",
+      "severity": "MUST",
+      "criterion": "Unsafe or unresolvable items name the HALT path and operator question",
+      "state": "met",
+      "evidence": ".kilo/orchestrator/clipboard-test-matrix-plan.md"
+    }
+  ],
+  "coverage": {
+    "measured": 100,
+    "floor": 95,
+    "basis": "The full test matrix plan was read, including Goal, Scope boundaries, Request coverage, Units, Ownership and order, Risks and halts, T1-T8 acceptance and verification, and the Ready gate."
+  },
+  "findings": [],
+  "degraded": [],
+  "claims": [
+    {
+      "claim": "The six WL-15 plan-review checks are met.",
+      "evidence": [
+        "goal",
+        "request-coverage",
+        "acceptance",
+        "verification",
+        "ownership-order",
+        "risk-halt"
+      ]
+    },
+    {
+      "claim": "The reviewed artifact is the clipboard test matrix plan.",
+      "evidence": ".kilo/orchestrator/clipboard-test-matrix-plan.md"
+    },
+    {
+      "claim": "No open high or medium plan finding remains.",
+      "evidence": [
+        "goal",
+        "request-coverage",
+        "acceptance",
+        "verification",
+        "ownership-order",
+        "risk-halt"
+      ]
+    }
+  ],
+  "notes": "PRIOR ROUND 0 FAILED: T3 sanitizer scope, T7 screenshot/direct-boot claims, T1 platform mocking, T5 SDK pin, T2 compileSdk, T6 passkey category, T8 verification/verifier, goal wording, aggregate test tasks. CHANGED: split T3/T3B, moved passkey to T8, added raw-JSON sanitizer boundary and core/content module pin, named @Config(sdk=[36]), dumpsys FLAG_SECURE, document verification, pre-flight probes and HALTs. PRIOR ROUND 2 FAILED: T8 verification path and T3B module placement. CHANGED: T8 verification is the matrix document reviewed by review-lead; T3B placement is a MUST. PRIOR ROUND 3 CLEAN with low notes; low notes on docs check and static backup fallback were incorporated."
+}
