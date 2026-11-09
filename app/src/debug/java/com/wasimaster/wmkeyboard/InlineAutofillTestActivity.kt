@@ -1,6 +1,7 @@
 package com.wasimaster.wmkeyboard
 
 import android.app.Activity
+import android.view.autofill.AutofillManager
 import android.os.Build
 import android.os.Bundle
 import android.text.InputType
@@ -77,6 +78,11 @@ class InlineAutofillTestActivity : Activity() {
         val field = currentFocus ?: focusedField
         val imm = getSystemService(InputMethodManager::class.java) ?: return
         imm.showSoftInput(field, InputMethodManager.SHOW_FORCED)
+    }
+
+    /** Forces a fresh autofill session while the IME is already visible. */
+    fun requestAutofillForPassword() {
+        getSystemService(AutofillManager::class.java)?.requestAutofill(focusedField)
     }
 
     companion object {

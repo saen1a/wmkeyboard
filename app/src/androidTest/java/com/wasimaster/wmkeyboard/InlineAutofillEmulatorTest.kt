@@ -28,7 +28,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
 class InlineAutofillEmulatorTest {
-    @Ignore("T6 blocked; see .kilo/orchestrator/clipboard-test-matrix-plan.md")
+    @Ignore("T6 blocked: API 36 creates the AutofillSession before the IME is visible, so the fill request has no inline spec; see .kilo/orchestrator/clipboard-test-matrix-plan.md")
     @Test
     fun fakeAutofillChipIsShown() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -76,6 +76,10 @@ class InlineAutofillEmulatorTest {
                 addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
             }
             login = ActivityScenario.launch(loginIntent)
+            device.waitForIdle()
+            login.onActivity { it.showLoginKeyboard() }
+            assertTrue("IME window did not stay visible for the login form", EmulatorImeHarness.waitForImeShown(device))
+            login.onActivity { it.requestAutofillForPassword() }
 
             val chip =
                 requireNotNull(device.wait(Until.findObject(By.text(CHIP_TITLE)), CHIP_TIMEOUT_MS)) {
