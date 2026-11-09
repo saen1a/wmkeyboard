@@ -7,15 +7,17 @@
    has already asked for.
 
    Everything is included by default, so the entries below are the exceptions.
-   They are all size, not secrecy: Auto Backup's per-app quota is a few tens of
+   Most are size, not secrecy: Auto Backup's per-app quota is a few tens of
    megabytes, and a backup that goes over it is dropped whole. So anything the
-   app can fetch again on its own — speech and language models, downloaded
-   dictionaries, emoji keyword packs — stays out, along with the scratch
-   directories the camera and document scanner write into. What is left is the
-   part that cannot be recovered from anywhere: settings, themes, layouts,
-   snippets, learned words, sticker and icon packs, plugins, fonts, and the
-   word lists the user imported themselves (files/dictionaries, which is not
-   the same thing as the downloaded files/dict).
+   app can fetch again on its own - speech and language models, downloaded
+   dictionaries, emoji keyword packs - stays out, along with the scratch
+   directories the camera and document scanner write into. The clipboard is the
+   one secrecy exception: its history is excluded so a sensitive clip can never
+   travel in an OS backup. What is left is the part that cannot be recovered
+   from anywhere: settings, themes, layouts, snippets, learned words, sticker
+   and icon packs, plugins, fonts, and the word lists the user imported
+   themselves (files/dictionaries, which is not the same thing as the
+   downloaded files/dict).
 
    cloud-backup additionally requires client-side encryption: with
    disableIfNoEncryptionCapabilities set, a device that cannot encrypt the

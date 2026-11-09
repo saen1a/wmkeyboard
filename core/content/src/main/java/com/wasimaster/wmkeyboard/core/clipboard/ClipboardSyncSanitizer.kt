@@ -110,6 +110,35 @@ object ClipboardSyncSanitizer {
         return !entry.rawSensitive() && entry.rawKind() !in TEXTUAL_KINDS
     }
 
+    /**
+     * [incoming] clips made unique by id against [stays], which keep their own.
+     * An incoming id that collides with a local non-text clip, or with an
+     * incoming clip already seen, is renumbered above the highest id in use.
+     * This is the whole merge boundary, so settings code only calls it.
+     */
+    fun deconflictIds(
+        incoming: List<JsonElement>,
+        stays: List<JsonElement>,
+    ): List<JsonElement> {
+        val used = HashSet<Long>()
+        stays.forEach { entry -> (entry as? JsonObject)?.clipId()?.let(used::add) }
+        var next = (used.maxOrNull() ?: 0L) + 1L
+        return incoming.map { entry ->
+            val id = (entry as? JsonObject)?.clipId()
+            if (id != null && used.add(id)) return@map entry
+            var fresh = next
+            while (!used.add(fresh)) fresh++
+            next = fresh + 1L
+            (entry as JsonObject).withClipId(fresh)
+        } + stays
+    }
+
+    private fun JsonObject.clipId(): Long? =
+        (this["id"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()
+
+    private fun JsonObject.withClipId(id: Long): JsonObject =
+        JsonObject(this + ("id" to JsonPrimitive(id)))
+
     private fun JsonObject.rawKind(): String =
         (this["kind"] as? JsonPrimitive)?.contentOrNull ?: ClipKind.TEXT.name
 
