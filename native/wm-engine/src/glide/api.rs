@@ -289,15 +289,13 @@ pub struct Ranked {
 }
 
 /// What the walk of the last [`Decoder::decode_ranked`] cost: the pops and
-/// states it spent, how many readings it ended with, how many sources it
-/// searched, and whether the frontier cap bound. Research diagnostics only;
-/// the walk's decisions do not read it.
+/// states it spent, how many readings it ended with, and whether the frontier
+/// cap bound. Research diagnostics only; the walk's decisions do not read it.
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub struct DecodeStats {
     pub pops: usize,
     pub states: usize,
     pub read: usize,
-    pub sources: usize,
     pub saturated: bool,
 }
 

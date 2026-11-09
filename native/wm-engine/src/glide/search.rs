@@ -116,7 +116,6 @@ impl Decoder {
             if root_bound(src) < floor - EPS {
                 continue;
             }
-            self.last_stats.sources += 1;
             floor = self.search_one(
                 src,
                 keys,
