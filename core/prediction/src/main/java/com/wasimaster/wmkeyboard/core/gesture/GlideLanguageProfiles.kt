@@ -137,9 +137,10 @@ object GlideLanguageProfiles {
      */
     val GERMAN = Profile(
         // 0.5 above was fitted on a counted list, and German downloads AOSP's,
-        // whose top words sit further apart (#1051). On that list, the same 2,588
-        // swipes: 0.5 gives 80.49 %, 0.75 gives 81.22 %, 1.0 gives 80.60 %, and
-        // `das` reads `das` 32 times of 33 rather than 30.
+        // whose top words sit further apart (#1051). On that list, with the
+        // shipped join guard and the published G6P 90k, the same 2,588 swipes:
+        // 0.5 gives 80.76 %, 0.75 gives 81.34 %, 1.0 gives 80.60 %, and `das`
+        // reads `das` 32 times of 33 rather than 30.
         freqWeight = 0.75,
         gapWeight = 2.0f,
         joinCost = 8.0,

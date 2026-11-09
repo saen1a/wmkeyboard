@@ -9,7 +9,7 @@ retry a measured negative until the underlying index/model changes.
 | Negative-results registry | **done** | `wmk-glide/experiments/negative.md` |
 | Trie index A: follow-key mask | **negative** | mask builds correctly (431,586 nodes / 1.65 MiB / 52 ms) but the proposed `min follow remain` is not a lower bound; 4/5 paired losses, 287/2,588 pools changed; reverted. Sound variant must restrict the first next key inside `build_remain`. |
 | Trie index B: subtree loop/pause mask | **deferred** | charge bound ≤ ~0.5 nat by design; no evidence of a material win |
-| Trie index C: length-bucketed subtree max | **negative** | only 49 German / 2 English query-reachable nodes change; the shipped `n >= 48 > 32` makes the remaining-length bucket ask the same set; scalar `u32` 0.84 MiB is exact for the 32 cap; not worth implementing. |
+| Trie index C: length-bucketed subtree max | **negative** | only 49 German / 2 English query-reachable nodes change; the shipped `n >= 48 > 32` makes the remaining-length bucket ask the same set; scalar `u16` 0.84 MiB (u32 1.65 MiB) is exact for the 32 cap; not worth implementing. |
 | Sound A live bound | **negative** | instrumented 4.68% would-prune, but live top-1 0.7457→0.7419, top-8 0.8439→0.8400, 10/10 paired losses, 233/2,588 pools changed, CPU +10.8%, pops −0.34%; flag off and code reverted |
 | Bound line | **exhausted** | A, sound A, C negative; B deferred; the measured gain is not in a tighter bound |
 | New model/scoring path | **design done — encoder-only CTC for German** | FUTO `honorable_sturgeon` encoder only; generalize `ctc.rs` from 27 classes to `key_count + 1`; first slice 1,000 HeliBoard a-z strokes; built-in baseline 21.95 %; go signal ≥30 %; FUTO training-data leakage keeps the first slice off FUTO German |
@@ -28,16 +28,13 @@ retry a measured negative until the underlying index/model changes.
 - Leakage: the FUTO encoder was trained on FUTO's swipe dataset, so FUTO German
   `swipe-5` is not a clean test until its split is confirmed; HeliBoard is the
   independent first slice.
-- **German `.wmlm` release identity — resolved:** the published
-  `data/de/de_context.wmlm` is the **G6P 90k** (10,856,360 B, SHA-256 `4fe6…`,
-  G7 PASS, +0.73 pp Glide vs the 2M, CI [+0.15, +1.31], p = 0.018). The local
-  `artifacts/models/de_context.wmlm` (10,856,432 B, `e921…`) is the earlier
-  Phase 1 model; the 72-byte difference is the export/header, not a payload
-  downgrade. The published model measures AOSP **81.68/87.56** at the shipped
-  0.75 profile and **82.88/87.71** at the 0.5 profile (in-sample; fair split
-  pending). The release can proceed with 0.75; the context-aware 0.5 is the
-  next optimization. The data card records the CC BY-NC / OpenSubtitles
-  attribution and non-commercial notice; link it in the app/model UI.
+- **German `.wmlm` release identity:** canonical in `state.md` §2.7 and the
+  upstream `data/de/de_context.md`. The published file is the G6P 90k
+  (`4fe6…`, G7 PASS +0.73 vs 2M); the local `10,856,432` `e921…` is Phase 1;
+  the local `plans/ship-candidate.md` **HOLD/+0.27** is the earlier strict rule
+  (c) on the `10,856,352` source candidate. The operator decision is to ship
+  the published G6P; do not mix the +0.27 and +0.73 harnesses. The CC BY-NC
+  notice is in the app About data pack.
 - Fallback card: compound-aware German WMLM scorer (observed compounds + WMLM
   pieces) — lower ceiling, no new runtime, first slice 118 oracle compound
   misses.

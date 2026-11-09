@@ -7,14 +7,10 @@ tree, the new `artifacts/` directory and this file.
 
 ## Stand
 
-> **Release identity:** the upstream file `data/de/de_context.wmlm` is the
-> **G6P 90k** candidate (**10,856,360 B**, SHA-256
-> `4fe6d6b44af85eafcda1458f6e30f991033cd96177d9f77ddf5695d294845beb`), G7 PASS,
-> Glide +0.73 pp vs the 2M baseline (CI +0.15…+1.31, p = 0.018). The local
-> artifact below is the earlier 4B/150k **Phase 1** model. The published model
-> measures AOSP **81.68 / 87.56** at the shipped 0.75 profile + 0.5/5.0 blend,
-> and **82.88 / 87.71** at the 0.5 profile (in-sample; fair split pending). The
-> data card records the CC BY-NC / OpenSubtitles attribution.
+> **Release identity:** canonical in `state.md` §2.7 and the upstream
+> `data/de/de_context.md` (published G6P 90k, `4fe6...`, G7 PASS +0.73 vs 2M).
+> The local artifact below is the earlier Phase 1 model (`e921...`); the data
+> card records the CC BY-NC / OpenSubtitles notice.
 
 Das erste deutsche Modell ist trainiert, exportiert und gemessen:
 
@@ -148,14 +144,11 @@ Lies zuerst:
 - wmk-glide/state.md §2.7
 - wmk-glide/wmlm-training-plan.md
 
-Stand: Veröffentlicht ist der **G6P 90k** (`data/de/de_context.wmlm`,
-**10,856,360 B**, SHA256 `4fe6d6b4…`, G7 PASS, +0.73 pp vs 2M). Das lokale
-d256/6/768-Phase-1-Modell (`10,856,432 B`, SHA256 `e9212c5d…`) erreicht im
-Harness 77,40/83,42 auf 150k und 78,48/84,85 mit 441k Komposita bei Blend
-0,5/5,0; Tippen 60,80/76,60. Der veröffentlichte G6P 90k misst AOSP
-81,68/87,56 (0,75) bzw. 82,88/87,71 (0,5, in-sample). d288/6/896 brachte
-keinen Gewinn und ist verworfen. Die 150k Soft-Targets liegen unter
-wmk-glide/artifacts/out/.
+Stand: Release-Identität und alle Messwerte stehen kanonisch in
+`state.md` §2.7 und `data/de/de_context.md` (veröffentlicht G6P 90k `4fe6…`,
+G7 PASS +0.73 vs 2M). Das lokale `e921…` ist das frühere Phase-1-Modell;
+seine Werte stehen in §2.7. d288/6/896 brachte keinen Gewinn und ist
+verworfen. Die 150k Soft-Targets liegen unter wmk-glide/artifacts/out/.
 
 Der App/Harness-Gap ist geschlossen: `ContextModel.scoresSpelled` +
 `lmScoresSpelled` im JNI, der Glide-Blend bewertet nur die ersten 8–16
@@ -232,4 +225,11 @@ Prompt-Logprobs nutzen (Cap 5; der alte 1-Eintrag/422/403-Lauf sendete
 größeren Schüler trainieren (d288 ohne Gewinn), Englisch aus dem Korpus
 entfernen. Scaleway nur nach 100-Satz-A/B. Keine Keys/Secrets committen; kein
 Commit/Push ohne Aufforderung. Artefakte und Befehle: wmk-glide/artifacts/README.md.
+```
+k-glide/artifacts/README.md.
+```
+committen; kein
+Commit/Push ohne Aufforderung. Artefakte und Befehle: wmk-glide/artifacts/README.md.
+```
+k-glide/artifacts/README.md.
 ```

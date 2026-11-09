@@ -13,8 +13,9 @@ Three things still need a per-language decision before the policy can be called
 finished for every language:
 
 1. **German frequency weight with the downloaded WMLM.** The decoder alone
-   prefers 0.75 (81.22 % top-1 over the AOSP list); with the German context
-   model, 0.5 reads 82.77 % (gate 5). The two are measured on the same 2,588
+   prefers 0.75 (81.34 % top-1 over the AOSP list with the shipped join guard
+   and the published G6P 90k); with the German context model, 0.5 reads
+   82.88 % (gate 5). The two are measured on the same 2,588
    FUTO strokes but 0.5 was fitted on that corpus, so a held-out split is
    required before the weight becomes context-dependent.
 2. **Compounding and long-word languages have no profile.** Finnish, Dutch,
@@ -54,8 +55,8 @@ German, 2,588 FUTO strokes, German profile, German `de_context.wmlm`, WMLM
 
 | List | Weight | No blend (top-1 / top-4) | Blend (top-1 / top-4) | Spelled | Notes |
 |---|---:|---:|---:|---:|---|
-| AOSP 205,931 | 0.75 | 81.22 / 87.60 | **81.68 / 87.56** | 2,571 | shipped profile |
-| AOSP 205,931 | 0.5 | 80.64 / 87.21 | **82.77 / 87.71** | 3,979 | context-model candidate |
+| AOSP 205,931 | 0.75 | 81.34 / 87.60 | **81.68 / 87.56** | 2,571 | shipped profile, published G6P 90k |
+| AOSP 205,931 | 0.5 | 80.76 / 87.21 | **82.88 / 87.71** | 3,979 | context-model candidate, published G6P 90k |
 | counted 1.15M | 0.75 | 75.97 / 85.90 | 78.63 / 86.13 | 4,640 | large-list path |
 | counted 1.15M | 0.5 | 79.40 / 86.17 | 79.40 / 86.13 | 5,887 | decoder already ahead; blend neutral |
 

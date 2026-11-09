@@ -1,5 +1,11 @@
 # Gate report — student-quality G0–G7 (local)
 
+> **Superseded 2026-11-09:** the published G6P 90k is recorded by the upstream
+> data card as G7 PASS (+0.73 pp vs 2M, CI [+0.15,+1.31], p = 0.018); the
+> operator decision is to ship it. The local HOLD/+0.27 below is the earlier
+> strict rule (c) on the 10,856,352-byte source candidate. See
+> `plans/ship-candidate.md` and `state.md` §2.7; do not mix the two harnesses.
+
 Session: 2026-10-31 10:15 → 2026-11-01 03:08 (Europe/Berlin).
 Repo: `G:\C0ding\git\wmkeyboard-wmlm` (WSL `/mnt/g/C0ding/git/wmkeyboard-wmlm`), branch `wmlm-de-research`.
 Contract: `plans/student-quality-plan.md`; thresholds `plans/gates.json`; ledger `plans/gate-log.md` (source of truth).

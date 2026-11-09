@@ -180,13 +180,14 @@ Gewicht, 83,13 beim besten Gewicht 1,5. **Achtung: in-sample.** Das Korpus-
 Bigramm kennt die Testsätze. Auf einem 20-%-Satz-Split (LM auf den anderen
 80 %) sind es **68,97 → 69,17 (+0,20)**; das Train-LM hat nur 1.293 Wörter.
 Das echte `.wmlm` muss den Gerätegewinn zeigen, siehe
-[`experiments-followup.md`](experiments-followup.md) §0. **Wichtiger:** Es gibt
-**kein veröffentlichtes deutsches `.wmlm`**; `ContextModelCatalog` listet nur `en`
-und `bn_rom`. Das erste deutsche Modell ist trainiert (§2.7), aber noch nicht im
-Katalog; auf Deutsch ist `contextModel` im ausgelieferten Build weiter null. Der
+[`experiments-followup.md`](experiments-followup.md) §0. **Stand 2026-11-09:** Das deutsche G6P-90k-`.wmlm` ist veröffentlicht
+(`data/de/de_context.wmlm`, 10,856,360 B, SHA-256
+`4fe6d6b44af85eafcda1458f6e30f991033cd96177d9f77ddf5695d294845beb`);
+`ContextModelCatalog` listet `de`; der Kontextpfad ist im ausgelieferten Build
+aktiv. Die folgenden Sätze beschreiben den Stand vor der Veröffentlichung. Der
 deutsche n-gram-Pack als Rang-Rerank (der `NgramReranker`-Weg) bringt +0,45;
-als Score-Blend −1,0; als Kontextquelle 0,4–1,2 %. Das deutsche `.wmlm` ist trainiert und gemessen (§2.7); Veröffentlichung und
-Katalogeintrag stehen aus. Der englische Proxy brachte **+4,9 top-1**
+als Score-Blend −1,0; als Kontextquelle 0,4–1,2 %. Die Phase-1-Glide-Werte
+unten sind der lokale `e921`-Kandidat, nicht die Release-Datei. Der englische Proxy brachte **+4,9 top-1**
 (0,7/3,0); deutsch gemessen: **+2,78** mit Komposita (0,5/5,0), **+3,25**
 auf 150k, siehe [`wmlm-gain.md`](wmlm-gain.md). Der
 lokale Trainingsweg (WSL2, 4B-Grenze, API-Kosten) steht in
@@ -499,15 +500,14 @@ Deutsch (MIT, `content/2018/de/de_full.txt`). Details und `curl`-Zeilen im Issue
   Kommando. Ein kleiner Unterschied (71,45 vs 71,52) kommt von `RESULTS`/`k`, nicht von
   einem Fehler. Auch die Profil-Basis ist hier 74,15 statt der früheren 74,27 (Engine-
   Revision/`RESULTS`), nicht ein neuer Fehler.
-- **Kotlin ist hier nicht baubar** (kein Android-SDK). Rust-Tests gehen:
-  `cargo test --release --manifest-path native/wm-engine/Cargo.toml`. Die
-  Kotlin-Änderungen (Blend, Tuning-Felder; der optionale Layout-Patch) sind deshalb nur
-  per Diff geprüft, nicht kompiliert.
-- **Offen nach dem Patch:** (1) `.so` neu bauen (JNI 28 → 30, §4.2); (2) das deutsche `.wmlm` veröffentlichen (`issue-german-wmlm.md`) und den
-  Katalogeintrag setzen; der Blend ist mit 0,5/5,0 auf FUTO gemessen
-  (78,48/84,85 mit Komposita, §2.7); (3) HeliBoard
-  mit dem Guard erneut ziehen — die 10.908 Züge wurden hier nicht neu geladen;
-  (4) Seed-Index-Fallback §4.3.
+- **Kotlin build:** `./gradlew :app:compileIntlDebugKotlin` compiles the app,
+  and `NativeGlideParityTest` passes 4/4 on the GNU host library. Rust:
+  `cargo test --release --manifest-path native/wm-engine/Cargo.toml`.
+- **Stand 2026-11-09:** (1) the Android `.so` rebuild now carries
+  `glideTuningVersion` and the 4,000/12,288 lift budgets; the NDK CI job is the
+  remaining gate; (2) the German G6P 90k `.wmlm` is published and in the
+  catalog; (3) HeliBoard rare-word reguard and (4) the Seed-Index fallback
+  remain; (5) the context-aware 0.5 German profile still needs its fair split.
 - Das Issue **#966 ist gepostet**; der Nachtrag-Kommentar
   (`issue-966-followup.md`) und der deutsche `.wmlm`-Feature-Request
   (`issue-german-wmlm.md`) sind **noch nicht gepostet**. Neue Upstream-Issues/-Kommentare

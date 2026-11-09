@@ -122,9 +122,9 @@ not an independent benchmark.
 | German profile | FUTO German swipes plus HeliBoard rare-word strokes | Profile and shapes improve ordinary and rare words; exact counts and results are on the [languages page](/development/glide-engine/languages-and-engines/#language-profiles) | `wmk-glide/state.md:52-72` | Internal, not peer-reviewed |
 | Compound join guard | FUTO German set with and without the join penalty | The guard improves top-1 and top-4 over no guard; the source log owns both pairs | `wmk-glide/state.md:228-242` | Internal |
 | Observed compound list | 150k-word list plus 441k observed compounds | 75.70 top-1 against 74.15; top-4 84.23 against 82.81 | `wmk-glide/state.md:292-298` | Internal |
-| Context blend | Glide top-1 with no context model and with the shipped 0.5/5.0 blend | 74.15 to 77.40 on the 150k list; 75.70 to 78.48 with the 441k compounds | `wmk-glide/state.md:318-325` | Internal |
+| Context blend | Glide top-1 with no context model and with the shipped 0.5/5.0 blend | 74.15 to 77.40 on the 150k list; 75.70 to 78.48 with the 441k compounds | `wmk-glide/state.md:340-345` | Internal |
 | Blend fairness | The same blend on a fair 20 percent split | 68.97 to 69.17, not the in-sample 80.82 | `wmk-glide/experiments-followup.md:10-22` | Internal, and the public page does not quote the in-sample number |
-| German WMLM | Context model trained on German, then used for Glide and Typing | Glide 77.40/83.42 on 150k; 78.48/84.85 with 441k; Typing +2.4 top-1 | `wmk-glide/state.md:318-331` | Internal Phase 1; not the shipped default |
+| German WMLM | Context model trained on German, then used for Glide and Typing | Glide 77.40/83.42 on 150k; 78.48/84.85 with 441k; Typing +2.4 top-1 | `wmk-glide/state.md:340-345` | Internal Phase 1; the published G6P 90k is in §2.7 |
 | OOV piece distillation | German 150k types that need more than six pieces | 2.45 percent of types, after single-letter start pieces; the old 20.5 percent figure excluded those pieces | `wmk-glide/kb-student-architecture-de.md:7-23` | Internal audit |
 | Statistical power | Minimum detectable effect on the German profile corpus | 1.74 percentage points at 10 percent discordance; 0.5-point claims are noise | `wmk-glide/kb-student-architecture-de.md:84` | Internal evaluation design |
 

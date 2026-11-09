@@ -1,5 +1,15 @@
 # Ship candidate — `de_candidate_g6p_90k.wmlm`
 
+> **Superseded 2026-11-09:** the published `data/de/de_context.wmlm` is the
+> header-corrected G6P 90k (10,856,360 B, SHA-256 `4fe6d6b4...`). The upstream
+> data card records **G7 PASS** (pre-registered exit a/b) with Glide **+0.73 pp**
+> vs the 2M baseline (CI [+0.15, +1.31], p = 0.018), and the operator decision is
+> to ship it in the next release. The **HOLD / +0.27** below is the earlier
+> strict local rule (c) on the 10,856,352-byte source candidate and the local
+> `blend_top1` harness; +0.27 and +0.73 are different harnesses and must not be
+> mixed. The 8-byte (source) and 72-byte (Phase 1) differences are
+> export/header differences, not payload downgrades.
+
 Status: **HOLD under the strict ship rule (c)**; strong near-miss.
 Gate: G7. Candidate: `wmk-glide/artifacts/models/de_candidate_g6p_90k.wmlm` (10,856,352 bytes; sha256 in the sidecar).
 Checkpoint: `artifacts/out/runs/G6P/90k/best.pt`, step 88,000, heldout 4.0071 (final eval 4.0077).

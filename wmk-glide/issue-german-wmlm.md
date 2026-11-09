@@ -1,18 +1,19 @@
 # [FEAT]: Train and publish a German context model (`de_context.wmlm`)
 
-> **Status 2026-11-09:** published upstream as the **G6P 90k**
-> `data/de/de_context.wmlm` (10,856,360 B, SHA-256 `4fe6d6b4…`, G7 PASS,
-> +0.73 pp Glide vs 2M). The earlier local Phase 1 model
-> (`10,856,432 B`, `e921…`) is not the release artifact. The data card records
-> the CC BY-NC / OpenSubtitles attribution and non-commercial notice.
+> **Status 2026-11-09:** published as the G6P 90k; the canonical release
+> identity is `state.md` §2.7 and `data/de/de_context.md`. The local Phase 1
+> `e921…` is not the release artifact. The data card records the CC BY-NC /
+> OpenSubtitles attribution and non-commercial notice.
 
 ## Summary
 
-German has no neural context model. `ContextModelCatalog` publishes `en` and
-`bn_rom` only, so on a German device `contextModel` is null: next-word
-predictions from the model, the context ranking of the strip, the learned
-autocorrect gate's model view, phrase suggestions, re-checking the previous
-word, and the glide score-space blend are all inert. The German n-gram pack is
+At filing time (2026-10) German had no neural context model.
+`ContextModelCatalog` published `en` and `bn_rom` only, so on a German device
+`contextModel` was null: next-word predictions from the model, the context
+ranking of the strip, the learned autocorrect gate's model view, phrase
+suggestions, re-checking the previous word, and the glide score-space blend
+were all inert. The status block above records the 2026-11 publication. The
+German n-gram pack is
 not a substitute: on FUTO's 2,588 German swipes its rank-unit rerank is +0.45
 top-1, its score-space blend is negative, and a pack top-N context source has
 only 0.4–1.2 % headroom.
@@ -132,4 +133,6 @@ an RTX 3090/4090 (`remote/setup.sh`, `remote/run_en2.sh`).
 - Bundling the model in the APK.
 - Changing the engine or the model format.
 - Training a teacher from scratch; the existing Qwen2.5 distillation path is
+  enough for the first model.
+ng Qwen2.5 distillation path is
   enough for the first model.
