@@ -318,8 +318,11 @@ kein Engine-Patch.
 > The 72-byte difference is an export/header difference, not a payload
 > downgrade. On the shipped German AOSP source the published model measures
 > **81.68 / 87.56** at the 0.75 profile + 0.5/5.0 blend, and **82.88 / 87.71**
-> at the 0.5 profile (in-sample; a fair sentence/session split is still the
-> gate for switching the default). The data card
+> at the 0.5 profile. A sentence-disjoint 5-fold check (2,588, shipped join
+> guard) selects 0.5 over 0.75 by **+1.20 pp** top-1 (42/11, p = 2.25e-5,
+> cluster CI [+0.65,+1.78]); top-4 flat. The German profile is
+> **context-aware: 0.75 without the model, 0.5 with it**; English and mixed
+> are unchanged. The data card
 > (`wasi-master/wmkeyboard-data/data/de/de_context.md`) records the CC BY-NC /
 > OpenSubtitles attribution; the app should link it with the non-commercial
 > notice.
@@ -507,7 +510,8 @@ Deutsch (MIT, `content/2018/de/de_full.txt`). Details und `curl`-Zeilen im Issue
   `glideTuningVersion` and the 4,000/12,288 lift budgets; the NDK CI job is the
   remaining gate; (2) the German G6P 90k `.wmlm` is published and in the
   catalog; (3) HeliBoard rare-word reguard and (4) the Seed-Index fallback
-  remain; (5) the context-aware 0.5 German profile still needs its fair split.
+  remain; (5) the context-aware 0.5 German profile is implemented (0.75
+  without the model, 0.5 with it; OOF +1.20 pp top-1); on-device remains.
 - Das Issue **#966 ist gepostet**; der Nachtrag-Kommentar
   (`issue-966-followup.md`) und der deutsche `.wmlm`-Feature-Request
   (`issue-german-wmlm.md`) sind **noch nicht gepostet**. Neue Upstream-Issues/-Kommentare

@@ -35,6 +35,10 @@ retry a measured negative until the underlying index/model changes.
   (c) on the `10,856,352` source candidate. The operator decision is to ship
   the published G6P; do not mix the +0.27 and +0.73 harnesses. The CC BY-NC
   notice is in the app About data pack.
+- **Context-aware German profile: implemented.** 0.75 without the model, 0.5
+  with it; sentence-disjoint out-of-fold fixed 0.5 vs 0.75 is +1.20 pp top-1
+  (42/11, p = 2.25e-5, cluster CI [+0.65,+1.78]); top-4 flat; English/mixed
+  unchanged. The fair split is the first loop's decided card.
 - Fallback card: compound-aware German WMLM scorer (observed compounds + WMLM
   pieces) — lower ceiling, no new runtime, first slice 118 oracle compound
   misses.

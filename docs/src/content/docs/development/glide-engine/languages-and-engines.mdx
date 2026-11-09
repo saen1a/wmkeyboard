@@ -95,9 +95,12 @@ The merged profile uses `freqWeight` 0.75, fitted on the AOSP German list
 (#1051). On the same 2,588 FUTO swipes, with the shipped join guard and the
 published G6P 90k, the downloaded German context model flips the preference:
 the decoder alone reads 81.34 % top-1 at 0.75 against 80.76 % at 0.5, but after
-the blend 0.5 reads 82.88 % against 81.68 %. The profile is static, so a
-held-out fit should choose the weight by whether the context model is
-installed; do not copy either number to another language.
+the blend 0.5 reads 82.88 % against 81.68 %. The German profile is
+context-aware: **0.75 without the model, 0.5 with it**. A sentence-disjoint
+out-of-fold check on the same 2,588 swipes put fixed 0.5 over 0.75 by
+**+1.20 pp** top-1 (42/11 paired, p = 2.25e-5, cluster CI [+0.65, +1.78]);
+top-4 is flat. English and mixed fields keep their own weights; do not copy
+either number to another language.
 
 The glide context blend is opt-in per language **and list size**. German keeps
 0.5/5.0 with pieces on both the AOSP and counted lists. English uses 0.7/3.0

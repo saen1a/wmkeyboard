@@ -15,9 +15,11 @@ finished for every language:
 1. **German frequency weight with the downloaded WMLM.** The decoder alone
    prefers 0.75 (81.34 % top-1 over the AOSP list with the shipped join guard
    and the published G6P 90k); with the German context model, 0.5 reads
-   82.88 % (gate 5). The two are measured on the same 2,588
-   FUTO strokes but 0.5 was fitted on that corpus, so a held-out split is
-   required before the weight becomes context-dependent.
+   82.88 % (gate 5). A sentence-disjoint 5-fold check on the same 2,588 FUTO
+   strokes puts fixed 0.5 over 0.75 by **+1.20 pp** top-1 (42/11 paired,
+   p = 2.25e-5, cluster CI [+0.65, +1.78]); top-4 flat. The German profile now
+   uses **0.75 without the model and 0.5 with it**; no-model, English and mixed
+   are unchanged.
 2. **Compounding and long-word languages have no profile.** Finnish, Dutch,
    Swedish, Norwegian, Danish, Estonian, Hungarian and Turkish still decode
    with the English-fitted defaults (`freqWeight` 1.0, `gapWeight` 1.33, joins
