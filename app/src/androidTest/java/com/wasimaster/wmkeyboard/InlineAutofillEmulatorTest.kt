@@ -1,5 +1,6 @@
 package com.wasimaster.wmkeyboard
 
+import android.content.Intent
 import android.os.Build
 import androidx.test.core.app.ActivityScenario
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -24,8 +25,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
 class InlineAutofillEmulatorTest {
-
-    @Ignore("API 36 routes the password tap to the improved fill dialog and does not create a new AutofillSession with the IME inline spec; see T6 blocker")
+    @Ignore("API 36 emulator creates the AutofillSession before the IME window is visible, so no fill request carries the IME inline spec; verified with improve_fill_dialog=false and a warm-up/login split")
     @Test
     fun fakeAutofillChipIsShown() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -43,7 +43,8 @@ class InlineAutofillEmulatorTest {
         val previousEnabledImes = shell(device, "settings get secure enabled_input_methods").trim()
         val previousHardwareKeyboard = shell(device, "settings get secure show_ime_with_hard_keyboard").trim()
 
-        var scenario: ActivityScenario<InlineAutofillTestActivity>? = null
+        var warmUp: ActivityScenario<InlineAutofillTestActivity>? = null
+        var login: ActivityScenario<InlineAutofillTestActivity>? = null
         try {
             // The emulator has a hardware keyboard, which suppresses the soft
             // IME window by default.
@@ -55,30 +56,23 @@ class InlineAutofillEmulatorTest {
 
             assertTrue("IME did not switch to $imeComponent", waitForIme(device, imeComponent))
 
-            scenario = ActivityScenario.launch(InlineAutofillTestActivity::class.java)
-            scenario.onActivity {
-                it.focusUsernameField()
-                it.showLoginKeyboard()
-            }
+            // Warm-up form: autofill is disabled on its field, so bringing the
+            // IME up here does not start an autofill session.
+            warmUp = ActivityScenario.launch(InlineAutofillTestActivity::class.java)
+            warmUp.onActivity { it.showLoginKeyboard() }
             assertTrue("IME window did not become visible", waitForImeShown(device))
             device.waitForIdle()
 
-            // The session that started before the IME is stale; cancel it and
-            // add the username to the next fill request.
-            scenario.onActivity { it.cancelAutofillSession() }
-            device.waitForIdle()
-            scenario.onActivity { it.enableUsernameAutofill() }
-            device.waitForIdle()
-
-            // A real tap makes the framework start a fresh autofill session
-            // with the IME already visible and its inline request available.
-            val passwordField = requireNotNull(
-                device.wait(
-                    Until.findObject(By.res(appPackage, "fake_login_password")),
-                    CHIP_TIMEOUT_MS,
-                ),
-            ) { "password field 'fake_login_password' was not found" }
-            passwordField.click()
+            // Fresh task with the login form. Its password field is focused on
+            // resume, so autofill starts only now, with the IME already up.
+            val loginIntent = Intent(
+                instrumentation.targetContext,
+                InlineAutofillTestActivity::class.java,
+            ).apply {
+                putExtra(InlineAutofillTestActivity.EXTRA_LOGIN_FORM, true)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
+            }
+            login = ActivityScenario.launch(loginIntent)
 
             val chip = requireNotNull(device.wait(Until.findObject(By.text(CHIP_TITLE)), CHIP_TIMEOUT_MS)) {
                 "chip '$CHIP_TITLE' did not appear; the fake autofill service may not be bound " +
@@ -87,7 +81,8 @@ class InlineAutofillEmulatorTest {
             val bounds = chip.visibleBounds
             assertTrue("chip '$CHIP_TITLE' was found but is not visible: $bounds", bounds.width() > 0 && bounds.height() > 0)
         } finally {
-            runCatching { scenario?.close() }
+            runCatching { login?.close() }
+            runCatching { warmUp?.close() }
             restoreSecureSetting(device, "default_input_method", previousIme)
             restoreSecureSetting(device, "enabled_input_methods", previousEnabledImes)
             restoreSecureSetting(device, "autofill_service", previousAutofill)
