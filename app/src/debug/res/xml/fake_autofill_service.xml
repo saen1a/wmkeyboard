@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The autofill service configuration the platform reads from the
+    android.autofill meta-data. There is nothing to configure: the fake service
+    has no settings screen and only answers inline requests.
+-->
+<autofill-service xmlns:android="http://schemas.android.com/apk/res/android" />

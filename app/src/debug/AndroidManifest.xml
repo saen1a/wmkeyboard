@@ -12,6 +12,33 @@
             android:exported="true"
             android:theme="@style/Theme.WMKeyboard"
             android:windowSoftInputMode="adjustResize" />
+
+        <!--
+             The inline-autofill test's login form. Debug builds only and not
+             exported: the instrumentation runs in this package, so it can start
+             the activity without exposing it to other apps.
+        -->
+        <activity
+            android:name="com.wasimaster.wmkeyboard.InlineAutofillTestActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize" />
+
+        <!--
+             Deterministic autofill service for the inline-chip test. Debug
+             builds only. It must run in the app process (not the test APK's),
+             where the Kotlin runtime and androidx.autofill are available.
+        -->
+        <service
+            android:name="com.wasimaster.wmkeyboard.FakeAutofillService"
+            android:exported="true"
+            android:permission="android.permission.BIND_AUTOFILL_SERVICE">
+            <intent-filter>
+                <action android:name="android.service.autofill.AutofillService" />
+            </intent-filter>
+            <meta-data
+                android:name="android.autofill"
+                android:resource="@xml/fake_autofill_service" />
+        </service>
     </application>
 
 </manifest>

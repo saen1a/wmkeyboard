@@ -1371,6 +1371,10 @@ dependencies {
     }
 
     debugImplementation(libs.androidx.compose.ui.tooling)
+    // The debug-only fake AutofillService builds its inline chip with the same
+    // androidx library the keyboard consumes. Debug only: release builds get
+    // the library transitively from :feature:ime and carry no fake service.
+    debugImplementation(libs.androidx.autofill)
 
     testImplementation(libs.junit)
     testImplementation(libs.kotlinx.coroutines.test)
@@ -1384,6 +1388,10 @@ dependencies {
     testImplementation(libs.icu4j)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
+    // The inline-autofill contract test: UiDevice drives the system settings
+    // and reads the IME's chip. The fake service itself is in the debug source
+    // set, so only uiautomator is needed on the test side.
+    androidTestImplementation(libs.androidx.uiautomator)
     androidTestImplementation(platform(libs.androidx.compose.bom))
     androidTestImplementation(libs.androidx.compose.ui.test.junit4)
     // The empty activity ComposeTestRule launches into. Debug-only by design:
