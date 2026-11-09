@@ -221,29 +221,30 @@ object InlineAutofill {
         autofillBudget: Int,
         platformBudget: Int,
     ): Lanes {
-        val autofill = mutableListOf<InlineSuggestion>()
-        val platform = mutableListOf<InlineSuggestion>()
+        // Only the readable suggestions reach the classifier, so its indices
+        // line up with [kept]. A malformed suggestion costs the user that
+        // chip, not a crash: everything here crosses a process boundary.
+        val kept = mutableListOf<InlineSuggestion>()
+        val metas = mutableListOf<InlineSuggestionMeta>()
         for (suggestion in suggestions) {
-            // A malformed suggestion costs the user that chip, not a crash:
-            // everything here crosses a process boundary.
             val info = runCatching { suggestion.info }.getOrNull() ?: continue
-            if (info.source == InlineSuggestionInfo.SOURCE_PLATFORM) {
-                platform += suggestion
-            } else {
-                autofill += suggestion
-            }
+            kept += suggestion
+            metas += InlineSuggestionMeta(
+                source = if (info.source == InlineSuggestionInfo.SOURCE_PLATFORM) {
+                    InlineSuggestionClassifier.SOURCE_PLATFORM
+                } else {
+                    InlineSuggestionClassifier.SOURCE_AUTOFILL
+                },
+                type = info.type,
+            )
         }
-        // Stable, so replies keep the platform's own order among themselves.
-        platform.sortBy { if (typeOf(it) == InlineSuggestionInfo.TYPE_ACTION) 1 else 0 }
+        val (autofillIndices, platformIndices) =
+            InlineSuggestionClassifier.classify(metas, autofillBudget, platformBudget)
         return Lanes(
-            autofill = autofill.take(autofillBudget.coerceAtLeast(0)),
-            platform = platform.take(platformBudget.coerceAtLeast(0)),
+            autofill = autofillIndices.map { kept[it] },
+            platform = platformIndices.map { kept[it] },
         )
     }
-
-    @RequiresApi(Build.VERSION_CODES.R)
-    private fun typeOf(suggestion: InlineSuggestion): String? =
-        runCatching { suggestion.info.type }.getOrNull()
 
     /**
      * The per-chip width ceiling on a screen [screenWidthPx] wide, never below

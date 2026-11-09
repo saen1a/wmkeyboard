@@ -35,8 +35,8 @@ import com.wasimaster.wmkeyboard.core.settings.sink.S3Sink
 import com.wasimaster.wmkeyboard.core.addons.AddonStore
 import com.wasimaster.wmkeyboard.core.clipboard.ClipCopyRule
 import com.wasimaster.wmkeyboard.core.clipboard.ClipCopyRules
-import com.wasimaster.wmkeyboard.core.clipboard.ClipSensitivity
 import com.wasimaster.wmkeyboard.core.clipboard.ClipboardStore
+import com.wasimaster.wmkeyboard.core.clipboard.ClipboardSyncSanitizer
 import com.wasimaster.wmkeyboard.core.clipboard.PhoneFormats
 import com.wasimaster.wmkeyboard.core.selection.SelectionMacro
 import com.wasimaster.wmkeyboard.core.selection.SelectionMacroCodec
@@ -180,7 +180,6 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
-import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonArray
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -17780,9 +17779,6 @@ class SettingsRepository(private val context: Context) {
 
     private val bundleJson = Json { ignoreUnknownKeys = true }
 
-    /** Clip kinds worth exporting: the ones whose bytes/URIs survive the move. */
-    private val TEXTUAL_CLIP_KINDS = setOf("TEXT", "HTML", "LINK")
-
     /** Key the rank adjustments file is nested under in the dictionary section. */
     private val WORD_RANKS_KEY = "wordRanks"
 
@@ -17831,44 +17827,13 @@ class SettingsRepository(private val context: Context) {
     }.getOrDefault(false)
 
     /**
-     * Drops image/file/folder/video clips from a clipboard snapshot: those
-     * point at files or content URIs that only exist on the source device, so
-     * carrying them to another phone would just leave broken entries. Text
-     * clips travel.
-     *
-     * Clips marked sensitive are dropped too, whatever their kind. A backup
-     * file is the one place a password that expires in five minutes on the
-     * device would live forever — and backups get mailed to yourself, dropped
-     * in cloud folders, and shared to ask for help with a setting.
+     * Drops image/file/folder/video and sensitive clips from a clipboard
+     * snapshot before it is decoded. The rules live in
+     * [ClipboardSyncSanitizer], which works on the raw [JsonElement] so one bad
+     * item is dropped alone rather than failing the whole file.
      */
-    private fun portableClipboard(element: JsonElement): JsonElement {
-        val obj = element as? JsonObject ?: return buildJsonObject { put("items", JsonArray(emptyList())) }
-        val items = obj["items"] as? JsonArray ?: return buildJsonObject { put("items", JsonArray(emptyList())) }
-        val kept = items.filter { item -> isPortableClipboardItem(item) }
-        return buildJsonObject { put("items", JsonArray(kept)) }
-    }
-
-    /** A text/HTML/link clip that carries no sensitive mark and no secret shape. */
-    private fun isPortableClipboardItem(item: JsonElement): Boolean {
-        val entry = item as? JsonObject ?: return false
-        val kind = (entry["kind"] as? JsonPrimitive)?.contentOrNull ?: "TEXT"
-        val sensitive = (entry["sensitive"] as? JsonPrimitive)?.booleanOrNull == true
-        if (sensitive || kind !in TEXTUAL_CLIP_KINDS) return false
-        val text = (entry["text"] as? JsonPrimitive)?.contentOrNull ?: return false
-        // A textual clip never needs file paths or URIs. Accepting them from a
-        // bundle would let a crafted item make restore/prune delete a file.
-        if ((entry["imagePath"] as? JsonPrimitive)?.contentOrNull != null) return false
-        if ((entry["uriString"] as? JsonPrimitive)?.contentOrNull != null) return false
-        if ((entry["fileName"] as? JsonPrimitive)?.contentOrNull != null) return false
-        if (entry["linkPreview"] != null && entry["linkPreview"] !is kotlinx.serialization.json.JsonNull) return false
-        if (((entry["fileSize"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull() ?: -1L) > 0) return false
-        if (((entry["durationMs"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull() ?: -1L) > 0) return false
-        // The store's decoder needs these; a missing id/timestamp would make
-        // the whole history file unreadable.
-        (entry["id"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull() ?: return false
-        (entry["timestamp"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull() ?: return false
-        return !ClipSensitivity.looksSensitive(text)
-    }
+    private fun portableClipboard(element: JsonElement): JsonElement =
+        ClipboardSyncSanitizer.sanitize(element)
 
     /**
      * Takes synced clipboard [portable] (text clips only, the same view
@@ -17881,14 +17846,9 @@ class SettingsRepository(private val context: Context) {
         val path = "clipboard/history.json"
         val local = readStore(path) as? JsonObject ?: JsonObject(emptyMap())
         val localItems = local["items"] as? JsonArray ?: JsonArray(emptyList())
-        val stays = localItems.filter { item ->
-            val entry = item as? JsonObject ?: return@filter false
-            val kind = (entry["kind"] as? JsonPrimitive)?.contentOrNull ?: "TEXT"
-            val sensitive = (entry["sensitive"] as? JsonPrimitive)?.booleanOrNull == true
-            !sensitive && kind !in TEXTUAL_CLIP_KINDS
-        }
+        val stays = localItems.filter { item -> ClipboardSyncSanitizer.isNonTextualClearItem(item) }
         val incoming = (portable["items"] as? JsonArray)
-            ?.filter { isPortableClipboardItem(it) }
+            ?.filter { item -> ClipboardSyncSanitizer.isPortableItem(item) }
             ?: emptyList()
         writeClipboardStore(path, JsonObject(local + ("items" to JsonArray(incoming + stays))))
     }

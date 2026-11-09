@@ -241,4 +241,10 @@ dependencies {
 
 // Tests that reach the Rust text engines load libwm_engine_jni for this
 // machine, which :core:language builds; see the comment on its task.
-tasks.withType<Test>().configureEach { dependsOn(":core:language:buildHostEngine") }
+tasks.withType<Test>().configureEach {
+    dependsOn(":core:language:buildHostEngine")
+    // Robolectric's API-36 runtime reaches FileDescriptor internals through
+    // jdk.internal.access on current JDKs. Keep the SDK-36 test runnable
+    // instead of silently falling back to the SDK-34 pin.
+    jvmArgs("--add-opens=java.base/jdk.internal.access=ALL-UNNAMED")
+}

@@ -3842,9 +3842,12 @@ open class WMKeyboardService : InputMethodService() {
     private fun updateSecureWindow(state: KeyboardUiState = _uiState.value) {
         if (!::clipboardStore.isInitialized) return
         val surface = window.window ?: return
-        val secure = state.secureField ||
-            state.incognitoOn ||
-            (state.panel == PanelMode.CLIPBOARD && clipboardStore.hasSensitive())
+        val secure = shouldSecureWindow(
+            secureField = state.secureField,
+            incognitoOn = state.incognitoOn,
+            panel = state.panel,
+            hasSensitive = state.panel == PanelMode.CLIPBOARD && clipboardStore.hasSensitive(),
+        )
         if (secure) {
             surface.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         } else {
@@ -8976,28 +8979,11 @@ open class WMKeyboardService : InputMethodService() {
     private var inlineChipPalette: InlineChipPalette? = null
 
     /** Last resolved chip colours, so the first request after a cold start is themed. */
-    private val inlinePalettePrefs by lazy {
-        // Device-protected: onCreate runs before the first unlock and the
-        // credential-encrypted store is unavailable there.
-        DirectBoot.deviceContext(this).getSharedPreferences("inline_chip_palette", MODE_PRIVATE)
-    }
-
-    private fun cachedInlineChipPalette(): InlineChipPalette? {
-        if (!inlinePalettePrefs.getBoolean("saved", false)) return null
-        return InlineChipPalette(
-            background = inlinePalettePrefs.getInt("background", 0),
-            title = inlinePalettePrefs.getInt("title", 0),
-            subtitle = inlinePalettePrefs.getInt("subtitle", 0),
-        )
-    }
+    private fun cachedInlineChipPalette(): InlineChipPalette? =
+        InlineChipPaletteCache.load(this)
 
     private fun saveInlineChipPalette(palette: InlineChipPalette) {
-        inlinePalettePrefs.edit()
-            .putBoolean("saved", true)
-            .putInt("background", palette.background)
-            .putInt("title", palette.title)
-            .putInt("subtitle", palette.subtitle)
-            .apply()
+        InlineChipPaletteCache.save(this, palette)
     }
 
     /** Stable across recompositions, as [systemNavBarPainter] is. */
