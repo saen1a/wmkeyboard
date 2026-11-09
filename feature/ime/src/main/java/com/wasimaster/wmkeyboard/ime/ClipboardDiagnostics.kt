@@ -1,5 +1,6 @@
 package com.wasimaster.wmkeyboard.ime
 
+import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicLong
 
 /**
@@ -13,100 +14,86 @@ import java.util.concurrent.atomic.AtomicLong
  * safe to show in a debug screen or a support report.
  */
 object ClipboardDiagnostics {
-    private val requests = AtomicLong()
-    private val responses = AtomicLong()
-    private val suggestions = AtomicLong()
-    private val autofillLane = AtomicLong()
-    private val platformLane = AtomicLong()
-    private val inflated = AtomicLong()
-    private val withdrawn = AtomicLong()
+    private enum class Counter(val key: String) {
+        INLINE_REQUESTS("inline_requests"),
+        RESPONSES("responses"),
+        SUGGESTIONS("suggestions"),
+        AUTOFILL_LANE("autofill"),
+        PLATFORM_LANE("platform"),
+        INFLATED("inflated"),
+        WITHDRAWN("withdrawn"),
+        CAPTURE_ATTEMPTS("capture_attempts"),
+        SELF_WRITE_SKIPS("self_write_skips"),
+        GATE_DROPS("gate_drops"),
+        SENSITIVE_DROPS("sensitive_drops"),
+        SENSITIVE_MEDIA_DROPS("sensitive_media_drops"),
+        STORED_TEXT("stored_text"),
+        STORED_IMAGE("stored_image"),
+        STORED_FILES("stored_file"),
+        STORED_PRIVATE("stored_private"),
+        ABORTED_TEXT("aborted_text"),
+        ABORTED_IMAGE("aborted_image"),
+    }
 
-    private val captureAttempts = AtomicLong()
-    private val selfWriteSkips = AtomicLong()
-    private val gateDrops = AtomicLong()
-    private val sensitiveDrops = AtomicLong()
-    private val sensitiveMediaDrops = AtomicLong()
-    private val storedText = AtomicLong()
-    private val storedImage = AtomicLong()
-    private val storedFiles = AtomicLong()
-    private val storedPrivate = AtomicLong()
-    private val abortedTextCaptures = AtomicLong()
-    private val abortedImageCaptures = AtomicLong()
+    /**
+     * One entry per counter. Keeping the registry in one enum means adding a
+     * counter cannot leave reset() or summary() behind.
+     */
+    private val counters = ConcurrentHashMap<Counter, AtomicLong>().apply {
+        Counter.entries.forEach { counter -> put(counter, AtomicLong()) }
+    }
 
-    fun onRequest() = requests.incrementAndGet()
+    private fun add(counter: Counter, delta: Long = 1L): Long =
+        counters.getValue(counter).addAndGet(delta)
+
+    fun onRequest() = add(Counter.INLINE_REQUESTS)
 
     fun onResponse(
         rawSuggestions: Int,
         autofill: Int,
         platform: Int,
     ) {
-        responses.incrementAndGet()
-        suggestions.addAndGet(rawSuggestions.toLong())
-        autofillLane.addAndGet(autofill.toLong())
-        platformLane.addAndGet(platform.toLong())
+        add(Counter.RESPONSES)
+        add(Counter.SUGGESTIONS, rawSuggestions.toLong())
+        add(Counter.AUTOFILL_LANE, autofill.toLong())
+        add(Counter.PLATFORM_LANE, platform.toLong())
     }
 
-    fun onInflation(ready: Int) = inflated.addAndGet(ready.toLong())
+    fun onInflation(ready: Int) = add(Counter.INFLATED, ready.toLong())
 
-    fun onWithdrawn() = withdrawn.incrementAndGet()
+    fun onWithdrawn() = add(Counter.WITHDRAWN)
 
     // Clipboard capture counters. None of these takes any clip content.
 
-    fun onCaptureAttempt() = captureAttempts.incrementAndGet()
+    fun onCaptureAttempt() = add(Counter.CAPTURE_ATTEMPTS)
 
-    fun onSelfWriteSkip() = selfWriteSkips.incrementAndGet()
+    fun onSelfWriteSkip() = add(Counter.SELF_WRITE_SKIPS)
 
-    fun onGateDrop() = gateDrops.incrementAndGet()
+    fun onGateDrop() = add(Counter.GATE_DROPS)
 
-    fun onSensitiveDrop() = sensitiveDrops.incrementAndGet()
+    fun onSensitiveDrop() = add(Counter.SENSITIVE_DROPS)
 
-    fun onSensitiveMediaDrop() = sensitiveMediaDrops.incrementAndGet()
+    fun onSensitiveMediaDrop() = add(Counter.SENSITIVE_MEDIA_DROPS)
 
-    fun onStoredText() = storedText.incrementAndGet()
+    fun onStoredText() = add(Counter.STORED_TEXT)
 
-    fun onStoredImage() = storedImage.incrementAndGet()
+    fun onStoredImage() = add(Counter.STORED_IMAGE)
 
-    fun onStoredFiles(count: Int = 1) = storedFiles.addAndGet(count.toLong())
+    fun onStoredFiles(count: Int = 1) = add(Counter.STORED_FILES, count.toLong())
 
-    fun onStoredPrivate() = storedPrivate.incrementAndGet()
+    fun onStoredPrivate() = add(Counter.STORED_PRIVATE)
 
-    fun onAbortedTextCapture() = abortedTextCaptures.incrementAndGet()
+    fun onAbortedTextCapture() = add(Counter.ABORTED_TEXT)
 
-    fun onAbortedImageCapture() = abortedImageCaptures.incrementAndGet()
+    fun onAbortedImageCapture() = add(Counter.ABORTED_IMAGE)
 
     /** Clears every counter. Tests only; a debug summary never resets. */
     fun reset() {
-        requests.set(0)
-        responses.set(0)
-        suggestions.set(0)
-        autofillLane.set(0)
-        platformLane.set(0)
-        inflated.set(0)
-        withdrawn.set(0)
-        captureAttempts.set(0)
-        selfWriteSkips.set(0)
-        gateDrops.set(0)
-        sensitiveDrops.set(0)
-        sensitiveMediaDrops.set(0)
-        storedText.set(0)
-        storedImage.set(0)
-        storedFiles.set(0)
-        storedPrivate.set(0)
-        abortedTextCaptures.set(0)
-        abortedImageCaptures.set(0)
+        counters.values.forEach { it.set(0) }
     }
 
     fun summary(): String =
-        "inline_requests=${requests.get()} responses=${responses.get()} " +
-            "suggestions=${suggestions.get()} autofill=${autofillLane.get()} " +
-            "platform=${platformLane.get()} inflated=${inflated.get()} " +
-            "withdrawn=${withdrawn.get()} " +
-            "capture_attempts=${captureAttempts.get()} " +
-            "self_write_skips=${selfWriteSkips.get()} gate_drops=${gateDrops.get()} " +
-            "sensitive_drops=${sensitiveDrops.get()} " +
-            "sensitive_media_drops=${sensitiveMediaDrops.get()} " +
-            "stored_text=${storedText.get()} stored_image=${storedImage.get()} " +
-            "stored_file=${storedFiles.get()} stored_private=${storedPrivate.get()} " +
-            "aborted_text=${abortedTextCaptures.get()} " +
-            "aborted_image=${abortedImageCaptures.get()}"
+        Counter.entries.joinToString(separator = " ") { counter ->
+            "${counter.key}=${counters.getValue(counter).get()}"
+        }
 }

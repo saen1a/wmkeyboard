@@ -471,15 +471,21 @@ way round.
 The keyboard never receives chip content. These are device checks, not JVM
 tests; record the result in the code Review.
 
-| Provider | Mode | Android | Expected |
-|---|---|---|---|
-| Bitwarden | Inline | 11, 13, 16, 17 | Username/password chips appear in the autofill lane. |
-| Bitwarden | Popup | 11, 13, 16, 17 | No inline chip; the manager's own dropdown is the fallback. |
-| Proton Pass 1.39+ | Inline | 11, 13, 16, 17 | Chips appear; older versions may have no inline path. |
-| Proton Pass 1.39+ | Popup | 11, 13, 16, 17 | No inline chip; the manager's dropdown is the fallback. |
-| Either | Locked vault | 16, 17 | A locked-vault chip opens the manager; it does not silently fail. |
-| Either | Passkey field | 16, 17 | The passkey chip opens the system/manager prompt; cancel leaves no stale chip. |
-| Either | Incognito | 16, 17 | Login chips stay available; platform smart replies are closed. |
+| Provider | Mode | Android | Expected | Status |
+|---|---|---|---|---|
+| Bitwarden | Inline | 11, 13, 16, 17 | Username/password chips appear in the autofill lane. | Not executed; no licensed APK/test vault in the worktree. |
+| Bitwarden | Popup | 11, 13, 16, 17 | No inline chip; the manager's own dropdown is the fallback. | Not executed; same blocker. |
+| Proton Pass 1.39+ | Inline | 11, 13, 16, 17 | Chips appear; older versions may have no inline path. | Not executed; no licensed APK/test vault in the worktree. |
+| Proton Pass 1.39+ | Popup | 11, 13, 16, 17 | No inline chip; the manager's dropdown is the fallback. | Not executed; same blocker. |
+| Either | Locked vault | 16, 17 | A locked-vault chip opens the manager; it does not silently fail. | Not executed; no test vault. |
+| Either | Passkey field | 16, 17 | The passkey chip opens the system/manager prompt; cancel leaves no stale chip. | Not executed; no passkey provider/test account. |
+| Either | Incognito | 16, 17 | Login chips stay available; platform smart replies are closed. | Not executed. |
+
+T7 result: the API-36 emulator `SecureWindowEmulatorTest` passed and proved
+`FLAG_SECURE` on the IME window for a password field. T7 `bmgr`/locked-boot
+checks remain manual; the static backup-rule test is the fallback. T6 remains
+ignored because the API-36 emulator creates the `AutofillSession` before the
+IME window is visible.
 
 Only one autofill service can be active. The diagnostic summary contains
 counters only; it does not name the active provider or any credential.
