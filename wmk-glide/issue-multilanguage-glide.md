@@ -77,8 +77,12 @@ English, 26,523 FUTO English strokes, 160k AOSP list, default profile, English
 | 0.5 / 5.0, pieces | 79.69 | 87.72 | 10,252 |
 | **0.5 / 5.0, listed only** | **80.74** | **88.50** | **0** |
 
-The large-list English regression came from spelling unlisted candidates;
-scoring listed candidates alone is positive and costs no piece pass.
+The large-list English regression came from spelling unlisted candidates.
+Scoring listed candidates alone is **non-negative but not a proven gain**:
+paired +0.20 pp, CI [-0.05, +0.44], p = 0.121 on the 26,523 AOSP-known set; it
+costs no piece pass. On the small 17k bundled list the 0.7/3.0 piece path reads
+77.10 / 82.29 against 73.86 / 81.85 no blend (+3.25 pp); the original
+2,129/1,824 hard slice reproduces the +4.9 (+4.77 pp).
 
 Budget effect (no context model), 4,000 pops / 12,288 states against the old
 2,000 / 8,192:

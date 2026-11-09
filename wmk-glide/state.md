@@ -511,7 +511,13 @@ Deutsch (MIT, `content/2018/de/de_full.txt`). Details und `curl`-Zeilen im Issue
   remaining gate; (2) the German G6P 90k `.wmlm` is published and in the
   catalog; (3) HeliBoard rare-word reguard and (4) the Seed-Index fallback
   remain; (5) the context-aware 0.5 German profile is implemented (0.75
-  without the model, 0.5 with it; OOF +1.20 pp top-1); on-device remains.
+  without the model, 0.5 with it; OOF +1.20 pp top-1); on-device remains;
+  (6) multilingual audit done: English small kept, large listed-only
+  non-negative (p=0.121), FUTO has no fi/nl/sv/no/da/et/hu/tr strokes or
+  layouts, bn_rom has no corpus/layout, HeliBoard is the compounding
+  alternative, safe defaults confirmed; (7) the CTC first slice is blocked on
+  ExecuTorch, the encoder/HeliBoard assets, the two scripts and a pinned
+  baseline.
 - Das Issue **#966 ist gepostet**; der Nachtrag-Kommentar
   (`issue-966-followup.md`) und der deutsche `.wmlm`-Feature-Request
   (`issue-german-wmlm.md`) sind **noch nicht gepostet**. Neue Upstream-Issues/-Kommentare

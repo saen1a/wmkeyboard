@@ -104,12 +104,14 @@ either number to another language.
 
 The glide context blend is opt-in per language **and list size**. German keeps
 0.5/5.0 with pieces on both the AOSP and counted lists. English uses 0.7/3.0
-with pieces on the small bundled list, where the reference model measured +4.9
-top-1, and 0.5/5.0 on **listed candidates only** above
+with pieces on the small bundled list: **+4.9 top-1** on the original
+2,129/1,824 hard slice and **+3.25** on the full 26,523 public set. The large
+list uses 0.5/5.0 on **listed candidates only** above
 `GLIDE_LM_BLEND_LIST_LIMIT` (50,000 words): on 26,523 public English strokes
-over the 160k AOSP list, that reads 80.74 % / 88.50 % against 80.55 % / 88.50 %
-without the blend, at no piece pass; spelling unlisted candidates read
-79.57 % / 87.83 %, and 0.5/5.0 with pieces read 79.69 % / 87.72 %. A language
+over the 160k AOSP list that reads 80.74 % / 88.50 % against 80.55 % / 88.50 %
+without the blend, paired **+0.20 pp, CI [-0.05, +0.44], p = 0.121** — positive
+but not a proven gain — at no piece pass; spelling unlisted candidates reads
+79.57 % / 87.83 %, and 0.5/5.0 with pieces reads 79.69 % / 87.72 %. A language
 with no row has no glide blend until it is measured; its typing blend is
 unchanged.
 

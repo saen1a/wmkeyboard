@@ -13,6 +13,7 @@ retry a measured negative until the underlying index/model changes.
 | Sound A live bound | **negative** | instrumented 4.68% would-prune, but live top-1 0.7457→0.7419, top-8 0.8439→0.8400, 10/10 paired losses, 233/2,588 pools changed, CPU +10.8%, pops −0.34%; flag off and code reverted |
 | Bound line | **exhausted** | A, sound A, C negative; B deferred; the measured gain is not in a tighter bound |
 | New model/scoring path | **design done — encoder-only CTC for German** | FUTO `honorable_sturgeon` encoder only; generalize `ctc.rs` from 27 classes to `key_count + 1`; first slice 1,000 HeliBoard a-z strokes; built-in baseline 21.95 %; go signal ≥30 %; FUTO training-data leakage keeps the first slice off FUTO German |
+| Multilingual audit | **done — English kept, compounding/Banglish blocked** | `wmk-glide/experiments/multilingual-audit.md`: English small 17k +3.25 full / +4.9 hard slice; large listed-only +0.20 pp non-significant; FUTO swipe5 has zero fi/nl/sv/no/da/et/hu/tr strokes/layouts; bn_rom has model+list but no corpus/layout; safe defaults confirmed |
 | Android NDK CI / `.so` parity | **workflow added — unverified** | `.github/workflows/ci.yml` `native-engine`: host parity, NDK r29, three ABIs, APK/`.so` checksums; CI not run here |
 
 ### Model card decision
