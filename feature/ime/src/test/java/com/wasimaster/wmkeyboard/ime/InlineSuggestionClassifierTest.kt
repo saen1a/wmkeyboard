@@ -71,7 +71,7 @@ class InlineSuggestionClassifierTest {
     }
 
     @Test
-    fun `the classifier returns indices only, never chip content`() {
+    fun `the two lanes together cover every input index exactly once`() {
         val metas = listOf(autofill(), platform(), autofill())
         val (autofill, platform) = InlineSuggestionClassifier.classify(metas, 6, 3)
         val all = autofill + platform

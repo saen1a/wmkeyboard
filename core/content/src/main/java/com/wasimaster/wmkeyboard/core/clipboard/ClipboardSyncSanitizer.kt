@@ -1,6 +1,5 @@
 package com.wasimaster.wmkeyboard.core.clipboard
 
-import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonNull
@@ -34,17 +33,13 @@ import kotlinx.serialization.json.contentOrNull
 object ClipboardSyncSanitizer {
 
     /** Clip kinds worth carrying: the ones whose content travels as text. */
-    private val TEXTUAL_KINDS = setOf("TEXT", "HTML", "LINK")
+    private val TEXTUAL_KINDS = ClipKind.entries.filter { it.isTextual }.map { it.name }.toSet()
 
     /** The most characters a synced clip may keep; the store's hard cap. */
     private val MAX_TEXT_CHARS = ClipboardStore.HARD_MAX_TEXT_CHARS
 
-    /**
-     * The decoder the store itself uses. Kept here so a crafted item is
-     * rejected by the same serializer and settings that would otherwise reject
-     * the whole file.
-     */
-    private val json = Json { ignoreUnknownKeys = true }
+    /** The most bytes of rich-text markup a synced clip may carry. */
+    private val MAX_HTML_BYTES = ClipboardStore.HARD_MAX_HTML_BYTES
 
     /**
      * The bundle as it may be persisted: only the items that pass
@@ -55,7 +50,15 @@ object ClipboardSyncSanitizer {
     fun sanitize(element: JsonElement): JsonObject {
         val obj = element as? JsonObject ?: return emptyBundle()
         val items = obj["items"] as? JsonArray ?: return emptyBundle()
-        val kept = items.filter { item -> isPortableItem(item) }
+        val seenIds = HashSet<Long>()
+        val kept = items.filter { item ->
+            if (!isPortableItem(item)) return@filter false
+            // Two items with one id would collide in the store; keep the first
+            // and drop the later duplicate.
+            val id = ((item as? JsonObject)?.get("id") as? JsonPrimitive)
+                ?.contentOrNull?.toLongOrNull() ?: return@filter false
+            seenIds.add(id)
+        }
         return buildJsonObject { put("items", JsonArray(kept)) }
     }
 
@@ -66,9 +69,8 @@ object ClipboardSyncSanitizer {
      */
     fun isPortableItem(item: JsonElement): Boolean {
         val entry = item as? JsonObject ?: return false
-        val kind = (entry["kind"] as? JsonPrimitive)?.contentOrNull ?: "TEXT"
-        val sensitive = (entry["sensitive"] as? JsonPrimitive)?.booleanOrNull == true
-        if (sensitive || kind !in TEXTUAL_KINDS) return false
+        val kind = entry.rawKind()
+        if (entry.rawSensitive() || kind !in TEXTUAL_KINDS) return false
         val text = (entry["text"] as? JsonPrimitive)?.contentOrNull ?: return false
         // A textual clip never needs file paths or URIs. Accepting them from a
         // bundle would let a crafted item make restore/prune delete a file.
@@ -80,6 +82,9 @@ object ClipboardSyncSanitizer {
         if (((entry["durationMs"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull() ?: -1L) > 0) return false
         // A clip past the store's own cap is trimmed there, never carried whole.
         if (text.length > MAX_TEXT_CHARS) return false
+        // Markup past the store's hard byte cap is not carried either.
+        val html = (entry["htmlText"] as? JsonPrimitive)?.contentOrNull
+        if (html != null && html.toByteArray(Charsets.UTF_8).size > MAX_HTML_BYTES) return false
         // The store's decoder needs an id and a timestamp; a missing or wrongly
         // typed one would make the whole history file unreadable, so such an
         // item is dropped alone.
@@ -91,7 +96,7 @@ object ClipboardSyncSanitizer {
         // history with it. Decode this item alone with the store's serializer
         // and settings; only a shape the typed decoder accepts may travel.
         return hasId && hasTimestamp && !ClipSensitivity.looksSensitive(text) &&
-            runCatching { json.decodeFromString<ClipItem>(entry.toString()) }.isSuccess
+            runCatching { ClipboardJson.decodeFromString<ClipItem>(entry.toString()) }.isSuccess
     }
 
     /**
@@ -102,10 +107,14 @@ object ClipboardSyncSanitizer {
      */
     fun isNonTextualClearItem(item: JsonElement): Boolean {
         val entry = item as? JsonObject ?: return false
-        val kind = (entry["kind"] as? JsonPrimitive)?.contentOrNull ?: "TEXT"
-        val sensitive = (entry["sensitive"] as? JsonPrimitive)?.booleanOrNull == true
-        return !sensitive && kind !in TEXTUAL_KINDS
+        return !entry.rawSensitive() && entry.rawKind() !in TEXTUAL_KINDS
     }
+
+    private fun JsonObject.rawKind(): String =
+        (this["kind"] as? JsonPrimitive)?.contentOrNull ?: ClipKind.TEXT.name
+
+    private fun JsonObject.rawSensitive(): Boolean =
+        (this["sensitive"] as? JsonPrimitive)?.booleanOrNull == true
 
     private fun emptyBundle(): JsonObject = buildJsonObject { put("items", JsonArray(emptyList())) }
 }

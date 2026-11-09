@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Stable id for the instrumentation test to tap the password field. -->
+    <!-- Stable id the instrumentation test uses to locate the password field. -->
     <item name="fake_login_password" type="id" />
 </resources>

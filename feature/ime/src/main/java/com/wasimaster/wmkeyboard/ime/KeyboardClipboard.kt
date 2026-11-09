@@ -40,10 +40,10 @@ object KeyboardClipboard {
         private set
 
     /**
-     * Told of every keyboard copy, private or system, so the service can keep
-     * it in the history the system clipboard's listener never hears about.
-     * The second argument is the copy's sensitivity. Null outside a running
-     * service.
+     * Told of every private keyboard copy, so the service can keep it in the
+     * history the system clipboard's listener never hears about. A copy that
+     * goes to the system clipboard does not come through here. The second
+     * argument is the copy's sensitivity. Null outside a running service.
      */
     @Volatile
     var onPrivateCopy: ((String, Boolean) -> Unit)? = null

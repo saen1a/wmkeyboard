@@ -6,6 +6,13 @@ import kotlinx.serialization.json.Json
 import java.io.File
 
 /**
+ * The one JSON codec for clipboard snapshots and synced bundles, shared by
+ * [ClipboardStore] and [ClipboardSyncSanitizer]. Unknown keys are accepted so
+ * a file written by a newer build still loads.
+ */
+internal val ClipboardJson = Json { ignoreUnknownKeys = true }
+
+/**
  * What a clip holds. [TEXT]/[HTML]/[LINK] are textual (insertable as text);
  * [IMAGE] is a file this app owns; [FILE]/[FOLDER]/[VIDEO] are content URIs
  * owned by the app that did the copying.
@@ -66,9 +73,11 @@ data class ClipItem(
      * Android's sensitive-content flag on it, or it reads as a password or a
      * one-time code (see `ClipSensitivity`).
      *
-     * Sensitive clips are drawn masked in the panel and live only in
-     * [SecretMemoryStore]; they never enter the snapshot. Pinning does not keep
-     * them: a secret has no pin.
+     * Sensitive text is drawn masked in the panel and lives only in
+     * [SecretMemoryStore]; it never enters the snapshot. Sensitive image, file,
+     * folder and URI clips are dropped instead of retained, so [sensitive] is
+     * only ever set on a textual clip. Pinning does not keep a secret: a secret
+     * has no pin.
      */
     val sensitive: Boolean = false,
     /**
@@ -307,7 +316,6 @@ class ClipboardStore(
      * nothing to put back.
      */
     private val detached = ArrayList<ClipItem>()
-    private val json = Json { ignoreUnknownKeys = true }
     private var nextId = 1L
     /** Last modified stamp of the file this store last read or wrote. */
     private var fileStamp = 0L
@@ -359,15 +367,38 @@ class ClipboardStore(
      * would save that stale list straight back over the deletion. The clipboard
      * panel calls this on open, the same way the snippet panel does.
      */
-    @Synchronized
     fun reload() {
+        val storeFile = storageFile
+        if (storeFile != null) {
+            // Take the path lock before the store monitor, the same order
+            // save() uses. restore() may rewrite a legacy-sensitive snapshot
+            // through that same path lock; it is reentrant on this thread.
+            SnapshotFile.withLock(storeFile) { reloadUnderPathLock() }
+        } else {
+            reloadUnderPathLock()
+        }
+    }
+
+    @Synchronized
+    private fun reloadUnderPathLock() {
         // A save drawn before this describes the list being thrown away; it
         // must not land over whatever the settings app left in the file.
         snapshotFile?.supersede()
-        items.clear()
-        nextId = 1L
-        dirtyIds.clear()
-        removedIds.clear()
+        val storeFile = storageFile
+        // Only a file this store has already written can be "cleared"
+        // externally; a never-written file is an ordinary, empty load and must
+        // keep the process-memory secrets and pending Undo. This matches the
+        // rule save() uses.
+        if (storeFile != null && fileStamp > 0 &&
+            (!storeFile.exists() || storeFile.length() == 0L)
+        ) {
+            clearFromExternal()
+        } else {
+            items.clear()
+            nextId = 1L
+            dirtyIds.clear()
+            removedIds.clear()
+        }
         restore()
     }
 
@@ -392,7 +423,7 @@ class ClipboardStore(
             // fresh save does not mistake it for an external clear.
             fileStamp = if (file.length() > 0) file.lastModified() else 0L
             items.clear()
-            val snapshot = runCatching { json.decodeFromString<Snapshot>(file.readText()) }.getOrNull()
+                val snapshot = runCatching { ClipboardJson.decodeFromString<Snapshot>(file.readText()) }.getOrNull()
             if (snapshot == null) {
                 // A file that does not parse cannot be read back, and keeping
                 // it would leave a plaintext artifact behind. Delete it and
@@ -400,20 +431,48 @@ class ClipboardStore(
                 file.delete()
                 fileStamp = 0L
             } else {
+                var droppedSensitive = false
+                val seenIds = HashSet<Long>()
                 snapshot.items.forEach { item ->
                     // A sensitive item from an older build is never loaded
                     // back. Its image file, if any, is deleted with it; a
                     // text secret from a previous process is gone by design.
                     if (item.sensitive) {
+                        droppedSensitive = true
                         item.imagePath?.let { File(it).delete() }
                     } else if (
+                        // A snapshot can carry markup past the store's cap; it
+                        // is dropped rather than keeping bytes the store would
+                        // never accept from a live copy.
+                        item.htmlText?.toByteArray(Charsets.UTF_8)?.size
+                            ?.let { it > HARD_MAX_HTML_BYTES } != true &&
                         when {
                             item.kind == ClipKind.IMAGE -> item.imagePath != null
                             item.kind.isUriBacked -> item.uriString != null
                             else -> true
                         }
                     ) {
-                        items.add(item)
+                        // One id may appear twice in a crafted snapshot; keep
+                        // the first so ids stay unique in memory.
+                        if (seenIds.add(item.id)) items.add(item)
+                    }
+                }
+                if (droppedSensitive) {
+                    // The skipped secret's plaintext must not linger in the
+                    // file. Rewrite it at once with only the clear clips that
+                    // were kept, through the store's ordered atomic write so a
+                    // concurrent save cannot land out of order. Not through
+                    // save(), which would recurse back into restore().
+                    val encoded = ClipboardJson.encodeToString(Snapshot(items.toList()))
+                    val stable = snapshotFile
+                    val written = stable != null && stable.write(stable.ticket()) { encoded }
+                    if (written) {
+                        fileStamp = if (file.length() > 0) file.lastModified() else 0L
+                    } else {
+                        // Fail closed: a rewrite we cannot complete must not
+                        // leave the skipped secret's plaintext on disk.
+                        if (stable != null) stable.delete() else file.delete()
+                        fileStamp = 0L
                     }
                 }
             }
@@ -434,12 +493,12 @@ class ClipboardStore(
     /**
      * Keeps the in-memory clear clips a reload did not already contain. A sync
      * or ConfigBackup restore can replace the file while a copy, pin or edit is
-     * still only in memory; the file wins for the same id, the in-memory item
-     * wins for a new id or a text that is not in the file. Returns the number
-     * of items kept.
+     * still only in memory; the in-memory item wins for the same id, and an
+     * in-memory item with a new id or a text that is not in the file is kept
+     * alongside the file's clips.
      */
-    private fun mergeExternal(previous: List<ClipItem>): Int {
-        if (previous.isEmpty()) return 0
+    private fun mergeExternal(previous: List<ClipItem>) {
+        if (previous.isEmpty()) return
         var kept = 0
         val merged = items.toMutableList()
         previous.forEach { old ->
@@ -462,7 +521,6 @@ class ClipboardStore(
             items.addAll(merged)
             nextId = maxOf(nextId, (items.maxOfOrNull { it.id } ?: 0L) + 1)
         }
-        return kept
     }
 
     /** Same logical clip, ignoring id, pin and timestamp. */
@@ -1017,6 +1075,13 @@ class ClipboardStore(
      * snapshot cap is measured on the encoded bytes, so the encoding has to
      * run under that same lock: an oversized history is cut down there before
      * the write is drawn and run outside it.
+     *
+     * The whole external-stamp check, snapshot capture and write runs under
+     * the file's static per-path lock, the same one a sync or ConfigBackup
+     * restore takes in [SnapshotFile.writeAtomically]. Without it, a save that
+     * read the stamp just before an external write would land its older
+     * snapshot over it. Lock order is path lock first, then the store lock;
+     * no store method takes the path lock while holding the store lock.
      */
     fun save() {
         val file = snapshotFile ?: return
@@ -1025,46 +1090,48 @@ class ClipboardStore(
         var removedSnapshot = emptySet<Long>()
         var ticket = 0L
         var encoded = ""
-        synchronized(this) {
-            // A sync or ConfigBackup restore can replace the file while the IME
-            // is alive. A missing or emptied file is an explicit external
-            // clear; a newer non-empty file is merged with the clips changed
-            // since the last save, so neither side loses an edit.
-            val storeFile = storageFile
-            val missing = storeFile != null && !storeFile.exists() && fileStamp > 0
-            val emptied = storeFile != null && storeFile.exists() &&
-                storeFile.length() == 0L && fileStamp > 0
-            if (missing || emptied) {
-                clearFromExternal()
-            } else {
-                val external = storeFile?.lastModified() ?: 0
-                if (storeFile != null && external > fileStamp && storeFile.length() > 0) {
-                    val unsaved = items.filter { it.id in dirtyIds }
-                    restore(preserve = unsaved)
-                    items.removeAll { it.id in removedIds }
-                    mergeExternal(unsaved)
-                }
-            }
-            prune(now)
-            secrets.expiryMillis = secretExpiry()
-            secrets.items(now)
-            // The snapshot cap: evict the oldest unpinned clear clips until
-            // the encoded form fits, or only pinned clips remain.
-            while (true) {
-                encoded = json.encodeToString(Snapshot(items.filter { !it.sensitive }))
-                if (encoded.toByteArray(Charsets.UTF_8).size <= HARD_MAX_SNAPSHOT_BYTES) break
-                if (!dropOldestUnpinnedClear()) break
-            }
-            dirtySnapshot = dirtyIds.toSet()
-            removedSnapshot = removedIds.toSet()
-            ticket = file.ticket()
-        }
-        val written = file.write(ticket) { encoded }
-        if (written) {
+        SnapshotFile.withLock(file.file) {
             synchronized(this) {
-                dirtyIds.removeAll(dirtySnapshot)
-                removedIds.removeAll(removedSnapshot)
-                storageFile?.let { fileStamp = if (it.length() > 0) it.lastModified() else 0L }
+                // A sync or ConfigBackup restore can replace the file while the IME
+                // is alive. A missing or emptied file is an explicit external
+                // clear; a newer non-empty file is merged with the clips changed
+                // since the last save, so neither side loses an edit.
+                val storeFile = storageFile
+                val missing = storeFile != null && !storeFile.exists() && fileStamp > 0
+                val emptied = storeFile != null && storeFile.exists() &&
+                    storeFile.length() == 0L && fileStamp > 0
+                if (missing || emptied) {
+                    clearFromExternal()
+                } else {
+                    val external = storeFile?.lastModified() ?: 0
+                    if (storeFile != null && external > fileStamp && storeFile.length() > 0) {
+                        val unsaved = items.filter { it.id in dirtyIds }
+                        restore(preserve = unsaved)
+                        items.removeAll { it.id in removedIds }
+                        mergeExternal(unsaved)
+                    }
+                }
+                prune(now)
+                secrets.expiryMillis = secretExpiry()
+                secrets.prune(now)
+                // The snapshot cap: evict the oldest unpinned clear clips until
+                // the encoded form fits, or only pinned clips remain.
+                while (true) {
+                    encoded = ClipboardJson.encodeToString(Snapshot(items.filter { !it.sensitive }))
+                    if (encoded.toByteArray(Charsets.UTF_8).size <= HARD_MAX_SNAPSHOT_BYTES) break
+                    if (!dropOldestUnpinnedClear()) break
+                }
+                dirtySnapshot = dirtyIds.toSet()
+                removedSnapshot = removedIds.toSet()
+                ticket = file.ticket()
+            }
+            val written = file.write(ticket) { encoded }
+            if (written) {
+                synchronized(this) {
+                    dirtyIds.removeAll(dirtySnapshot)
+                    removedIds.removeAll(removedSnapshot)
+                    storageFile?.let { fileStamp = if (it.length() > 0) it.lastModified() else 0L }
+                }
             }
         }
     }

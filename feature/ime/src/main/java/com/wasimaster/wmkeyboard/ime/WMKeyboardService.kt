@@ -7512,16 +7512,35 @@ open class WMKeyboardService : InputMethodService() {
      */
     private val keyguardReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
-            if (intent?.action == Intent.ACTION_USER_PRESENT) onKeyguardGone()
+            when (intent?.action) {
+                Intent.ACTION_USER_PRESENT -> onKeyguardGone()
+                Intent.ACTION_SCREEN_OFF -> onDeviceLocked()
+            }
         }
     }
 
     /** For the rest of the process's life, like [registerPackageChangeReceiver]. */
     private fun registerKeyguardReceiver() {
+        val filter = IntentFilter(Intent.ACTION_USER_PRESENT).apply {
+            addAction(Intent.ACTION_SCREEN_OFF)
+        }
         ContextCompat.registerReceiver(
-            this, keyguardReceiver, IntentFilter(Intent.ACTION_USER_PRESENT),
+            this, keyguardReceiver, filter,
             ContextCompat.RECEIVER_NOT_EXPORTED,
         )
+    }
+
+    /**
+     * The screen went off, so the device is locked or about to be. A secret is
+     * useful for a minute and must not outlive the lock: forget the
+     * process-memory secrets now and clear them from the panel. An ordinary
+     * unlock is not a clear.
+     */
+    private fun onDeviceLocked() {
+        if (clipboardStore.clearSensitive()) {
+            saveClipboardSoon()
+            _uiState.update { it.copy(clipboardItems = clipboardStore.items()) }
+        }
     }
 
     private var keyguardWatchJob: Job? = null

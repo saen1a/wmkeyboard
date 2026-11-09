@@ -16,13 +16,11 @@ package com.wasimaster.wmkeyboard.core.clipboard
  */
 internal class SecretMemoryStore(
     /** 0 means no expiry; the caller then uses the normal history expiry. */
-    var expiryMillis: Long = DEFAULT_SECRET_EXPIRY_MILLIS,
-    /** The newest entries kept; older ones are dropped. */
-    var maxEntries: Int = MAX_SECRET_ENTRIES,
-    /** The longest text one secret may hold. */
-    var maxEntryChars: Int = MAX_SECRET_ENTRY_CHARS,
-) {
+    var expiryMillis: Long = ClipboardStore.DEFAULT_SENSITIVE_EXPIRY_MILLIS,
+ ) {
     private val entries = ArrayList<ClipItem>()
+    private val maxEntries = MAX_SECRET_ENTRIES
+    private val maxEntryChars = MAX_SECRET_ENTRY_CHARS
 
     /** Adds or refreshes [item], which must already be marked sensitive. */
     fun add(item: ClipItem, now: Long): ClipItem {
@@ -82,7 +80,8 @@ internal class SecretMemoryStore(
 
     fun maxId(): Long = entries.maxOfOrNull { it.id } ?: 0L
 
-    private fun prune(now: Long) {
+    /** Drops entries past their TTL; callers that only need that can say so. */
+    fun prune(now: Long) {
         if (expiryMillis <= 0) return
         // A timestamp ahead of now means the clock moved backwards. Treat it
         // as expired rather than letting a secret outlive its TTL until the
@@ -91,7 +90,6 @@ internal class SecretMemoryStore(
     }
 
     companion object {
-        const val DEFAULT_SECRET_EXPIRY_MILLIS = 5L * 60 * 1000
         const val MAX_SECRET_ENTRIES = 20
         const val MAX_SECRET_ENTRY_CHARS = 32_768
     }

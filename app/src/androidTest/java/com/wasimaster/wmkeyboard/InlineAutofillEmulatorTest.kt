@@ -25,7 +25,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 @SdkSuppress(minSdkVersion = Build.VERSION_CODES.R)
 class InlineAutofillEmulatorTest {
-    @Ignore("API 36 emulator creates the AutofillSession before the IME window is visible, so no fill request carries the IME inline spec; verified with improve_fill_dialog=false and a warm-up/login split")
+    @Ignore("T6 blocked; see .kilo/orchestrator/clipboard-test-matrix-plan.md")
     @Test
     fun fakeAutofillChipIsShown() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()

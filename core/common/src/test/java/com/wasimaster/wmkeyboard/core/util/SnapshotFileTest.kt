@@ -7,6 +7,8 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.rules.TemporaryFolder
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class SnapshotFileTest {
 
@@ -78,5 +80,45 @@ class SnapshotFileTest {
         assertTrue(target().readText() in setOf("first", "second"))
         val parts = target().parentFile.listFiles { file -> file.name.endsWith(".part") }.orEmpty()
         assertEquals(0, parts.size)
+    }
+
+    @Test
+    fun withLockIsReentrantAroundWriteAtomically() {
+        val result = SnapshotFile.withLock(target()) {
+            SnapshotFile.withLock(target()) {
+                SnapshotFile.writeAtomically(target(), "inner")
+                "ok"
+            }
+        }
+        assertEquals("ok", result)
+        assertEquals("inner", target().readText())
+    }
+
+    @Test
+    fun anotherThreadsAtomicWriteWaitsForThePathLock() {
+        val locked = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val writerDone = CountDownLatch(1)
+        val holder = Thread {
+            SnapshotFile.withLock(target()) {
+                locked.countDown()
+                release.await()
+            }
+        }
+        val writer = Thread {
+            locked.await()
+            SnapshotFile.writeAtomically(target(), "external")
+            writerDone.countDown()
+        }
+        holder.start()
+        writer.start()
+        assertTrue(locked.await(5, TimeUnit.SECONDS))
+        // The external write is serialized behind the held path lock.
+        assertFalse(writerDone.await(200, TimeUnit.MILLISECONDS))
+        release.countDown()
+        assertTrue(writerDone.await(5, TimeUnit.SECONDS))
+        holder.join()
+        writer.join()
+        assertEquals("external", target().readText())
     }
 }

@@ -56,6 +56,7 @@ provider, because Android has no such role.
                         | WM Keyboard IME service              |
                         | WMKeyboardService                    |
                         | listener + paste handlers            |
+                        | ClipboardWriteGate: every write      |
                         +------------------+-------------------+
                                            |
                     +----------------------+----------------------+
@@ -91,9 +92,19 @@ and sends every action back to the service.
 `WMKeyboardService` is the coordinator. It owns the clipboard listener, the
 settings gates, the paste routing, the password sweep, and the interaction with
 other features such as the suggestion strip, the AI reply tool, Send, and KDE
-Connect. Most clipboard reads and writes for the keyboard go through it. A few
-controllers, such as the gallery, music, Send, and share paths, also read or
-write the system clipboard directly.
+Connect.
+
+`ClipboardWriteGate` is the one write path for keyboard-originated system
+clipboard writes: panel copies, tool copies, clean-text write-back, Clear, and
+Undo restores. It marks a clip sensitive when the caller says so, lets
+`KeyboardClipboard` keep a private copy in memory, and stamps a short-lived
+self-write token from `SelfWriteLedger` so the listener can tell the keyboard's
+own write apart and not record it twice. An architecture test fails a new
+direct `setPrimaryClip` or `clearPrimaryClip` call under `feature/ime`.
+
+A few controllers, such as the gallery, music, Send, and share paths, still read
+the system clipboard directly. Their writes go through `ClipboardWriteGate` as
+well, so sensitivity and self-write handling keep one owner.
 
 ### Domain
 
@@ -110,12 +121,28 @@ memory and never reaches the system clipboard. The service is told through
 `onPrivateCopy`, so the history can record it outside incognito. Incognito
 records nothing.
 
+`ClipboardSyncSanitizer` is the untrusted-bundle boundary for ConfigBackup and
+the Sync devices path. It accepts only complete, non-sensitive text, HTML, and
+link items within the store's hard caps, drops one crafted or corrupt item on
+its own instead of failing the whole restore, and never carries a local secret
+forward.
+
+`SecretMemoryStore` is the memory-only home for sensitive clips. It has no
+file, no images directory, no pin, no tags, and no search index. `ClipboardStore`
+owns one instance and merges its items into the list the panel and paste paths
+read, so the persistence boundary stays separate without a second UI model.
+
 ### Platform and persistence
 
 The platform seam is `android.content.ClipboardManager`, `ClipData`, and
 `InputConnection`. Persistence is a JSON snapshot through `SnapshotFile`, not a
 database. The store saves asynchronously and keeps the last snapshot ordering so
 two saves from different threads do not land out of order.
+
+`FakeAutofillService` in `app/src/debug` is a debug-only inline provider for the
+emulator test `InlineAutofillEmulatorTest` (T6). It returns one deterministic
+chip and never holds a real credential; it proves the chip plumbing, not
+passkey behaviour.
 
 ## Architecture diagram
 
@@ -133,6 +160,8 @@ two saves from different threads do not land out of order.
 | - OnPrimaryClipChangedListener                                                 |
 | - capture gates: history, incognito, password field, sensitive handling        |
 | - paste: text, code, image, file, folder, entity                               |
+| - ClipboardWriteGate: the one keyboard-originated write path                   |
+| - SelfWriteLedger: one-shot tokens for the keyboard's own writes               |
 | - password purge, undo, bump, suggestion chip, AI reply, Send, KDE Connect    |
 +----------------+--------------------------------------+------------------------+
                  |                                      |
@@ -143,7 +172,8 @@ two saves from different threads do not land out of order.
 | ClipItem, ClipKind               |   | InputConnection.commitText                 |
 | ClipCopyRules, ClipSensitivity   |   | InputConnectionCompat.commitContent        |
 | ClipLinks, ClipEntities          |   | FileProvider                               |
-| KeyboardClipboard                |   | UsageStatsManager (optional source app)    |
+| ClipboardSyncSanitizer           |   | UsageStatsManager (optional source app)    |
+| KeyboardClipboard                |   | FakeAutofillService (debug builds only)    |
 +----------------+-----------------+   +-------------------------------------------+
                  |
                  v
@@ -234,10 +264,24 @@ matches when it was the newest clip and the clipboard holds a URI.
   handling is **never save**
 
 Sensitive clips are not in `history.json` at all. They live in
-`SecretMemoryStore`, process memory only, and are deleted on expiry, lock,
-service destroy or process death. Pinning does not keep a secret. The normal
-history file is excluded from Android Auto Backup and Device Transfer; the
-explicit ConfigBackup and sync paths strip secrets too.
+`SecretMemoryStore`, process memory only. They are cleared when the screen turns
+off (`ACTION_SCREEN_OFF` to `onDeviceLocked`), on expiry, when the service is
+destroyed, and on process death; switching the handling to **never save** clears
+them as well. Pinning does not keep a secret. An ordinary unlock or panel reload
+keeps a live secret and republishes it. A history clear by an external writer
+that deletes or empties `history.json` drops the secrets too, through
+`ClipboardStore.clearFromExternal`.
+
+The normal history file and images directory are excluded from Android Auto
+Backup and Device Transfer in `data_extraction_rules.xml` and `backup_rules.xml`;
+the explicit ConfigBackup and sync paths strip secrets too.
+
+:::caution[Forward-only backup exclusion]
+The backup exclusion applies only to backups made after this change. A backup
+created before it can still contain clipboard text, including sensitive text,
+so replace or invalidate that backup. The release note for this change records
+the rollout instruction.
+:::
 
 Pinned clear clips are exempt from the normal history expiry and cap. The
 per-clip text length can also be capped. Only the history is capped; the system
@@ -251,11 +295,16 @@ discarded after Undo.
 ## Privacy gates
 
 Clipboard data is credential-protected. Before the first unlock there is no
-history file, and on the lock screen the published history is emptied. The
+history file, and while the keyguard is up the published history is empty. The
 panel opens only when `isClipboardAccessible()` is true, which means the user
 is unlocked and the keyguard is gone. Hiding the toolbar and the clipboard
 panel on the lock screen is a separate setting, **Hide the toolbar and the
 clipboard on the lock screen**, and it is off by default.
+
+Retained secrets are cleared when the screen turns off, not by the hide-on-lock
+setting. An ordinary unlock republishes the live list and keeps a secret that
+has not expired. A history file deleted or emptied by an external writer is a
+clear: it drops the secrets with the rest of the history.
 
 Capture and paste have their own gates:
 
@@ -276,11 +325,11 @@ Private copies are a separate mechanism for text routed through
 and tools that use that helper. With `clipboard.privateCopies` on, or incognito
 with its private clipboard option on, such a copy stays in
 `KeyboardClipboard.held` instead of going to the system clipboard. The history
-records it outside incognito; incognito records nothing. Other keyboard paths
-that call `ClipboardManager.setPrimaryClip` directly, such as the gallery,
-music, Send, and share actions, still write the system clipboard. For the text
-path, private mode is what keeps a keyboard copy away from One UI's
-system-level clipboard history.
+records it outside incognito; incognito records nothing. Other keyboard paths,
+such as the gallery, music, Send, and share actions, also write the system
+clipboard, through `ClipboardWriteGate`, so they still reach One UI's
+system-level history. For the text path, private mode is what keeps a keyboard
+copy away from that history.
 
 ## Platform boundary
 
@@ -389,25 +438,33 @@ way round.
 
 | Concern | Location |
 |---|---|
-| IME declaration | `app/src/main/AndroidManifest.xml:1361` |
-| Service class | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:896` |
-| Listener registration | `WMKeyboardService.kt:5487` |
-| Listener removal | `WMKeyboardService.kt:9356` |
-| Clipboard access gate | `WMKeyboardService.kt:7354` |
-| Capture listener | `WMKeyboardService.kt:3831` |
-| Private copy recording | `WMKeyboardService.kt:4006` |
-| History store construction | `WMKeyboardService.kt:5621` |
-| Store settings | `WMKeyboardService.kt:8908` |
-| Paste entry point | `WMKeyboardService.kt:48837` |
-| Image commit | `WMKeyboardService.kt:49260` |
-| File commit | `WMKeyboardService.kt:49209` |
-| System clipboard clear after delete | `WMKeyboardService.kt:49720` |
-| Password paste purge | `WMKeyboardService.kt:48960` |
-| Clipboard settings model | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:7296` |
-| Private copies setting | `SettingsRepository.kt:7602` |
-| History model | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:261` |
-| Private in-memory clipboard | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/KeyboardClipboard.kt:21` |
-| Panel UI | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ui/ClipboardFields.kt` |
+| IME declaration | `app/src/main/AndroidManifest.xml`, the `WMKeyboardService` service node |
+| Service class | `feature/ime/.../ime/WMKeyboardService.kt`, `WMKeyboardService` |
+| Listener registration | `WMKeyboardService.onCreate` |
+| Listener removal | `WMKeyboardService.onDestroy` |
+| Clipboard access gate | `WMKeyboardService.isClipboardAccessible` |
+| Lock clear | `WMKeyboardService.onDeviceLocked` |
+| Capture listener | `WMKeyboardService.clipboardListener` |
+| Private copy recording | `WMKeyboardService.recordPrivateCopy` |
+| History store construction | `WMKeyboardService.attachPersonalStores` |
+| Store settings | `WMKeyboardService.configureClipboardStore` |
+| Paste entry point | `WMKeyboardService.onClipboardItemTapped` |
+| Image commit | `WMKeyboardService.commitImageClip`, `commitImageFile` |
+| File commit | `WMKeyboardService.commitFileClip` |
+| System clipboard clear after delete | `ClipboardWriteGate.clear` |
+| Password paste purge | `WMKeyboardService.purgeAfterPasswordPaste` |
+| Clipboard write gate | `feature/ime/.../ime/ClipboardWriteGate.kt`, `ClipboardWriteGate` |
+| Self-write tokens | `feature/ime/.../ime/SelfWriteLedger.kt`, `SelfWriteLedger` |
+| Sync and backup sanitizer | `core/content/.../clipboard/ClipboardSyncSanitizer.kt`, `ClipboardSyncSanitizer` |
+| Secret memory store | `core/content/.../clipboard/SecretMemoryStore.kt`, `SecretMemoryStore` |
+| External history clear | `ClipboardStore.clearFromExternal` |
+| Clipboard settings model | `core/settings/.../settings/SettingsRepository.kt`, `ClipboardSettings` |
+| Private copies setting | `ClipboardSettings.privateCopies` |
+| History model | `core/content/.../clipboard/ClipboardStore.kt`, `ClipboardStore` |
+| Private in-memory clipboard | `feature/ime/.../ime/KeyboardClipboard.kt`, `KeyboardClipboard` |
+| Panel UI | `feature/ime/.../ime/ui/ClipboardFields.kt`, `ClipboardField` |
+| Backup exclusion rules | `app/src/main/res/xml/data_extraction_rules.xml`, `backup_rules.xml` |
+| Debug fake autofill provider | `app/src/debug/.../FakeAutofill.kt`, `FakeAutofillService` |
 
 ## Password-manager matrix
 

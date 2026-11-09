@@ -1,5 +1,6 @@
 package com.wasimaster.wmkeyboard.core.util
 
+import android.os.Build
 import java.io.File
 import java.util.concurrent.atomic.AtomicLong
 
@@ -80,43 +81,89 @@ class SnapshotFile(val file: File) {
 
     companion object {
         /** Serializes writers from different [SnapshotFile] instances per path. */
-        private val writeLocks = java.util.concurrent.ConcurrentHashMap<String, Any>()
+        private val writeLocks =
+            java.util.concurrent.ConcurrentHashMap<String, java.util.concurrent.locks.ReentrantLock>()
+
+        private fun lockFor(file: File): java.util.concurrent.locks.ReentrantLock =
+            writeLocks.computeIfAbsent(file.absolutePath) { java.util.concurrent.locks.ReentrantLock() }
 
         /**
-         * Replaces [file] with [text] in one step: written to a sibling, then
-         * renamed over it, which on Android's file systems is atomic.
+         * Runs [block] under the file's static per-path write lock. The lock is
+         * reentrant, so [writeAtomically] may be called from inside it: the
+         * clipboard store wraps its whole external-stamp check and write in it
+         * and then writes through [SnapshotFile.write], while a sync or
+         * ConfigBackup restore replaces the same file through
+         * [writeAtomically], so the two cannot interleave.
+         *
+         * Lock order is always this path lock first, then a store's own lock.
+         * A store must never take the path lock while holding its own.
          */
-        @Suppress("SwallowedException")
+        fun <T> withLock(file: File, block: () -> T): T {
+            val lock = lockFor(file)
+            lock.lock()
+            try {
+                return block()
+            } finally {
+                lock.unlock()
+            }
+        }
+
+        /**
+         * Replaces [file] with [text] in one step: written to a unique sibling,
+         * then renamed over it. On API 26+ that rename is atomic; on API 24/25
+         * java.nio.file does not exist, so a plain rename with a delete-and-
+         * retry fallback is used.
+         */
         fun writeAtomically(file: File, text: String) {
-            val lock = writeLocks.computeIfAbsent(file.absolutePath) { Any() }
-            synchronized(lock) {
+            withLock(file) {
                 file.parentFile?.mkdirs()
                 // A unique sibling: the IME and a sync/ConfigBackup restore can
                 // write the same history file from two instances. A shared
                 // "history.json.part" let one writer truncate the other's part.
                 val part = File(file.parentFile, file.name + "." + java.util.UUID.randomUUID() + ".part")
                 part.writeText(text)
-                // File.renameTo does not replace an existing file on Windows,
-                // so the snapshot stayed in .part and the store loaded an
-                // empty file. Files.move with REPLACE_EXISTING is portable.
-                try {
-                    java.nio.file.Files.move(
-                        part.toPath(),
-                        file.toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                        java.nio.file.StandardCopyOption.ATOMIC_MOVE,
-                    )
-                } catch (atomicUnsupported: java.nio.file.AtomicMoveNotSupportedException) {
-                    java.nio.file.Files.move(
-                        part.toPath(),
-                        file.toPath(),
-                        java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                    )
-                } catch (failure: Throwable) {
-                    part.delete()
-                    throw failure
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    replaceWithNio(part, file)
+                } else {
+                    replaceLegacy(part, file)
                 }
             }
+        }
+
+        /** API 26+: a rename that replaces the target atomically where supported. */
+        @Suppress("SwallowedException")
+        private fun replaceWithNio(part: File, file: File) {
+            // File.renameTo does not replace an existing file on Windows,
+            // so the snapshot stayed in .part and the store loaded an
+            // empty file. Files.move with REPLACE_EXISTING is portable.
+            try {
+                java.nio.file.Files.move(
+                    part.toPath(),
+                    file.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                    java.nio.file.StandardCopyOption.ATOMIC_MOVE,
+                )
+            } catch (atomicUnsupported: java.nio.file.AtomicMoveNotSupportedException) {
+                java.nio.file.Files.move(
+                    part.toPath(),
+                    file.toPath(),
+                    java.nio.file.StandardCopyOption.REPLACE_EXISTING,
+                )
+            } catch (failure: Throwable) {
+                part.delete()
+                throw failure
+            }
+        }
+
+        /**
+         * API 24/25: java.nio.file is API 26+, so rename without it. renameTo
+         * may refuse to replace an existing target, so delete and retry once.
+         */
+        private fun replaceLegacy(part: File, file: File) {
+            if (part.renameTo(file)) return
+            if (file.delete() && part.renameTo(file)) return
+            part.delete()
+            throw java.io.IOException("Could not replace ${file.absolutePath}")
         }
     }
 }

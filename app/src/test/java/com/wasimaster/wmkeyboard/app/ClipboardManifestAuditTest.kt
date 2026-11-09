@@ -9,9 +9,9 @@ import org.junit.Test
  * The clipboard and autofill work depends on a few configuration facts that no
  * unit test can otherwise see: the IME must run in the main process and before
  * first unlock, the input method must advertise inline suggestions, the
- * manifest must not ask for a network permission the target does not need, the
- * clipboard directory must stay out of every backup, and the SDK levels must be
- * the ones the rest of the build assumes.
+ * manifest must not ask for a network permission the target does not need, and
+ * the SDK levels must be the ones the rest of the build assumes. The backup
+ * exclusion is audited by [ClipboardBackupRulesTest].
  *
  * A pure file audit: it reads the source files the build consumes, not a device.
  */
@@ -19,8 +19,6 @@ class ClipboardManifestAuditTest {
 
     private val manifest = File("src/main/AndroidManifest.xml").readText()
     private val method = File("src/main/res/xml/method.xml").readText()
-    private val dataRules = File("src/main/res/xml/data_extraction_rules.xml").readText()
-    private val legacyRules = File("src/main/res/xml/backup_rules.xml").readText()
     private val appBuild = File("build.gradle.kts").readText()
 
     /**
@@ -61,12 +59,6 @@ class ClipboardManifestAuditTest {
             Regex("""targetSdk\s*=\s*36\b""").containsMatchIn(appBuild),
         )
         assertFalse(manifest.contains("ACCESS_LOCAL_NETWORK"))
-    }
-
-    @Test
-    fun `both backup rule files exclude the clipboard directory`() {
-        assertTrue(dataRules.contains("""path="clipboard""""))
-        assertTrue(legacyRules.contains("""path="clipboard""""))
     }
 
     @Test

@@ -17844,14 +17844,52 @@ class SettingsRepository(private val context: Context) {
      */
     suspend fun applySyncedClipboard(portable: JsonObject) {
         val path = "clipboard/history.json"
-        val local = readStore(path) as? JsonObject ?: JsonObject(emptyMap())
-        val localItems = local["items"] as? JsonArray ?: JsonArray(emptyList())
-        val stays = localItems.filter { item -> ClipboardSyncSanitizer.isNonTextualClearItem(item) }
         val incoming = (portable["items"] as? JsonArray)
             ?.filter { item -> ClipboardSyncSanitizer.isPortableItem(item) }
             ?: emptyList()
-        writeClipboardStore(path, JsonObject(local + ("items" to JsonArray(incoming + stays))))
+        // Read, merge and write as one critical section under the same path
+        // lock the IME's save takes, so a save landing between our read and our
+        // write cannot be overwritten. writeAtomically re-enters this lock.
+        val file = storeFile(path)
+        SnapshotFile.withLock(file) {
+            val local = readStore(path) as? JsonObject ?: JsonObject(emptyMap())
+            val localItems = local["items"] as? JsonArray ?: JsonArray(emptyList())
+            val stays = localItems.filter { item -> ClipboardSyncSanitizer.isNonTextualClearItem(item) }
+            // The combined list must not carry two clips with one id. A local
+            // non-text clip keeps its id; an incoming clip that collides is
+            // moved above every id in use.
+            val items = deconflictClipIds(incoming, stays)
+            writeClipboardStore(path, JsonObject(local + ("items" to JsonArray(items))))
+        }
     }
+
+    /**
+     * [incoming] clips made unique by id against [stays], which keep their own.
+     * An incoming id that collides with a local non-text clip, or with an
+     * incoming clip already seen, is renumbered above the highest id in use.
+     */
+    private fun deconflictClipIds(
+        incoming: List<JsonElement>,
+        stays: List<JsonElement>,
+    ): List<JsonElement> {
+        val used = HashSet<Long>()
+        stays.forEach { entry -> (entry as? JsonObject)?.clipId()?.let(used::add) }
+        var next = (used.maxOrNull() ?: 0L) + 1
+        return incoming.map { entry ->
+            val id = (entry as? JsonObject)?.clipId()
+            if (id != null && used.add(id)) return@map entry
+            var fresh = next
+            while (!used.add(fresh)) fresh++
+            next = fresh + 1
+            (entry as JsonObject).withClipId(fresh)
+        } + stays
+    }
+
+    private fun JsonObject.clipId(): Long? =
+        (this["id"] as? JsonPrimitive)?.contentOrNull?.toLongOrNull()
+
+    private fun JsonObject.withClipId(id: Long): JsonObject =
+        JsonObject(this + ("id" to JsonPrimitive(id)))
 
     private fun ownStatistics(): JsonObject? = readStore(TypingStats.FILE_PATH) as? JsonObject
 

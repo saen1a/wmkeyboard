@@ -13,9 +13,6 @@ package com.wasimaster.wmkeyboard.ime
  */
 internal data class InlineSuggestionMeta(val source: Int, val type: String?)
 
-/** The two strips an inline response is split across. */
-internal enum class InlineLane { AUTOFILL, PLATFORM }
-
 /**
  * Sorts an inline response into its two lanes and trims each to its budget.
  *

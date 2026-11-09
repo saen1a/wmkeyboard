@@ -105,6 +105,29 @@ class ClipboardSyncSanitizerTest {
     }
 
     @Test
+    fun `oversized htmlText is dropped`() {
+        val atCap = "x".repeat(ClipboardStore.HARD_MAX_HTML_BYTES)
+        val tooLong = "x".repeat(ClipboardStore.HARD_MAX_HTML_BYTES + 1)
+        val allowed = ClipboardSyncSanitizer.sanitize(
+            bundle(item(baseText(kind = "HTML") + ("htmlText" to JsonPrimitive(atCap)))),
+        )
+        assertEquals(1, survivors(allowed).size)
+        val dropped = ClipboardSyncSanitizer.sanitize(
+            bundle(item(baseText(kind = "HTML") + ("htmlText" to JsonPrimitive(tooLong)))),
+        )
+        assertTrue(survivors(dropped).isEmpty())
+    }
+
+    @Test
+    fun `duplicate ids keep only the first item`() {
+        val first = item(baseText(id = 7L, text = "first"))
+        val second = item(baseText(id = 7L, text = "second"))
+        val kept = survivors(ClipboardSyncSanitizer.sanitize(bundle(first, second)))
+        assertEquals(1, kept.size)
+        assertEquals("first", (kept.single().getValue("text") as JsonPrimitive).content)
+    }
+
+    @Test
     fun `a wrongly typed field drops only that item`() {
         val badFileSize = item(baseText(id = 10L) + ("fileSize" to JsonPrimitive("abc")))
         val badDuration = item(baseText(id = 11L) + ("durationMs" to JsonPrimitive("oops")))

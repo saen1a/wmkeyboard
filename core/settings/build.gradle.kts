@@ -70,6 +70,9 @@ dependencies {
     implementation(libs.androidx.compose.material.icons)
     implementation(libs.androidx.datastore.preferences)
     testImplementation(libs.junit)
+    // applySyncedClipboard needs a real filesDir; SettingsRepository is built
+    // on the Android Context.
+    testImplementation(libs.robolectric)
 }
 
 // Tests that reach the Rust text engines load libwm_engine_jni for this

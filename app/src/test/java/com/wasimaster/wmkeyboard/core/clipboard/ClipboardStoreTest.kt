@@ -486,23 +486,62 @@ class ClipboardStoreTest {
 
     @Test fun saveNeverWritesASecret() {
         val file = Files.createTempFile("history", ".json").toFile()
-        val store = ClipboardStore(file, expiryMillis = 0)
+        // Keep the secret live through the real-clock prune save() runs.
+        val store = ClipboardStore(file, expiryMillis = 0, sensitiveExpiryMillis = 0)
         store.add("hunter2", now = 1000, sensitive = true)
         store.add("plain", now = 2000)
         store.save()
+        // The secret was still held, so its absence from the file is real.
+        assertTrue(store.hasSensitive(now = 3000))
         val saved = file.readText()
         assertFalse(saved.contains("hunter2"))
         assertTrue(saved.contains("plain"))
     }
 
-    @Test fun secretDoesNotSurviveReload() {
+    @Test fun ordinaryReloadKeepsALiveSecret() {
         val file = Files.createTempFile("history", ".json").toFile()
-        val store = ClipboardStore(file, expiryMillis = 0)
+        val store = ClipboardStore(file, expiryMillis = 0, sensitiveExpiryMillis = 0)
         store.add("hunter2", now = 1000, sensitive = true)
         store.add("plain", now = 2000)
         store.save()
+        // An ordinary reload of a non-empty file leaves process memory alone.
         store.reload()
-        assertEquals(listOf("plain"), store.items(now = 3000).map { it.text })
+        assertTrue(store.hasSensitive(now = 3000))
+        assertEquals(listOf("plain", "hunter2"), store.items(now = 3000).map { it.text })
+    }
+
+    @Test fun externalFileDeleteThenReloadDropsInMemorySecrets() {
+        val file = Files.createTempFile("history", ".json").toFile()
+        val store = ClipboardStore(file, expiryMillis = 0, sensitiveExpiryMillis = 0)
+        store.add("plain", now = 1000)
+        store.add("hunter2", now = 1000, sensitive = true)
+        store.save()
+        // The live secret survives save() but never reaches the file.
+        assertTrue(store.hasSensitive(now = 2000))
+        assertFalse(file.readText().contains("hunter2"))
+        // The settings app deletes the history behind the keyboard's back.
+        file.delete()
+        store.reload()
+        // An external clear takes the process-memory secrets with it.
+        assertFalse(store.hasSensitive(now = 3000))
+        assertTrue(store.items(now = 3000).none { it.sensitive })
+    }
+
+    @Test fun externalClearDropsADetachedUndoClipAndItsImage() {
+        val dir = Files.createTempDirectory("clips").toFile()
+        val file = Files.createTempFile("history", ".json").toFile()
+        val store = ClipboardStore(file, expiryMillis = 0, imagesDir = dir)
+        val image = tempImage(dir, "undo.png")
+        val item = store.addImage(image, "image/png", now = 1000)!!
+        store.save()
+        val removed = store.detach(item.id)!!
+        assertTrue(image.exists())
+        // The file the store already wrote is cleared externally.
+        file.delete()
+        store.reload()
+        assertFalse(image.exists())
+        assertNull(store.reattach(removed, now = 2000))
+        assertTrue(store.items(now = 2000).isEmpty())
     }
 
     @Test fun saveMergesAnExternalSyncWithoutLosingANewCopy() {
@@ -700,11 +739,65 @@ class ClipboardStoreTest {
         assertFalse(image.exists())
     }
 
+    @Test fun legacySensitiveTextIsStrippedFromTheFileOnRestore() {
+        val secret = ClipItem(id = 1, text = "hunter2", timestamp = 1000, sensitive = true)
+        val clear = ClipItem(id = 2, text = "plain", timestamp = 2000)
+        val file = Files.createTempFile("history", ".json").toFile()
+        file.writeText("""{"version":1,"items":${Json.encodeToString(listOf(secret, clear))}}""")
+
+        val store = ClipboardStore(file, expiryMillis = 0)
+        assertEquals(listOf("plain"), store.items(now = 3000).map { it.text })
+        // The skipped secret's plaintext is rewritten out of history.json.
+        val rewritten = file.readText()
+        assertFalse(rewritten.contains("hunter2"))
+        assertTrue(rewritten.contains("plain"))
+    }
+
+    @Test(timeout = 10_000)
+    fun reloadScrubsALegacySensitiveItemThroughTheSaveLock() {
+        val file = Files.createTempFile("history", ".json").toFile()
+        val store = ClipboardStore(file, expiryMillis = 0)
+        store.add("plain", now = 1000)
+        store.save()
+        // An older build writes a plaintext secret straight into the file.
+        val secret = ClipItem(id = 99, text = "hunter2", timestamp = 2000, sensitive = true)
+        file.writeText("""{"version":1,"items":${Json.encodeToString(listOf(secret))}}""")
+        // reload takes the path lock before the store monitor and restore()'s
+        // scrub write re-enters it; a wrong order would hang instead.
+        store.reload()
+        assertTrue(store.items(now = 3000).isEmpty())
+        assertFalse(file.readText().contains("hunter2"))
+    }
+
     @Test fun corruptSnapshotIsRemovedAndTheStoreStartsEmpty() {
         val file = Files.createTempFile("history", ".json").toFile()
         file.writeText("{not json")
         val store = ClipboardStore(file, expiryMillis = 0)
         assertFalse(file.exists())
         assertTrue(store.items(now = 1000).isEmpty())
+    }
+
+    @Test fun oversizedHtmlFromASnapshotIsDropped() {
+        val item = ClipItem(
+            id = 1,
+            text = "hello",
+            timestamp = 1000,
+            kind = ClipKind.HTML,
+            htmlText = "x".repeat(ClipboardStore.HARD_MAX_HTML_BYTES + 1),
+            mimeType = "text/html",
+        )
+        val file = Files.createTempFile("history", ".json").toFile()
+        file.writeText("""{"version":2,"items":${Json.encodeToString(listOf(item))}}""")
+        val store = ClipboardStore(file, expiryMillis = 0)
+        assertTrue(store.items(now = 2000).isEmpty())
+    }
+
+    @Test fun duplicateIdsInASnapshotKeepOnlyTheFirst() {
+        val first = ClipItem(id = 5, text = "first", timestamp = 1000)
+        val second = ClipItem(id = 5, text = "second", timestamp = 2000)
+        val file = Files.createTempFile("history", ".json").toFile()
+        file.writeText("""{"version":2,"items":${Json.encodeToString(listOf(first, second))}}""")
+        val store = ClipboardStore(file, expiryMillis = 0)
+        assertEquals(listOf("first"), store.items(now = 3000).map { it.text })
     }
 }

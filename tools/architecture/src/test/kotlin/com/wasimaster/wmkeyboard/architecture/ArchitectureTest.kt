@@ -293,8 +293,8 @@ class ArchitectureTest {
         /** Sources every flavour compiles: main, and :app's store-channel directories. */
         val MAIN_SOURCE = Regex("""/src/(main|play|noplay|github|fdroid|gms|nogms)/java/""")
 
-        /** Build output, VCS data, node packages and the session worktrees under .claude. */
-        val SKIPPED_DIRS = setOf("build", ".git", ".gradle", ".claude", "node_modules", ".idea", "target")
+        /** Build output, VCS data, node packages and session worktrees under .kilo. */
+        val SKIPPED_DIRS = setOf("build", ".git", ".gradle", ".kilo", "node_modules", ".idea", "target")
 
         /** The directory holding settings.gradle.kts, walking up from where the test runs. */
         fun projectRoot(): String {

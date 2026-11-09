@@ -1,9 +1,0 @@
-<?xml version="1.0" encoding="utf-8"?>
-<!--
-    The inline-autofill test components live in the app's debug source set now:
-    the fake service must run in the app process to see the Kotlin runtime and
-    androidx.autofill, and the login activity must be launchable by
-    ActivityScenario in the instrumentation process. This manifest is kept so
-    the androidTest source set still has a manifest, but it declares nothing.
--->
-<manifest xmlns:android="http://schemas.android.com/apk/res/android" />
