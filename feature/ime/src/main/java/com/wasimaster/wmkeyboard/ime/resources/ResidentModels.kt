@@ -1,6 +1,7 @@
 package com.wasimaster.wmkeyboard.ime.resources
 
 import android.content.Context
+import com.wasimaster.wmkeyboard.core.grammar.DivvunGrammar
 import com.wasimaster.wmkeyboard.core.grammar.GrammarChecker
 import com.wasimaster.wmkeyboard.core.input.composer.ArabicTashkeel
 import com.wasimaster.wmkeyboard.core.input.composer.HebrewNikud
@@ -17,8 +18,11 @@ import com.wasimaster.wmkeyboard.core.voice.executorch.EtNative
 import com.wasimaster.wmkeyboard.core.voice.futoswipe.FutoSwipe
 import com.wasimaster.wmkeyboard.core.voice.punctuation.DictationPunctuation
 import com.wasimaster.wmkeyboard.core.voice.sherpa.OmnilingualEngine
+import com.wasimaster.wmkeyboard.core.voice.sherpa.QnnSpeech
 import com.wasimaster.wmkeyboard.core.voice.sherpa.SherpaEngine
 import com.wasimaster.wmkeyboard.core.voice.sherpa.SherpaNative
+import com.wasimaster.wmkeyboard.core.voice.speech.KokoroSpeech
+import com.wasimaster.wmkeyboard.core.voice.speech.KokoroVoices
 import com.wasimaster.wmkeyboard.core.voice.speech.MmsSpeech
 import com.wasimaster.wmkeyboard.core.voice.vad.SmartTurn
 import com.wasimaster.wmkeyboard.core.voice.vosk.VoskEngine
@@ -135,6 +139,13 @@ object ResidentModels {
             { keyboardRelease?.invoke() ?: withContext(EtNative.dispatcher) { EtNative.release() } },
         ),
         Part(
+            "qnn_speech", ModelKind.VOICE_TYPING,
+            { QnnSpeech.loadedModel()?.let { model("qnn_speech", ModelKind.VOICE_TYPING, it) } },
+            // Parakeet's and Moonshine's NPU builds run on the ExecuTorch
+            // thread, under the same dictation check as their CPU builds.
+            { keyboardRelease?.invoke() ?: withContext(EtNative.dispatcher) { QnnSpeech.release() } },
+        ),
+        Part(
             "punctuation", ModelKind.PUNCTUATION,
             {
                 if (DictationPunctuation.isOpen) {
@@ -159,6 +170,18 @@ object ResidentModels {
             "mms_tts", ModelKind.READ_ALOUD,
             { MmsSpeech.loadedVoice()?.let { LoadedModel("mms_tts", ModelKind.READ_ALOUD, it, null) } },
             { withContext(MmsSpeech.dispatcher) { MmsSpeech.release() } },
+        ),
+        Part(
+            "kokoro", ModelKind.READ_ALOUD,
+            { context ->
+                KokoroSpeech.loaded()?.let {
+                    LoadedModel(
+                        "kokoro", ModelKind.READ_ALOUD, "Kokoro ($it)",
+                        KokoroVoices.file(context.filesDir, KokoroVoices.MODEL).length().takeIf { n -> n > 0 },
+                    )
+                }
+            },
+            { withContext(MmsSpeech.dispatcher) { KokoroSpeech.release() } },
         ),
         Part(
             "nllb", ModelKind.TRANSLATION,
@@ -205,6 +228,16 @@ object ResidentModels {
             "grammar", ModelKind.GRAMMAR,
             { if (GrammarChecker.isLoaded) LoadedModel("grammar", ModelKind.GRAMMAR, "Harper", null) else null },
             { GrammarChecker.release() },
+        ),
+        Part(
+            "giella_grammar", ModelKind.GRAMMAR,
+            { context ->
+                DivvunGrammar.loadedLanguage?.let { lang ->
+                    model("giella_grammar", ModelKind.GRAMMAR, DivvunGrammar.bundleFile(context.filesDir, lang))
+                        .copy(name = "GiellaLT ($lang)")
+                }
+            },
+            { DivvunGrammar.release() },
         ),
         Part(
             "futo_swipe", ModelKind.GLIDE,

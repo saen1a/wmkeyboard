@@ -1,5 +1,15 @@
 package com.wasimaster.wmkeyboard.app
 
+import androidx.compose.runtime.collectAsState
+import androidx.compose.material3.LocalContentColor
+import com.wasimaster.wmkeyboard.ime.ui.rememberIconFile
+import com.wasimaster.wmkeyboard.ime.ui.SlotIcon
+import com.wasimaster.wmkeyboard.core.icons.LibraryIcon
+import com.wasimaster.wmkeyboard.core.icons.IconSlots
+import com.wasimaster.wmkeyboard.core.icons.IconSlotGroup
+import com.wasimaster.wmkeyboard.core.icons.IconSlot
+import com.wasimaster.wmkeyboard.core.icons.IconPackStore
+import com.wasimaster.wmkeyboard.core.icons.IconLibrary
 import com.wasimaster.wmkeyboard.BuildConfig
 import com.wasimaster.wmkeyboard.core.providers.ProviderTypes
 import com.wasimaster.wmkeyboard.core.settings.providerCredentials
@@ -77,6 +87,7 @@ import com.wasimaster.wmkeyboard.core.icons.symbols.outlined.FileDownload
 import com.wasimaster.wmkeyboard.core.icons.symbols.outlined.FileUpload
 import com.wasimaster.wmkeyboard.core.icons.symbols.outlined.Image
 import androidx.compose.material3.AlertDialog
+import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.CompositionLocalProvider
 import com.wasimaster.wmkeyboard.ime.layoutKind
 import com.wasimaster.wmkeyboard.ime.PanelMode
@@ -130,6 +141,19 @@ import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.withFrameNanos
+import androidx.compose.runtime.derivedStateOf
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.positionInRoot
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Density
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -218,6 +242,14 @@ import com.wasimaster.wmkeyboard.core.theme.TOUCH_BLOOM_RADIUS_RANGE
 import com.wasimaster.wmkeyboard.core.theme.TOUCH_BLOOM_WOBBLE_RANGE
 import com.wasimaster.wmkeyboard.core.theme.TouchBloomSpec
 import com.wasimaster.wmkeyboard.core.theme.KeyLightingTarget
+import com.wasimaster.wmkeyboard.core.theme.KeyLightingColorMode
+import com.wasimaster.wmkeyboard.core.theme.KeyPressMotion
+import com.wasimaster.wmkeyboard.core.theme.keyLightingColorModeOrNull
+import com.wasimaster.wmkeyboard.core.theme.keyPressMotionOrNull
+import com.wasimaster.wmkeyboard.ime.ui.BoardEffectPickerTile
+import com.wasimaster.wmkeyboard.ime.ui.KeyLightPickerTile
+import com.wasimaster.wmkeyboard.ime.ui.KeyMotionPickerTile
+import com.wasimaster.wmkeyboard.ime.ui.SwatchColors
 import com.wasimaster.wmkeyboard.core.theme.KeyMaterialKind
 import com.wasimaster.wmkeyboard.core.theme.KeyMaterialSpec
 import com.wasimaster.wmkeyboard.core.theme.KeySkinSpec
@@ -253,6 +285,7 @@ import com.wasimaster.wmkeyboard.core.theme.DecalSpec
 import com.wasimaster.wmkeyboard.core.theme.KeyEffectKind
 import com.wasimaster.wmkeyboard.core.theme.KEY_OVERRIDE_LABEL_SCALE_RANGE
 import com.wasimaster.wmkeyboard.core.theme.KeyOverride
+import com.wasimaster.wmkeyboard.core.theme.withChangesOf
 import com.wasimaster.wmkeyboard.core.theme.popupOnKeyOrNull
 import com.wasimaster.wmkeyboard.core.theme.EFFECT_DURATION_RANGE
 import com.wasimaster.wmkeyboard.core.theme.EFFECT_GRAVITY_RANGE
@@ -1515,6 +1548,9 @@ fun ThemesScreen(
                 context.contentResolver.readTextCapped(uri)?.let(ClinkTheme::read)
             }.getOrNull() ?: ClinkThemeResult.NotATheme
         }
+        if (result == ClinkThemeResult.ProtectedPackage) {
+            return ThemeFileOutcome.failed(context.getString(R.string.import_clink_protected_body))
+        }
         if (result !is ClinkThemeResult.Converted) {
             return ThemeFileOutcome.failed(context.getString(R.string.import_clink_unreadable_body))
         }
@@ -2115,6 +2151,23 @@ fun ThemesScreen(
     // The cards are drawn in the screen's own body rather than in rows, so the
     // theme that is on is read once, here, for all of them.
     val selectedThemeId = settings.watch { it.keyboardThemeId }
+    // Which rows of cards are composed: the ones near the screen, see
+    // [ThemeGalleryRow]. Saved, so coming back from the editor composes the
+    // rows that were on screen at once, at the heights they had.
+    val galleryWindow = rememberSaveable(saver = GalleryWindow.Saver) { GalleryWindow() }
+    val customRowCount = (customEntries.size + 1) / 2
+    val builtinEntries = if (grouped) BuiltInThemes else BuiltInThemes.flattenedThemes()
+    val galleryRowCount = customRowCount + (builtinEntries.size + 1) / 2
+    val gallerySettled = rememberScreenSettled()
+    LaunchedEffect(gallerySettled, galleryRowCount) {
+        if (!gallerySettled) return@LaunchedEffect
+        // One row a frame from the moment the entrance lands, so the rows
+        // near the screen fill in over a few frames rather than in one long one.
+        while (galleryWindow.admitted < galleryRowCount) {
+            withFrameNanos { }
+            galleryWindow.admitted++
+        }
+    }
     // Default (system) card first, then customs, then built-ins — two per row.
     DefaultThemeCard(
         selected = selectedThemeId == DEFAULT_THEME_ID,
@@ -2125,62 +2178,132 @@ fun ThemesScreen(
     if (customEntries.isNotEmpty()) {
         SectionHeaderPublic(stringResource(R.string.theme_custom_section_title))
     }
-    for (rowThemes in customEntries.chunked(2)) {
-        Row(modifier = Modifier.padding(horizontal = 12.dp)) {
-            for (entry in rowThemes) {
-                Box(modifier = Modifier.weight(1f)) {
-                    // Keyed on the theme, not on the slot: adding or deleting
-                    // a theme shifts every card after it along a place, and a
-                    // card must not play the selection ring and tick at a slot
-                    // that merely changed hands. See [ThemeCard].
-                    key(entry.id) {
-                        val members = if (grouped) entry.selfAndVariants() else listOf(entry)
-                        val isFamily = members.size > 1
-                        val shownId = if (isFamily) {
-                            shownVariant[entry.id]
-                                ?: members.find { it.id == selectedThemeId }?.id
-                                ?: entry.id
-                        } else {
-                            entry.id
+    customEntries.chunked(2).forEachIndexed { rowIndex, rowThemes ->
+        ThemeGalleryRow(galleryWindow, "c", rowIndex, rowThemes, grouped) {
+            Row(modifier = Modifier.padding(horizontal = 12.dp)) {
+                for (entry in rowThemes) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        // Keyed on the theme, not on the slot: adding or deleting
+                        // a theme shifts every card after it along a place, and a
+                        // card must not play the selection ring and tick at a slot
+                        // that merely changed hands. See [ThemeCard].
+                        key(entry.id) {
+                            val members = if (grouped) entry.selfAndVariants() else listOf(entry)
+                            val isFamily = members.size > 1
+                            val shownId = if (isFamily) {
+                                shownVariant[entry.id]
+                                    ?: members.find { it.id == selectedThemeId }?.id
+                                    ?: entry.id
+                            } else {
+                                entry.id
+                            }
+                            val shown = members.find { it.id == shownId } ?: entry
+                            // Downloaded themes are custom themes, so this is where an
+                            // addon's Use button lands — on the card, not on the header.
+                            // A family card answers for every id it holds.
+                            HighlightableItem(members.map { it.id }) {
+                                ThemeCard(
+                                    theme = shown,
+                                    selected = members.any { it.id == selectedThemeId },
+                                    onSelect = { scope.launch { repository.setKeyboardThemeId(shown.id) } },
+                                    onEdit = { onEditTheme(shown.id) },
+                                    editRoute = themeEditRoute(shown.id),
+                                    onExport = {
+                                        // A family card exports the family; a flat card
+                                        // exports the one look it shows.
+                                        export(
+                                            if (grouped) entry
+                                            else entry.copy(variants = emptyList(), familyName = null),
+                                        )
+                                    },
+                                    // Shared the way it exports: the family, or the one look.
+                                    onPublish = {
+                                        publishing = if (grouped) entry
+                                        else entry.copy(variants = emptyList(), familyName = null)
+                                    },
+                                    onDelete = {
+                                        val deletedName = if (isFamily && grouped) themeFamilyName(context, entry) else themeName(context, shown)
+                                        deleteThemes(
+                                            listOf(entry),
+                                            context.getString(R.string.theme_deleted_snackbar, deletedName),
+                                        )
+                                    },
+                                    picking = picking,
+                                    picked = entry.id in livePicked,
+                                    onLongClick = {
+                                        pickedIds = if (entry.id in livePicked) livePicked - entry.id else livePicked + entry.id
+                                    },
+                                    title = if (isFamily) themeFamilyName(entry) else null,
+                                    subtitle = if (isFamily) themeName(shown) else null,
+                                    swatches = if (isFamily) {
+                                        {
+                                            VariantSwatchRow(entry, shownId) { variant ->
+                                                shownVariant[entry.id] = variant.id
+                                                scope.launch { repository.setKeyboardThemeId(variant.id) }
+                                            }
+                                        }
+                                    } else {
+                                        null
+                                    },
+                                )
+                            }
                         }
-                        val shown = members.find { it.id == shownId } ?: entry
-                        // Downloaded themes are custom themes, so this is where an
-                        // addon's Use button lands — on the card, not on the header.
-                        // A family card answers for every id it holds.
-                        HighlightableItem(members.map { it.id }) {
+                    }
+                }
+                if (rowThemes.size == 1) Spacer(Modifier.weight(1f))
+            }
+        }
+    }
+    SectionHeaderPublic(
+        stringResource(R.string.theme_builtin_section_title),
+        info = stringResource(R.string.theme_panel_pin_body),
+    )
+    val panelBuiltIns = settings.watch { it.toolbarBehavior.themesPanelBuiltIns ?: DefaultThemesPanelBuiltIns }
+    builtinEntries.chunked(2).forEachIndexed { rowIndex, rowThemes ->
+        ThemeGalleryRow(galleryWindow, "b", customRowCount + rowIndex, rowThemes, grouped) {
+            Row(modifier = Modifier.padding(horizontal = 12.dp)) {
+                for (entry in rowThemes) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        // Keyed on the theme, not on the slot: switching between
+                        // grouped and flat reshuffles which card sits where, and
+                        // a card must not play the selection ring and tick at a
+                        // slot that merely changed hands. See [ThemeCard].
+                        key(entry.id) {
+                            val members = if (grouped) entry.selfAndVariants() else listOf(entry)
+                            val isFamily = members.size > 1
+                            val shownId = if (isFamily) {
+                                shownVariant[entry.id]
+                                    ?: members.find { it.id == selectedThemeId }?.id
+                                    ?: entry.id
+                            } else {
+                                entry.id
+                            }
+                            val shown = members.find { it.id == shownId } ?: entry
+                            val pinned = shown.id in panelBuiltIns
                             ThemeCard(
                                 theme = shown,
                                 selected = members.any { it.id == selectedThemeId },
                                 onSelect = { scope.launch { repository.setKeyboardThemeId(shown.id) } },
-                                onEdit = { onEditTheme(shown.id) },
-                                editRoute = themeEditRoute(shown.id),
+                                // A family card asks whether the copy is of the shown
+                                // look or of the whole set; a lone card just copies.
+                                onEdit = {
+                                    if (isFamily) copyScopeFor = entry to shown else duplicateAndEdit(shown)
+                                },
                                 onExport = {
-                                    // A family card exports the family; a flat card
-                                    // exports the one look it shows.
                                     export(
                                         if (grouped) entry
                                         else entry.copy(variants = emptyList(), familyName = null),
                                     )
                                 },
-                                // Shared the way it exports: the family, or the one look.
-                                onPublish = {
-                                    publishing = if (grouped) entry
-                                    else entry.copy(variants = emptyList(), familyName = null)
-                                },
-                                onDelete = {
-                                    val deletedName = if (isFamily && grouped) themeFamilyName(context, entry) else themeName(context, shown)
-                                    deleteThemes(
-                                        listOf(entry),
-                                        context.getString(R.string.theme_deleted_snackbar, deletedName),
-                                    )
-                                },
-                                picking = picking,
-                                picked = entry.id in livePicked,
-                                onLongClick = {
-                                    pickedIds = if (entry.id in livePicked) livePicked - entry.id else livePicked + entry.id
-                                },
+                                onDelete = null,
                                 title = if (isFamily) themeFamilyName(entry) else null,
                                 subtitle = if (isFamily) themeName(shown) else null,
+                                // The pin is per look, not per family: the keyboard
+                                // panel lists looks, so the toggle names what shows.
+                                panelShown = pinned,
+                                onTogglePanel = {
+                                    scope.launch { repository.setThemesPanelBuiltIn(shown.id, !pinned) }
+                                },
                                 swatches = if (isFamily) {
                                     {
                                         VariantSwatchRow(entry, shownId) { variant ->
@@ -2195,75 +2318,8 @@ fun ThemesScreen(
                         }
                     }
                 }
+                if (rowThemes.size == 1) Spacer(Modifier.weight(1f))
             }
-            if (rowThemes.size == 1) Spacer(Modifier.weight(1f))
-        }
-    }
-    SectionHeaderPublic(
-        stringResource(R.string.theme_builtin_section_title),
-        info = stringResource(R.string.theme_panel_pin_body),
-    )
-    val panelBuiltIns = settings.watch { it.toolbarBehavior.themesPanelBuiltIns ?: DefaultThemesPanelBuiltIns }
-    val builtinEntries = if (grouped) BuiltInThemes else BuiltInThemes.flattenedThemes()
-    for (rowThemes in builtinEntries.chunked(2)) {
-        Row(modifier = Modifier.padding(horizontal = 12.dp)) {
-            for (entry in rowThemes) {
-                Box(modifier = Modifier.weight(1f)) {
-                    // Keyed on the theme, not on the slot: switching between
-                    // grouped and flat reshuffles which card sits where, and
-                    // a card must not play the selection ring and tick at a
-                    // slot that merely changed hands. See [ThemeCard].
-                    key(entry.id) {
-                        val members = if (grouped) entry.selfAndVariants() else listOf(entry)
-                        val isFamily = members.size > 1
-                        val shownId = if (isFamily) {
-                            shownVariant[entry.id]
-                                ?: members.find { it.id == selectedThemeId }?.id
-                                ?: entry.id
-                        } else {
-                            entry.id
-                        }
-                        val shown = members.find { it.id == shownId } ?: entry
-                        val pinned = shown.id in panelBuiltIns
-                        ThemeCard(
-                            theme = shown,
-                            selected = members.any { it.id == selectedThemeId },
-                            onSelect = { scope.launch { repository.setKeyboardThemeId(shown.id) } },
-                            // A family card asks whether the copy is of the shown
-                            // look or of the whole set; a lone card just copies.
-                            onEdit = {
-                                if (isFamily) copyScopeFor = entry to shown else duplicateAndEdit(shown)
-                            },
-                            onExport = {
-                                export(
-                                    if (grouped) entry
-                                    else entry.copy(variants = emptyList(), familyName = null),
-                                )
-                            },
-                            onDelete = null,
-                            title = if (isFamily) themeFamilyName(entry) else null,
-                            subtitle = if (isFamily) themeName(shown) else null,
-                            // The pin is per look, not per family: the keyboard
-                            // panel lists looks, so the toggle names what shows.
-                            panelShown = pinned,
-                            onTogglePanel = {
-                                scope.launch { repository.setThemesPanelBuiltIn(shown.id, !pinned) }
-                            },
-                            swatches = if (isFamily) {
-                                {
-                                    VariantSwatchRow(entry, shownId) { variant ->
-                                        shownVariant[entry.id] = variant.id
-                                        scope.launch { repository.setKeyboardThemeId(variant.id) }
-                                    }
-                                }
-                            } else {
-                                null
-                            },
-                        )
-                    }
-                }
-            }
-            if (rowThemes.size == 1) Spacer(Modifier.weight(1f))
         }
     }
     // After the built-ins, where someone who has looked through everything the
@@ -2314,6 +2370,167 @@ fun ThemesScreen(
         )
     }
 }
+
+// ---- gallery windowing ----
+
+/**
+ * Which rows of the theme gallery are composed, and how tall each one was.
+ *
+ * The settings screens scroll a `Column`, not a lazy list (see [WmScreen]), so
+ * the gallery used to compose every card it had — each a whole miniature
+ * keyboard — before it could draw one, and kept all of them, with their
+ * decoded photos, for as long as the screen was open. With forty built-ins and
+ * a few dozen imported themes that was the slow open and the stutter on
+ * scroll. Rows now compose only near the screen, the way a lazy list's items
+ * do, and stand in for themselves with their measured height everywhere else.
+ */
+@Stable
+private class GalleryWindow(
+    /** Each row's height with its cards in, by row key, in pixels. */
+    val heights: HashMap<String, Int> = HashMap(),
+    /** The rows that were near the screen when it was last left. */
+    val restored: Set<String> = emptySet(),
+) {
+    /** The rows near the screen now, which is what [Saver] keeps. */
+    val nearNow = HashSet<String>()
+
+    /** How many rows the reveal after the entrance has let in; see [ThemeGalleryRow]. */
+    var admitted by mutableIntStateOf(0)
+
+    companion object {
+        val Saver: Saver<GalleryWindow, Any> = listSaver(
+            save = { window ->
+                val keys = ArrayList<String>(window.heights.size)
+                val heights = IntArray(window.heights.size)
+                window.heights.entries.forEachIndexed { index, (key, height) ->
+                    keys += key
+                    heights[index] = height
+                }
+                listOf(keys, heights, ArrayList(window.nearNow))
+            },
+            restore = { saved ->
+                @Suppress("UNCHECKED_CAST")
+                val keys = saved[0] as List<String>
+                val heights = saved[1] as IntArray
+                @Suppress("UNCHECKED_CAST")
+                val near = saved[2] as List<String>
+                GalleryWindow(HashMap(keys.zip(heights.toList()).toMap()), near.toSet())
+            },
+        )
+    }
+}
+
+/**
+ * One row of gallery cards, composed only while it is within a screen of the
+ * window, and otherwise a placeholder of the height it last had.
+ *
+ * Three things compose a row whatever its place:
+ *
+ * - it was on screen when the gallery was left for the editor, so the card the
+ *   user comes back to is there for the preview to fly back into, and the
+ *   scroll offset restored over the rows above it lands on the same card;
+ * - a search or an addon's Use button names one of its themes, so the
+ *   highlight has a card to scroll to and pulse;
+ * - it is near the screen and the entrance has landed. Rows are let in one a
+ *   frame after that, so they never pile into the opening animation.
+ *
+ * A row comes in within one screen of the window and goes only past two, so a
+ * row at the edge does not flap in and out as the list moves by a pixel.
+ */
+@Composable
+private fun ThemeGalleryRow(
+    window: GalleryWindow,
+    section: String,
+    index: Int,
+    rowThemes: List<ThemeSpec>,
+    grouped: Boolean,
+    content: @Composable () -> Unit,
+) {
+    val members = rowThemes.map { if (grouped) it.selfAndVariants() else listOf(it) }
+    val rowKey = section + rowThemes.joinToString("|") { it.id }
+    key(rowKey) {
+        val restored = rowKey in window.restored
+        var near by remember { mutableStateOf(restored) }
+        val reach = with(LocalDensity.current) { LocalConfiguration.current.screenHeightDp.dp.toPx() }
+        val targets = SettingsHighlight.targetItems
+        val named = targets.isNotEmpty() && members.any { looks -> looks.any { it.id in targets } }
+        // Through derivedStateOf, so each frame of the reveal recomposes the
+        // one row it lets in rather than every row on the screen.
+        val admitted by remember(index) { derivedStateOf { index < window.admitted } }
+        val shown = named || (near && (restored || admitted))
+        val slab = MaterialTheme.colorScheme.surfaceContainer
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onGloballyPositioned { coords ->
+                    val top = coords.positionInRoot().y
+                    val margin = if (near) reach * 2 else reach
+                    val now = top + coords.size.height > -margin && top < reach + margin
+                    if (now != near) near = now
+                    if (now) window.nearNow += rowKey else window.nearNow -= rowKey
+                }
+                .then(
+                    if (shown) {
+                        Modifier.onSizeChanged { window.heights[rowKey] = it.height }
+                    } else {
+                        Modifier.galleryPlaceholder(window.heights[rowKey], members.map { it.size }, slab)
+                    },
+                ),
+        ) {
+            if (shown) content()
+        }
+    }
+}
+
+/**
+ * A row of cards that is not composed: the height it had, or a close guess at
+ * it, with the shape of its previews drawn in so a row arriving reads as one
+ * filling in. [looks] is how many looks each card holds, which decides whether
+ * it has a dot row and a second name line.
+ */
+private fun Modifier.galleryPlaceholder(known: Int?, looks: List<Int>, slab: Color): Modifier =
+    layout { measurable, constraints ->
+        val width = constraints.maxWidth
+        val height = known ?: looks.maxOf { galleryCardHeight(width, it) }
+        val placeable = measurable.measure(Constraints.fixed(width, height))
+        layout(width, height) { placeable.place(0, 0) }
+    }.drawBehind {
+        val card = (size.width - GalleryRowPadding.toPx() * 2) / 2f
+        val inset = GalleryCardInset.toPx()
+        val preview = card - inset * 2
+        looks.indices.forEach { column ->
+            drawRoundRect(
+                color = slab,
+                topLeft = Offset(GalleryRowPadding.toPx() + card * column + inset, inset),
+                size = Size(preview, preview / GalleryPreviewAspect),
+                cornerRadius = CornerRadius(10.dp.toPx()),
+            )
+        }
+    }
+
+/**
+ * About how tall a card holding [looks] looks is in a row [width] pixels wide,
+ * from the card's own measurements; only for a row never yet composed.
+ */
+private fun Density.galleryCardHeight(width: Int, looks: Int): Int {
+    val card = (width - GalleryRowPadding.toPx() * 2) / 2f
+    val inner = card - GalleryCardInset.toPx() * 2
+    var height = GalleryCardInset.toPx() * 2 + inner / GalleryPreviewAspect +
+        4.dp.toPx() + 20.sp.toPx() + 34.dp.toPx()
+    if (looks > 1) {
+        val perLine = ((inner + 2.dp.toPx()) / 30.dp.toPx()).toInt().coerceAtLeast(1)
+        val lines = (looks + perLine - 1) / perLine
+        height += 16.sp.toPx() + 6.dp.toPx() + lines * 24.dp.toPx() + (lines - 1) * 6.dp.toPx()
+    }
+    return height.roundToInt()
+}
+
+/** A gallery row's side padding, and a card's padding plus its inner padding, as [ThemeCard] lays them. */
+private val GalleryRowPadding = 12.dp
+private val GalleryCardInset = 10.dp
+
+/** Width to height of a theme preview; mirrors ThemePreview's portrait shape. */
+private const val GalleryPreviewAspect = 1.7f
 
 /** The label of one [ThemeGalleryStyle] choice. */
 /**
@@ -3221,6 +3438,7 @@ private fun ThemeEditorContent(
     val effectImages = look.watch { it.keyEffectImages }
     val effectColourCustom = look.watch { keyEffectColorMode(it.keyEffectColor) == KeyEffectColorMode.CUSTOM }
     val scriptFontIds = look.watch { it.scriptFontIds }
+    val settingsKeyFontId = settings.watch { it.keyFontId }
 
     sourceDialogSlot?.let { slot ->
         val landscape = slot == BackgroundSlot.LANDSCAPE
@@ -3268,14 +3486,26 @@ private fun ThemeEditorContent(
     // The picked key's own name for the sheet's heading ("Left", "Clipboard"),
     // which an id alone cannot always give back.
     var overrideEditorTitle by rememberSaveable(lookId) { mutableStateOf<String?>(null) }
+    // Several keys at once (Telegram 6201, a whole number row in one colour):
+    // with the chip on, a press adds the key to [severalIds] or takes it back
+    // out, and Style opens one sheet whose every change reaches them all
+    // ([overrideGroup]). Off, a press opens the key's own sheet as before.
+    var pickSeveral by rememberSaveable(familyId) { mutableStateOf(false) }
+    var severalIds by rememberSaveable(lookId) { mutableStateOf(listOf<String>()) }
+    var overrideGroup by rememberSaveable(lookId) { mutableStateOf(listOf<String>()) }
     val picker = remember(lookId) {
         PreviewPicker(
             // One part open at a time: the section for what was pressed takes
             // the place of whatever was open under the preview.
             onKey = { pick ->
-                partSheet = null
-                overrideEditorTitle = pick.title
-                overrideEditorId = pick.id
+                if (pickSeveral) {
+                    severalIds = if (pick.id in severalIds) severalIds - pick.id else severalIds + pick.id
+                } else {
+                    partSheet = null
+                    overrideGroup = emptyList()
+                    overrideEditorTitle = pick.title
+                    overrideEditorId = pick.id
+                }
             },
             onToolbar = {
                 overrideEditorId = null
@@ -3291,6 +3521,8 @@ private fun ThemeEditorContent(
     BackHandler(enabled = keyboardDocked) { keyboardDocked = false }
     // …and leaves picking once nothing it opened is still up.
     BackHandler(enabled = picking && partSheet == null && overrideEditorId == null) { picking = false }
+    // Leaving picking, or the several-keys chip, drops the keys gathered so far.
+    LaunchedEffect(picking, pickSeveral) { if (!picking || !pickSeveral) severalIds = emptyList() }
     // Picking happens on the pinned miniature, where an open sheet leaves the
     // keyboard in sight above it; the docked one would sit under the sheet.
     LaunchedEffect(picking) { if (picking) keyboardDocked = false }
@@ -3328,6 +3560,19 @@ private fun ThemeEditorContent(
                             partSheet = it
                         },
                         onDone = { picking = false },
+                        several = SeveralKeys(
+                            on = pickSeveral,
+                            ids = severalIds,
+                            onToggle = { pickSeveral = it },
+                            onStyle = {
+                                severalIds.firstOrNull()?.let { first ->
+                                    partSheet = null
+                                    overrideGroup = severalIds
+                                    overrideEditorTitle = null
+                                    overrideEditorId = first
+                                }
+                            },
+                        ),
                     )
                 }
                 // Edge to edge (#769): inset, the miniature drew every key a
@@ -3443,20 +3688,38 @@ private fun ThemeEditorContent(
         overrideEditorTitle = null
     }
     overrideEditorId?.let { id ->
+        // The keys this sheet styles together, when it was opened from Style
+        // on several picked keys; just [id] otherwise.
+        val group = overrideGroup.takeIf { id in it && it.size > 1 }
         KeyOverrideDialog(
             id = id,
-            title = overrideEditorTitle,
+            title = overrideEditorTitle
+                ?: group?.let { pluralStringResource(R.plurals.theme_pick_several_title, it.size, it.size) },
             look = look,
             popupsShown = popupsOn,
             // The theme's own effect group hides itself under reduce motion,
             // and a per-key burst is the same burst.
             effectsShown = !reduceMotion,
             onChange = { changed ->
-                update { t -> t.copy(keyOverrides = t.keyOverrides + (id to changed)) }
+                if (group == null) {
+                    update { t -> t.copy(keyOverrides = t.keyOverrides + (id to changed)) }
+                } else {
+                    // What changed on the first key, and only that, on every
+                    // key picked: a key's own border survives a new fill.
+                    update { t ->
+                        val before = t.keyOverrides[id] ?: KeyOverride()
+                        t.copy(
+                            keyOverrides = t.keyOverrides + group.associateWith { other ->
+                                (t.keyOverrides[other] ?: KeyOverride()).withChangesOf(before, changed)
+                            },
+                        )
+                    }
+                }
             },
             onDismiss = {
                 overrideEditorId = null
                 overrideEditorTitle = null
+                overrideGroup = emptyList()
             },
         )
     }
@@ -5928,12 +6191,23 @@ private fun ThemeEditorContent(
     // and touch bloom off, which reads as "these settings do nothing" unless
     // the editor says so where they are (#1129). The phone's own Remove
     // animations does the same on the keyboard, though not in this preview.
+    // Either way the theme's effects can be let through it, which is the
+    // second way out the note offers; once they are, it has nothing to say.
     val anyMotion = look.watch { it.boardEffect != null || it.keyLighting != null || it.touchBloom != null }
     val motionHeld = settings.watch { it.reduceMotion }
+    val effectsLetThrough = settings.watch { it.accessibility.themeEffectsWithReduceMotion }
     val systemStill = remember { SystemMotion.animationsOff(context) }
-    if (anyMotion && (motionHeld || systemStill)) {
-        MotionHeldNote(bySystem = !motionHeld) { scope.launch { repository.setReduceMotion(false) } }
+    if (anyMotion && (motionHeld || systemStill) && !effectsLetThrough) {
+        MotionHeldNote(
+            bySystem = !motionHeld,
+            onTurnOff = { scope.launch { repository.setReduceMotion(false) } },
+            onPlayAnyway = { scope.launch { repository.setThemeEffectsWithReduceMotion(true) } },
+        )
     }
+    // The picker tiles play each effect in the theme's own colours, and hold
+    // still while motion is held, as the keyboard would.
+    val swatchColors = look.watch { SwatchColors(it.boardBackground, it.keyBackground, it.keyText, it.accent) }
+    val swatchesMove = !motionHeld && !systemStill
 
     val boardEffect = look.watch { it.boardEffect }
     fun updateBoardEffect(change: (BoardEffectSpec) -> BoardEffectSpec) =
@@ -5950,6 +6224,12 @@ private fun ThemeEditorContent(
                     kind to if (kind == null) stringResource(CommonR.string.common_none) else stringResource(boardEffectLabel(kind))
                 },
                 selected = boardEffect?.kind?.let(::boardEffectKindOrNull),
+                info = stringResource(R.string.theme_board_effect_kind_body),
+                detail = { kind ->
+                    kind?.let {
+                        ChoiceDetail(leading = { BoardEffectPickerTile(it, boardEffect, swatchColors, swatchesMove) })
+                    }
+                },
             ) { kind ->
                 update { t ->
                     t.copy(
@@ -5994,7 +6274,8 @@ private fun ThemeEditorContent(
                     display = { "%.1f×".format(it) },
                 ) { v -> updateBoardEffect { it.copy(scale = (v * 10).roundToInt() / 10f) } }
             }
-            item {
+            // A splash already answers every press; there is nothing for typing to speed up.
+            if (boardEffectKindOrNull(boardEffect.kind)?.onPress != true) item {
                 SliderRow(
                     R.string.theme_board_effect_reactive_title,
                     value = boardEffect.reactive,
@@ -6057,7 +6338,27 @@ private fun ThemeEditorContent(
                     title = R.string.theme_lighting_target_title,
                     options = KeyLightingTarget.entries.map { it to stringResource(lightingTargetLabel(it)) },
                     selected = keyLightingTargetOrNull(lighting.target) ?: KeyLightingTarget.GLOW,
+                    detail = { target ->
+                        ChoiceDetail(
+                            leading = { KeyLightPickerTile(lighting.copy(target = target.name), swatchColors, swatchesMove) },
+                        )
+                    },
                 ) { picked -> updateLighting { it.copy(target = picked.name) } }
+            }
+            item {
+                ChoiceSetting(
+                    title = R.string.theme_lighting_color_mode_title,
+                    info = stringResource(R.string.theme_lighting_color_mode_body),
+                    options = KeyLightingColorMode.entries.map { it to stringResource(lightingColorModeLabel(it)) },
+                    selected = keyLightingColorModeOrNull(lighting.colorMode) ?: KeyLightingColorMode.FIXED,
+                    detail = { mode ->
+                        ChoiceDetail(
+                            leading = { KeyLightPickerTile(lighting.copy(colorMode = mode.name), swatchColors, swatchesMove) },
+                        )
+                    },
+                ) { picked ->
+                    updateLighting { it.copy(colorMode = picked.name.takeUnless { picked == KeyLightingColorMode.FIXED }) }
+                }
             }
             item {
                 NullableColorRow(
@@ -6128,6 +6429,21 @@ private fun ThemeEditorContent(
             ) { on -> update { t -> t.copy(touchBloom = if (on) t.touchBloom ?: TouchBloomSpec() else null) } }
         }
         if (bloom != null) {
+            item {
+                ChoiceSetting(
+                    title = R.string.theme_touch_bloom_motion_title,
+                    info = stringResource(R.string.theme_touch_bloom_motion_body),
+                    options = KeyPressMotion.entries.map { it to stringResource(keyPressMotionLabel(it)) },
+                    selected = keyPressMotionOrNull(bloom.motion) ?: KeyPressMotion.SINK,
+                    detail = { motion ->
+                        ChoiceDetail(
+                            leading = { KeyMotionPickerTile(motion, bloom.dip, bloom.wobble, swatchColors, swatchesMove) },
+                        )
+                    },
+                ) { picked ->
+                    updateBloom { it.copy(motion = picked.name.takeUnless { picked == KeyPressMotion.SINK }) }
+                }
+            }
             item {
                 NullableColorRow(
                     R.string.theme_touch_bloom_color_title,
@@ -6224,9 +6540,18 @@ private fun ThemeEditorContent(
         info = stringResource(R.string.theme_font_sound_section_body),
     ) {
         item {
+            // The keyboard font setting beats a theme's font (#561: a theme
+            // that shipped with a face hid the user's own pick). So a pick made
+            // here sets that setting back to Default, and the row says so --
+            // or, where the setting already hides this theme's font, says that.
+            val themeFont = look.watch { it.fontId }
+            val hidden = themeFont != null && settingsKeyFontId != KeyboardFonts.DEFAULT_ID
             NavRow(
                 R.string.theme_font_title,
-                value = look.watch { it.fontId }?.let { KeyboardFonts.displayName(context, it, "") }
+                subtitle = stringResource(
+                    if (hidden) R.string.theme_font_hidden_body else R.string.theme_font_overrides_body,
+                ),
+                value = themeFont?.let { KeyboardFonts.displayName(context, it, "") }
                     ?: stringResource(R.string.theme_follow_settings_label),
             ) { fontPickerOpen = true }
         }
@@ -6273,6 +6598,12 @@ private fun ThemeEditorContent(
             onPick = { id ->
                 fontPickerOpen = false
                 update { t -> t.copy(fontId = id) }
+                // Last pick wins: the keyboard font setting would otherwise go
+                // on hiding the face just picked. Picking a font there later
+                // wins again, as #561 asked.
+                if (id != null && settingsKeyFontId != KeyboardFonts.DEFAULT_ID) {
+                    scope.launch { repository.setKeyFontId(KeyboardFonts.DEFAULT_ID) }
+                }
             },
             onDismiss = { fontPickerOpen = false },
         )
@@ -6305,6 +6636,11 @@ private fun ThemeEditorContent(
                     if (id == null) next.remove(script) else next[script] = id
                     t.copy(scriptFontIds = next.toMap())
                 }
+                // Same rule as the key font: the user's own font for this
+                // script would hide the one just picked.
+                if (id != null && script in settings.value.scriptFontIds) {
+                    scope.launch { repository.setScriptFontId(script, KeyboardFonts.DEFAULT_ID) }
+                }
             },
             onDismiss = { scriptFontPicker = null },
         )
@@ -6320,7 +6656,127 @@ private fun ThemeEditorContent(
             onDismiss = { soundPickerOpen = false },
         )
     }
+    ThemeKeyIconsSection(
+        themeId = lookId,
+        keyIcons = look.watch { it.keyIcons },
+        onSet = { slot, path ->
+            update { t ->
+                t.copy(keyIcons = if (path == null) t.keyIcons - slot else t.keyIcons + (slot to path))
+            }
+        },
+    )
     Spacer(Modifier.height(24.dp))
+}
+
+/**
+ * The glyphs this theme draws on the keyboard's own keys (delete, shift,
+ * enter…), picked from Your icons. A picture is copied into the theme, the
+ * way a background photo is, so it travels in the theme's export and survives
+ * being deleted from the library.
+ *
+ * A theme's icon is the weakest layer: an icon pack or an icon picked on the
+ * Icons screen wins over it (see `IconSettings`). A row whose slot is taken
+ * that way says so, rather than leaving a pick that seems to do nothing — the
+ * same complaint the key font had.
+ */
+@Composable
+private fun ThemeKeyIconsSection(
+    themeId: String,
+    keyIcons: Map<String, String>,
+    onSet: (slot: String, path: String?) -> Unit,
+) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val repository = remember(context) { SettingsRepository(context.applicationContext) }
+    val stored by repository.settings.collectAsState(initial = null)
+    val icons = stored?.icons
+    val packSlots = remember(icons?.activePackId) {
+        icons?.activePackId?.takeIf { it.isNotEmpty() }
+            ?.let { IconPackStore.get(context).pack(it)?.slots?.toSet() }
+            .orEmpty()
+    }
+    var picking by remember { mutableStateOf<IconSlot?>(null) }
+    SettingsGroup(
+        stringResource(R.string.theme_key_icons_section_title),
+        foldKey = "theme/key_icons",
+        info = stringResource(R.string.theme_key_icons_section_body),
+        level = SettingLevel.STANDARD,
+    ) {
+        for (slot in IconSlots.inGroup(IconSlotGroup.KEY)) {
+            item(key = slot.id) {
+                val path = keyIcons[slot.id]
+                val hidden = path != null && (icons?.overrides?.containsKey(slot.id) == true || slot.id in packSlots)
+                val themed = rememberIconFile(path)
+                WmRow(
+                    title = slotLabel(context, slot),
+                    subtitle = stringResource(
+                        when {
+                            hidden -> R.string.theme_key_icons_hidden_label
+                            path != null -> R.string.theme_key_icons_from_theme_label
+                            else -> R.string.theme_follow_settings_label
+                        },
+                    ),
+                    leading = {
+                        if (themed != null) {
+                            TintedResolvedIcon(
+                                themed,
+                                tint = LocalContentColor.current,
+                                contentDescription = null,
+                                modifier = Modifier.size(24.dp),
+                            )
+                        } else {
+                            SlotIcon(slot.id, contentDescription = null, modifier = Modifier.size(24.dp))
+                        }
+                    },
+                    onClick = { picking = slot },
+                )
+            }
+        }
+    }
+    picking?.let { slot ->
+        val current = keyIcons[slot.id]
+        fun put(picture: LibraryIcon) {
+            picking = null
+            scope.launch {
+                val copied = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val library = IconLibrary.get(context)
+                        library.touch(picture.id)
+                        val source = library.fileFor(picture.id) ?: return@runCatching null
+                        val target = File(
+                            themeImagesDir(context),
+                            "${themeId}_icon_${slot.id}_${System.currentTimeMillis()}.${picture.extension}",
+                        )
+                        source.copyTo(target, overwrite = true)
+                        target.absolutePath
+                    }.getOrNull()
+                }
+                if (copied != null) onSet(slot.id, copied)
+            }
+        }
+        AlertDialog(
+            onDismissRequest = { picking = null },
+            title = { Text(slotLabel(context, slot)) },
+            text = {
+                LibraryIconPickerGrid(
+                    selectedId = null,
+                    onPick = ::put,
+                    onAdded = { added -> added.firstOrNull()?.let(::put) },
+                )
+            },
+            confirmButton = {
+                if (current != null) {
+                    TextButton(onClick = {
+                        picking = null
+                        onSet(slot.id, null)
+                    }) { Text(stringResource(R.string.theme_key_icons_remove_action)) }
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { picking = null }) { Text(stringResource(CommonR.string.common_cancel)) }
+            },
+        )
+    }
 }
 
 /** The sound row's current-value line: a style's name, or "follow settings". */
@@ -6775,12 +7231,22 @@ private const val PopupPreviewLit = 1
  * panels are every panel that is a grid of keys, the same set the layout
  * editor lists, named the way it names them.
  */
+/** [PickBar]'s several-keys mode: whether it is on, the keys picked so far, and its two actions. */
+@Immutable
+private class SeveralKeys(
+    val on: Boolean,
+    val ids: List<String>,
+    val onToggle: (Boolean) -> Unit,
+    val onStyle: () -> Unit,
+)
+
 @Composable
 private fun PickBar(
     settings: LiveSettings,
     sandbox: MutableState<ThemePreviewSandbox>,
     onPart: (ThemePart) -> Unit,
     onDone: () -> Unit,
+    several: SeveralKeys,
 ) {
     val box = sandbox.value
     val activeLayoutId = settings.watch { it.activeLayoutId }
@@ -6805,18 +7271,38 @@ private fun PickBar(
             modifier = Modifier.padding(start = 16.dp, end = 4.dp),
             verticalAlignment = Alignment.CenterVertically,
         ) {
+            // With several keys on, the line says which ones are gathered, as
+            // the preview does not mark them.
+            val names = several.ids.map { keyOverrideDisplayName(it) }
             Text(
-                stringResource(R.string.theme_pick_hint),
+                when {
+                    !several.on -> stringResource(R.string.theme_pick_hint)
+                    names.isEmpty() -> stringResource(R.string.theme_pick_several_hint)
+                    else -> names.joinToString(", ")
+                },
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f),
             )
-            TextButton(onClick = onDone) { Text(stringResource(CommonR.string.common_done)) }
+            if (several.on && several.ids.isNotEmpty()) {
+                TextButton(onClick = several.onStyle) { Text(stringResource(R.string.theme_pick_several_style)) }
+            } else {
+                TextButton(onClick = onDone) { Text(stringResource(CommonR.string.common_done)) }
+            }
         }
         LazyRow(
             contentPadding = PaddingValues(horizontal = 16.dp),
             horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
+            item {
+                FilterChip(
+                    selected = several.on,
+                    onClick = { several.onToggle(!several.on) },
+                    label = { Text(stringResource(R.string.theme_pick_several_chip), maxLines = 1) },
+                )
+            }
             items(layers) { (layer, mode) ->
                 FilterChip(
                     selected = box.panel == PanelMode.NONE && box.layoutMode == mode,
@@ -8013,6 +8499,15 @@ private fun boardEffectLabel(value: BoardEffectKind): Int = when (value) {
     BoardEffectKind.SCAN -> R.string.theme_board_effect_kind_scan_label
     BoardEffectKind.SHEEN -> R.string.theme_board_effect_kind_sheen_label
     BoardEffectKind.RIPPLES -> R.string.theme_board_effect_kind_ripples_label
+    BoardEffectKind.PAINT -> R.string.theme_board_effect_kind_paint_label
+    BoardEffectKind.INK -> R.string.theme_board_effect_kind_ink_label
+    BoardEffectKind.LIGHT_POOL -> R.string.theme_board_effect_kind_light_pool_label
+    BoardEffectKind.FLOOD -> R.string.theme_board_effect_kind_flood_label
+    BoardEffectKind.PUFF -> R.string.theme_board_effect_kind_puff_label
+    BoardEffectKind.GLINT -> R.string.theme_board_effect_kind_glint_label
+    BoardEffectKind.POP -> R.string.theme_board_effect_kind_pop_label
+    BoardEffectKind.SWOOSH -> R.string.theme_board_effect_kind_swoosh_label
+    BoardEffectKind.SPECKS -> R.string.theme_board_effect_kind_specks_label
 }
 @StringRes
 private fun lightingPatternLabel(value: KeyLightingPattern): Int = when (value) {
@@ -8034,6 +8529,24 @@ private fun lightingTargetLabel(value: KeyLightingTarget): Int = when (value) {
     KeyLightingTarget.FACE -> R.string.theme_lighting_target_face_label
     KeyLightingTarget.EDGE -> R.string.theme_lighting_target_edge_label
     KeyLightingTarget.GLOW -> R.string.theme_lighting_target_glow_label
+    KeyLightingTarget.FILL -> R.string.theme_lighting_target_fill_label
+    KeyLightingTarget.GRADIENT -> R.string.theme_lighting_target_gradient_label
+    KeyLightingTarget.GLITTER -> R.string.theme_lighting_target_glitter_label
+}
+@StringRes
+private fun lightingColorModeLabel(value: KeyLightingColorMode): Int = when (value) {
+    KeyLightingColorMode.FIXED -> R.string.theme_lighting_color_mode_fixed_label
+    KeyLightingColorMode.RANDOM -> R.string.theme_lighting_color_mode_random_label
+    KeyLightingColorMode.PASTEL -> R.string.theme_lighting_color_mode_pastel_label
+}
+@StringRes
+private fun keyPressMotionLabel(value: KeyPressMotion): Int = when (value) {
+    KeyPressMotion.SINK -> R.string.theme_touch_bloom_motion_sink_label
+    KeyPressMotion.GROW -> R.string.theme_touch_bloom_motion_grow_label
+    KeyPressMotion.SHRINK -> R.string.theme_touch_bloom_motion_shrink_label
+    KeyPressMotion.RISE -> R.string.theme_touch_bloom_motion_rise_label
+    KeyPressMotion.TILT -> R.string.theme_touch_bloom_motion_tilt_label
+    KeyPressMotion.JELLY -> R.string.theme_touch_bloom_motion_jelly_label
 }
 
 /** The largest key-art file read; a skin is paths and colours, a few hundred kilobytes at most. */
@@ -8055,18 +8568,23 @@ private fun readKeySkin(text: String): KeySkinSpec? =
 /**
  * Why the moving background, key lighting and touch bloom hold still: Reduce
  * motion, with the switch to turn it off, or the phone's Remove animations,
- * which only the phone's own settings can change.
+ * which only the phone's own settings can change. Either way the theme's
+ * effects can be let play through it (#1129), which keeps Reduce motion for
+ * everything else.
  */
 @Composable
-private fun MotionHeldNote(bySystem: Boolean, onTurnOff: () -> Unit) {
+private fun MotionHeldNote(bySystem: Boolean, onTurnOff: () -> Unit, onPlayAnyway: () -> Unit) {
     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)) {
         Text(
             stringResource(if (bySystem) R.string.theme_motion_held_system_body else R.string.theme_motion_held_body),
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
         )
-        if (!bySystem) {
-            TextButton(onClick = onTurnOff) { Text(stringResource(R.string.theme_motion_held_turn_off)) }
+        Row {
+            TextButton(onClick = onPlayAnyway) { Text(stringResource(R.string.theme_motion_held_play_anyway)) }
+            if (!bySystem) {
+                TextButton(onClick = onTurnOff) { Text(stringResource(R.string.theme_motion_held_turn_off)) }
+            }
         }
     }
 }

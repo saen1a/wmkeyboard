@@ -132,6 +132,11 @@
          strip, which opens the menu below. -->
     <string name="ime_suggestion_hold_label">Word options</string>
     <!-- An alternative on the recent-word row (#842), read by TalkBack as what a tap does. %1$s is the word written, %2$s the one that would replace it. -->
+    <!-- The Retype button on the suggestion strip or the recent words' row (#1189). Keep it short. -->
+    <string name="ime_retype_button">Retype</string>
+    <string name="ime_retype_button_desc">Retype the word at the cursor</string>
+    <string name="ime_retype_button_nothing">No word to retype. Put the cursor right after a word.</string>
+    <string name="ime_retype_button_spent">That word is cleared. Type it again, or pick it from the strip.</string>
     <string name="ime_recent_word_replace_desc">Change <xliff:g id="word" example="form">%1$s</xliff:g> to <xliff:g id="offer" example="from">%2$s</xliff:g></string>
     <!-- Shown over the strip while a held word is slid up or down (#790). %1$s is the word, %2$s its new rank, such as +2 or −3. -->
     <string name="ime_suggestion_rank_badge">\"<xliff:g id="word" example="mary">%1$s</xliff:g>\" rank <xliff:g id="rank" example="+2">%2$s</xliff:g></string>
@@ -246,9 +251,10 @@
     <!-- The spelling bar, before anything has been typed into it. %1$s is the
          word being respelled. -->
     <string name="ime_word_spell_hint">Type a new spelling for \"<xliff:g id="word" example="teh">%1$s</xliff:g>\"</string>
-    <!-- Screen reader names of the spelling bar's two buttons. -->
+    <!-- Screen reader names of the spelling bar's buttons. -->
     <string name="ime_word_spell_apply_desc">Use this spelling</string>
     <string name="ime_word_spell_cancel_desc">Leave the spelling alone</string>
+    <string name="ime_word_spell_paste_desc">Paste a word</string>
 
     <!-- Heading over the control that edits the personal dictionary's count. -->
     <string name="ime_word_card_weight_title">Learned weight</string>
@@ -272,6 +278,11 @@
     <!-- Screen reader name for the chip that takes an autocorrect back. The
          word on the chip is read after this, so it says what pressing does. -->
     <string name="ime_undo_correction_desc">Put back the word you typed</string>
+    <string name="ime_delete_undo_chip">Undo “%1$s”</string>
+    <string name="ime_delete_redo_chip">Redo “%1$s”</string>
+    <string name="ime_delete_undo_plain">Undo delete</string>
+    <string name="ime_delete_redo_plain">Delete again</string>
+    <string name="ime_delete_undo_dismiss_desc">Hide the undo</string>
     <string name="ime_capture_undo_desc">Undo the last change</string>
     <string name="ime_capture_redo_desc">Redo the change you undid</string>
     <string name="ime_capture_keys_lower_desc">Put the keys down</string>
@@ -972,6 +983,10 @@
     <string name="ime_clip_edit_placeholder">Type the clip’s text</string>
     <!-- A clip's own labels (#612): the hold popup's action, and the editor opened on them. -->
     <string name="ime_clip_tags">Tags</string>
+    <string name="ime_clip_paste_next">Paste next</string>
+    <string name="ime_clip_paste_next_toast">This clip pastes next</string>
+    <string name="ime_clip_metadata_working_toast">Removing the video\'s metadata…</string>
+    <string name="ime_clip_metadata_failed_toast">The keyboard could not remove the metadata from this file, so it did not paste it</string>
     <string name="ime_clip_tags_title">Tags</string>
     <string name="ime_clip_tags_placeholder">Tags, with a comma between them</string>
     <!-- The hold popup's action and the clip shortcut button that open the QR code tool on a text clip (#766). -->
@@ -1047,6 +1062,15 @@
     <string name="ime_clip_filter_duplicates">Duplicates</string>
     <!-- A tag filter chip pressed a second time: only the clips that do not carry tag %1$s. -->
     <string name="ime_clip_filter_without_tag">Not #%1$s</string>
+    <!-- A kind filter chip (Text, Links…) pressed a second time (#1187): only the clips that are not %1$s. -->
+    <string name="ime_clip_filter_without">Not %1$s</string>
+    <!-- TalkBack name of a filter chip's press and hold (#1187): the chip joins the filters already set instead of replacing them. -->
+    <string name="ime_clip_filter_add_desc">Add to the filters</string>
+    <!-- The chip at the end of the clipboard's filter row while filters are set (#1187); it shows only the count. %1$d is how many chips are set. -->
+    <plurals name="ime_clip_filter_clear_desc">
+        <item quantity="one">Clear %1$d filter</item>
+        <item quantity="other">Clear %1$d filters</item>
+    </plurals>
     <!-- Hold popup: delete the other clips the duplicates filter groups with this one (#612). -->
     <string name="ime_clip_keep_only">Keep only this one</string>
     <!-- Hold popup, while searching: close the search and scroll the history to this clip (#612). -->
@@ -1223,6 +1247,9 @@
     <string name="ime_selection_macro_stop_label">Stop</string>
     <string name="ime_selection_macro_open_in_desc">Open in %1$s</string>
     <string name="ime_selection_macro_busy_desc">Working</string>
+    <!-- Spoken label of a selection-bar button that a plugin added. %1$s is the
+         button's name, %2$s the name of the plugin that added it. -->
+    <string name="ime_selection_macro_plugin_desc">%1$s, from %2$s</string>
     <!-- The AI Translate action as a chip on the selection bar, where the plain Translate chip (the Translate tool) can sit beside it (#434). -->
     <string name="ime_selection_macro_ai_translate_label">AI translate</string>
     <string name="ime_selection_macro_nothing_to_undo_toast">Nothing left to undo</string>

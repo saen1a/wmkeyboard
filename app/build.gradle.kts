@@ -59,14 +59,14 @@ licensee {
     allowDependency("org.bouncycastle", "bcprov-jdk18on", libs.versions.bouncycastle.get()) {
         because("the Bouncy Castle licence is the MIT licence, word for word")
     }
-    allowDependency("org.luaj", "luaj-jse", libs.versions.luaj.get()) {
-        because("MIT, per luaj.sourceforge.net/license.txt")
-    }
     allowUrl("https://opensource.org/license/bsd-3-clause/") {
         because("the BSD-3-Clause text, on a page SPDX's list spells differently")
     }
     allowUrl("https://www.bouncycastle.org/licence.html") {
         because("the Bouncy Castle licence is the MIT licence, word for word; for its other modules")
+    }
+    allowUrl("https://github.com/RikkaApps/Shizuku-API/blob/master/LICENSE") {
+        because("MIT, per the repo's LICENSE; Shizuku's api, provider, aidl and shared modules")
     }
 
     // Google's own terms: ML Kit, Play services and Play Core. Allowed only
@@ -444,7 +444,7 @@ android {
         //     ./gradlew :app:installIntlFast
         //
         // What it deliberately does not test: anything R8 does. Keep rules
-        // (the luaj ones especially) are never exercised here, so a build that
+        // are never exercised here, so a build that
         // works as `fast` can still crash as `release`. Ship-checking is
         // `release`'s job; this one is for iterating.
         create("fast") {
@@ -1477,8 +1477,6 @@ dependencies {
     // GalleryCoreTest builds ExifInterface tag lists; :core:content keeps the
     // library to itself (implementation), so the tests here need their own.
     testImplementation(libs.androidx.exifinterface)
-    // The plugin tests drive the Lua sandbox through luaj types directly.
-    testImplementation(libs.luaj.jse)
     // WordKeyParityTest holds the Rust word key to ART's fold, answered by
     // ICU4J at the Unicode version ICU4X carries (`android.icu` is a stub here).
     testImplementation(libs.icu4j)
@@ -1495,6 +1493,7 @@ dependencies {
 // library has to exist for this machine before the suite starts. The task is
 // :core:language's, where the facades live; see the comment on it there.
 tasks.withType<Test>().configureEach { dependsOn(":core:language:buildHostEngine") }
+tasks.withType<Test>().configureEach { dependsOn(":core:plugins:buildHostPython") }
 
 // `-Pwmkb.skipBenchmarks` drops the wall-clock benchmarks from the run. They
 // assert against millisecond budgets measured on a quiet machine, so on a

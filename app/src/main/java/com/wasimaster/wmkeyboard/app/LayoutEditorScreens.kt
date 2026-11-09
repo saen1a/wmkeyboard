@@ -1,5 +1,9 @@
 package com.wasimaster.wmkeyboard.app
 
+import com.wasimaster.wmkeyboard.core.icons.IconLibrary
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SegmentedButton
 import android.content.ClipData
 import android.content.ClipboardManager
 import android.content.Context
@@ -213,6 +217,8 @@ import com.wasimaster.wmkeyboard.core.layout.compile
 import com.wasimaster.wmkeyboard.ime.ui.BuiltinIcons
 import com.wasimaster.wmkeyboard.ime.ui.IconDefaults
 import com.wasimaster.wmkeyboard.ime.ui.KeyIcons
+import com.wasimaster.wmkeyboard.ime.ui.rememberLibraryIcon
+import com.wasimaster.wmkeyboard.ime.ui.fixedAlternateRowSizes
 import com.wasimaster.wmkeyboard.ime.ui.textEditIcon
 import com.wasimaster.wmkeyboard.core.layout.GridUnitStep
 import com.wasimaster.wmkeyboard.core.layout.KeyLabelScaleRange
@@ -604,10 +610,14 @@ internal fun KeyLayoutsScreen(
         PickerPlaces.remember(context, PickerPlaces.LAYOUT_EXPORT, uri)
         scope.launch {
             val ok = runCancellable {
+                // The Your icons pictures its keys wear go along, or the keys
+                // would show only their text on the phone that opens the file.
+                val icons = withContext(Dispatchers.IO) { layoutIconsFor(context, listOf(layout)) }
                 val text = LayoutFile.encode(
                     layout,
                     appVersion = BuildConfig.VERSION_CODE,
                     appVersionName = BuildConfig.VERSION_NAME,
+                    icons = icons,
                 )
                 withContext(Dispatchers.IO) {
                     context.contentResolver.requireOutputStream(uri).use {
@@ -636,7 +646,8 @@ internal fun KeyLayoutsScreen(
         PickerPlaces.remember(context, PickerPlaces.LAYOUT_EXPORT, uri)
         scope.launch {
             val ok = runCancellable {
-                val text = LayoutFile.encodeBundle(bundle, BuildConfig.VERSION_CODE, BuildConfig.VERSION_NAME)
+                val icons = withContext(Dispatchers.IO) { layoutIconsFor(context, bundle) }
+                val text = LayoutFile.encodeBundle(bundle, BuildConfig.VERSION_CODE, BuildConfig.VERSION_NAME, icons)
                 withContext(Dispatchers.IO) {
                     context.contentResolver.requireOutputStream(uri).use { it.write(text.toByteArray()) }
                 }
@@ -1251,6 +1262,7 @@ internal fun KeyLayoutsScreen(
                     val id = "custom_${System.currentTimeMillis()}"
                     val name = imported.layout.name
                     scope.launch {
+                        withContext(Dispatchers.IO) { adoptLayoutIcons(context, imported.icons) }
                         repository.upsertCustomLayout(imported.layout.copy(id = id))
                         if (turnOn) {
                             repository.setEnabledLayoutIds((settings.value.enabledLayoutIds + id).distinct())
@@ -1299,6 +1311,9 @@ internal fun KeyLayoutsScreen(
                 // (a built-in, or the same file twice) gets a new id instead.
                 fun import(turnOn: Boolean) {
                     scope.launch {
+                        withContext(Dispatchers.IO) {
+                            adoptLayoutIcons(context, bundle.flatMap { it.icons }.distinctBy { it.id })
+                        }
                         val taken = settings.value.customLayouts.mapTo(HashSet()) { it.id }
                         val now = System.currentTimeMillis()
                         val ids = bundle.mapIndexed { i, imported ->
@@ -2836,6 +2851,7 @@ internal fun KeyLayoutEditorScreen(
     // the grid it was editing; here the key and the grid are on screen together.
     val popupColumns = settings.watch { it.popup.alternatesColumns }
     val popupNearestFirst = settings.watch { it.popup.alternatesNearestFirst }
+    val popupBalanced = settings.watch { it.popup.alternatesBalanced }
     val secondaryLayoutList = secondaryLayouts(settings.watch { it.customLayouts })
     val keyboardModeList = settings.watch { it.keyboardModes }
     val ref = selection
@@ -2952,6 +2968,7 @@ internal fun KeyLayoutEditorScreen(
                 ?.getOrNull(ref.col),
             popupColumns = popupColumns,
             popupNearestFirst = popupNearestFirst,
+            popupBalanced = popupBalanced,
         )
     }
 
@@ -3023,6 +3040,7 @@ internal fun KeyLayoutEditorScreen(
                 keyboardModes = keyboardModeList,
                 popupColumns = popupColumns,
                 popupNearestFirst = popupNearestFirst,
+                popupBalanced = popupBalanced,
             )
         }
         SettingsGroup(stringResource(band.titleRes()), info = stringResource(band.captionRes())) {
@@ -5209,6 +5227,8 @@ internal fun EditorKeyCell(
             // the field's own enter, the globe, a tool's toolbar icon. Through
             // the slot, so an icon pack redresses the preview with the board.
             val slot = editorKeySlot(key, face.enterSlot)
+            // A picture out of Your icons, read off the main thread.
+            val libraryIcon = rememberLibraryIcon(KeyIcons.libraryIdOf(key.icon))
             // A tool key draws the tool's icon on the keyboard, so it draws one
             // here too — the rule this whole pair of helpers exists to keep.
             val cellIcon = KeyIcons.byName(key.icon)
@@ -5230,6 +5250,13 @@ internal fun EditorKeyCell(
                     slot,
                     contentDescription = primary.ifBlank { null },
                     tint = foreground,
+                    modifier = Modifier.size(20.dp),
+                )
+            } else if (libraryIcon != null) {
+                TintedResolvedIcon(
+                    libraryIcon,
+                    tint = foreground,
+                    contentDescription = primary.ifBlank { null },
                     modifier = Modifier.size(20.dp),
                 )
             } else if (cellIcon != null) {
@@ -5867,6 +5894,8 @@ internal fun KeyEditSheet(
     popupColumns: Int = 0,
     /** The keyboard draws a popup's first entries on its bottom row. */
     popupNearestFirst: Boolean = false,
+    /** The keyboard shares a popup's entries evenly between its rows (#1169). */
+    popupBalanced: Boolean = false,
 ) {
     var pickingAction by remember { mutableStateOf(false) }
     // Which tool this key opens, when the picker put a tool action on it.
@@ -6153,6 +6182,7 @@ internal fun KeyEditSheet(
                     shown = shown,
                     stored = key,
                     columns = key.alternateColumns.takeIf { it > 0 } ?: popupColumns,
+                    balanced = popupBalanced,
                     nearestFirst = popupNearestFirst,
                     secondaryLayouts = secondaryLayouts,
                     keyboardModes = keyboardModes,
@@ -6215,7 +6245,7 @@ internal fun KeyEditSheet(
         item(level = SettingLevel.STANDARD) {
             KeyScreenRow(key.showOn) { screen -> onChange { it.copy(showOn = screen) } }
         }
-        if (!isField && drawsScalableLabel(key)) item(level = SettingLevel.STANDARD) {
+        if (!isField && takesLabelScale(key)) item(level = SettingLevel.STANDARD) {
             KeyLabelScaleRow(key) { scale -> onChange { it.copy(labelScale = scale) } }
         }
         if (!isField && !key.hideHint) item(level = SettingLevel.ADVANCED) {
@@ -6223,6 +6253,14 @@ internal fun KeyEditSheet(
         }
         if (!isField && !key.hideHint) item(level = SettingLevel.ADVANCED) {
             KeyHintShiftRow(key) { x, y -> onChange { it.copy(hintShiftXDp = x, hintShiftYDp = y) } }
+        }
+        // The arms on a flick key's face, sized and placed apart from its
+        // label and its hint (#970).
+        if (!isField && key.hasFlicks()) item(level = SettingLevel.ADVANCED) {
+            KeyFlickScaleRow(key) { scale -> onChange { it.copy(flickScale = scale) } }
+        }
+        if (!isField && key.hasFlicks()) item(level = SettingLevel.ADVANCED) {
+            KeyFlickInsetRow(key) { inset -> onChange { it.copy(flickInsetDp = inset) } }
         }
         // Every key but a component's cell can wear an icon (issue #187). The
         // space bar and the action keys used to have no field for one, and the
@@ -6385,6 +6423,7 @@ internal fun KeyEditSheet(
                 if (hint) R.string.layout_editor_icon_hint_field_label else R.string.layout_editor_icon_field_label,
             ),
             selected = if (hint) key.iconHint else key.icon,
+            allowLibrary = !hint,
             onDismiss = { pickingIcon = null },
             onPick = { name ->
                 pickingIcon = null
@@ -6574,7 +6613,7 @@ private fun MultiKeySection(
                 onChange { it.copy(width = width) }
             }
         }
-        keys.firstOrNull(::drawsScalableLabel)?.let { sample ->
+        keys.firstOrNull(::takesLabelScale)?.let { sample ->
             item(level = SettingLevel.STANDARD) { KeyLabelScaleRow(sample) { scale -> onChange { it.copy(labelScale = scale) } } }
         }
         item(level = SettingLevel.STANDARD) { HintRow(first, onChange, always = true) }
@@ -6584,6 +6623,7 @@ private fun MultiKeySection(
 /**
  * The popup a press and hold opens on this key, drawn the way the keyboard
  * lays it out (issue #769): in [columns] columns (or as the entries fit, at 0),
+ * shared evenly between the rows when [balanced] (#1169),
  * the first entries on the bottom row when [nearestFirst] says so, actions in
  * their place among the characters. The first entry is outlined, since with
  * hold to select it is what a plain press and hold types. An entry the
@@ -6596,6 +6636,7 @@ private fun KeyPopupPreview(
     shown: Key,
     stored: Key,
     columns: Int,
+    balanced: Boolean,
     nearestFirst: Boolean,
     secondaryLayouts: List<LayoutSpec>,
     keyboardModes: List<KeyboardMode>,
@@ -6659,7 +6700,10 @@ private fun KeyPopupPreview(
                 for (index in entries.indices) cell(index)
             }
         } else {
-            val lines = entries.indices.chunked(columns).let { if (nearestFirst) it.reversed() else it }
+            var start = 0
+            val lines = fixedAlternateRowSizes(entries.size, columns, balanced)
+                .map { count -> (start until start + count).toList().also { start += count } }
+                .let { if (nearestFirst) it.reversed() else it }
             Column(modifier = Modifier.padding(top = 4.dp)) {
                 for (line in lines) {
                     Row { for (index in line) cell(index) }
@@ -7193,10 +7237,12 @@ private fun LettersField(
  */
 @Composable
 private fun IconPickRow(@StringRes title: Int, name: String?, onClick: () -> Unit) {
+    // A picture from Your icons is stored as `u:<id>`; the row names it instead.
+    val pictureName = libraryPictureName(name)
     NavRow(
         title = title,
         subtitle = iconFieldSupport(name),
-        value = name ?: stringResource(R.string.layout_editor_icon_none_label),
+        value = pictureName ?: name ?: stringResource(R.string.layout_editor_icon_none_label),
         icon = KeyIcons.byName(name) ?: SettingsRowIcons[title],
         onClick = onClick,
     )
@@ -7215,7 +7261,13 @@ private fun KeyIconPickerDialog(
     selected: String?,
     onPick: (String?) -> Unit,
     onDismiss: () -> Unit,
+    /**
+     * Offers the Your icons tab. Off for the corner hint, which is drawn a few
+     * pixels tall in the text colour, where a picture would be a smudge.
+     */
+    allowLibrary: Boolean = true,
 ) {
+    var showLibrary by remember { mutableStateOf(allowLibrary && KeyIcons.libraryIdOf(selected) != null) }
     var query by remember { mutableStateOf("") }
     // Compared as drawings: a file may name the icon by an alias or in another
     // case ("Delete", "SEARCH"), and the cell should still light up.
@@ -7261,6 +7313,30 @@ private fun KeyIconPickerDialog(
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                if (allowLibrary) {
+                    val tabs = listOf(R.string.plugins_icons_tab_builtin, R.string.plugins_icons_tab_yours)
+                    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                        tabs.forEachIndexed { index, label ->
+                            SegmentedButton(
+                                selected = showLibrary == (index == 1),
+                                onClick = { showLibrary = index == 1 },
+                                shape = SegmentedButtonDefaults.itemShape(index, tabs.size),
+                                icon = {},
+                            ) { Text(stringResource(label), maxLines = 1) }
+                        }
+                    }
+                }
+                if (showLibrary) {
+                    LibraryIconPickerGrid(
+                        selectedId = KeyIcons.libraryIdOf(selected),
+                        onPick = { picture ->
+                            IconLibrary.get(context).touch(picture.id)
+                            onPick(KeyIcons.libraryName(picture.id))
+                        },
+                        onAdded = { added -> added.firstOrNull()?.let { onPick(KeyIcons.libraryName(it.id)) } },
+                    )
+                    return@Column
+                }
                 OutlinedTextField(
                     value = query,
                     onValueChange = { query = it },
@@ -7308,10 +7384,21 @@ private fun KeyIconPickerDialog(
 }
 
 @Composable
-private fun iconFieldSupport(name: String?): String = when {
-    name.isNullOrBlank() -> stringResource(R.string.layout_editor_icon_field_hint)
-    KeyIcons.byName(name) != null -> stringResource(R.string.layout_editor_icon_found_hint, name)
-    else -> stringResource(R.string.layout_editor_icon_missing_hint, name)
+private fun iconFieldSupport(name: String?): String {
+    val pictureName = libraryPictureName(name)
+    return when {
+        name.isNullOrBlank() -> stringResource(R.string.layout_editor_icon_field_hint)
+        KeyIcons.byName(name) != null -> stringResource(R.string.layout_editor_icon_found_hint, name)
+        pictureName != null -> stringResource(R.string.layout_editor_icon_found_hint, pictureName)
+        else -> stringResource(R.string.layout_editor_icon_missing_hint, name)
+    }
+}
+
+/** The Your icons name of the picture [name] points at, or null when it points at none. */
+@Composable
+private fun libraryPictureName(name: String?): String? {
+    val id = KeyIcons.libraryIdOf(name) ?: return null
+    return rememberLibraryIcons().firstOrNull { it.id == id }?.name
 }
 
 /**
@@ -7991,6 +8078,60 @@ private fun KeyHintShiftRow(key: Key, onChange: (Float?, Float?) -> Unit) {
 }
 
 /**
+ * The size of one flick key's arms on its face (#970), as a multiple of the
+ * size every arm follows, apart from the key's label and corner hint.
+ */
+@Composable
+private fun KeyFlickScaleRow(key: Key, onChange: (Float?) -> Unit) {
+    val scale = key.flickScale
+    ControlSetting(
+        if (scale == null) {
+            stringResource(R.string.layout_editor_key_flick_scale_auto_label)
+        } else {
+            stringResource(R.string.layout_editor_key_flick_scale_label, scale)
+        },
+        subtitle = stringResource(R.string.layout_editor_key_flick_scale_hint),
+        icon = SettingsRowIcons[R.string.layout_editor_key_label_scale_label],
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(
+                selected = scale == null,
+                onClick = { onChange(null) },
+                label = { Text(stringResource(R.string.layout_editor_font_scale_auto_chip)) },
+            )
+            for (preset in listOf(0.75f, 1.25f, 1.5f, 2f)) {
+                FilterChip(
+                    selected = scale != null && kotlin.math.abs(scale - preset) < 0.01f,
+                    onClick = { onChange(preset) },
+                    label = { Text("×%.2f".format(preset).trimEnd('0').trimEnd('.')) },
+                )
+            }
+        }
+    }
+}
+
+/** How far in from the edges one flick key's arms sit, nudged from where every key's do (#970). */
+@Composable
+private fun KeyFlickInsetRow(key: Key, onChange: (Float?) -> Unit) {
+    val inset = key.flickInsetDp ?: 0f
+    ControlSetting(
+        stringResource(R.string.layout_editor_key_flick_inset_label, inset.toInt()),
+        subtitle = stringResource(R.string.layout_editor_key_flick_inset_hint),
+        icon = SettingsRowIcons[R.string.layout_editor_key_label_scale_label],
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(
+                selected = key.flickInsetDp == null,
+                onClick = { onChange(null) },
+                label = { Text(stringResource(R.string.layout_editor_font_scale_auto_chip)) },
+            )
+            FilterChip(selected = false, onClick = { onChange(inset + 1f) }, label = { Text(stringResource(R.string.layout_editor_key_flick_inset_in)) })
+            FilterChip(selected = false, onClick = { onChange(inset - 1f) }, label = { Text(stringResource(R.string.layout_editor_key_flick_inset_out)) })
+        }
+    }
+}
+
+/**
  * Corner hint size for one key, as a multiple of every hint's size (#970): for
  * the key whose hint is a mark too small to read, an Arabic haraka on a corner,
  * without making every other hint bigger with it.
@@ -8035,13 +8176,11 @@ private fun KeyHintScaleRow(key: Key, onChange: (Float?) -> Unit) {
  */
 @Composable
 private fun KeyLabelScaleRow(key: Key, onChange: (Float?) -> Unit) {
-    // Only for a key that draws a label at letter size. The keyboard draws the
-    // shift, delete and enter keys from icon slots, prints the spacebar's
-    // language name at its own small size, and an icon key draws no text at
-    // all — so on those this control would move a number nothing reads. Same
-    // rule as the hide-hint and row-span rows: a control that cannot do
-    // anything here does not take a row here.
-    if (!drawsScalableLabel(key)) return
+    // Not on the spacebar, which prints its language name at its own small
+    // size, nor on a component, which draws no face. An icon key takes it as
+    // its icon's size (#970). Same rule as the hide-hint and row-span rows: a
+    // control that cannot do anything here does not take a row here.
+    if (!takesLabelScale(key)) return
     val scale = key.labelScale
     val shown = scale ?: 1f
     val travel = sliderTravel(
@@ -8087,27 +8226,16 @@ private fun KeyLabelScaleRow(key: Key, onChange: (Float?) -> Unit) {
 }
 
 /**
- * Whether this key's label is the one `KeyContent` draws at letter size, which
- * is the only label a [Key.labelScale] reaches.
+ * Whether [Key.labelScale] reaches anything on this key: its label, or the
+ * icon it draws instead (#970), the action keys' and an action in the middle
+ * of a flick key included. Not the spacebar, whose language name has a size
+ * of its own, nor a component, which draws no face.
  *
  * Kept beside the control rather than inside it so the list reads against
  * `KeyContent`'s own `when`, which is what it has to stay in step with.
  */
-private fun drawsScalableLabel(key: Key): Boolean = when (key.action) {
-    // A worded shift key draws its label in place of the arrow (#559).
-    KeyAction.Shift, KeyAction.CapsLock ->
-        KeyIcons.byName(key.icon) == null && shiftLabelReplacesIcon(key.label)
-    KeyAction.Delete, KeyAction.ForwardDelete,
-    KeyAction.Enter, KeyAction.Newline, KeyAction.LanguageSwitch,
-    KeyAction.InputMethodPicker, KeyAction.Emoji, KeyAction.Space,
-    is KeyAction.SwitchInputMethod,
-    -> false
-    // A component draws no label at all; an edit key draws its icon.
-    is KeyAction.Field -> false
-    is KeyAction.Edit -> key.label.isNotBlank() || textEditIcon((key.action as KeyAction.Edit).op) == null
-    // An icon in place of the glyph means there is no text to size.
-    else -> KeyIcons.byName(key.icon) == null
-}
+private fun takesLabelScale(key: Key): Boolean =
+    key.action != KeyAction.Space && key.action !is KeyAction.Field
 
 /**
  * The row-level answer to a row that does not add up to the grid: scale every

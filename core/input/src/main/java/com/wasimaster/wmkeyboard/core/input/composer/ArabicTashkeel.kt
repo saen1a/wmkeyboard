@@ -53,6 +53,7 @@ object ArabicTashkeel {
     val isLoaded: Boolean get() = session != 0L
 
     /** Frees the model. The next [add] opens it again. */
+    @Synchronized
     fun release() {
         val open = session
         if (open == 0L) return

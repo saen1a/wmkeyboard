@@ -71,9 +71,13 @@ internal fun LauncherRouteCheckRow() {
 
 @StringRes
 private fun knownLabel(known: RouteStore.Known?): Int {
-    if (known == null) return R.string.tooldetail_launcher_route_untested
-    val route = known.route ?: return R.string.tooldetail_launcher_route_none
-    return routeLabel(route)
+    // RouteStore lives in another module, so known.route cannot be smart-cast.
+    val route = known?.route
+    return when {
+        known == null -> R.string.tooldetail_launcher_route_untested
+        route == null -> R.string.tooldetail_launcher_route_none
+        else -> routeLabel(route)
+    }
 }
 
 /** A route's name as the settings show it. */

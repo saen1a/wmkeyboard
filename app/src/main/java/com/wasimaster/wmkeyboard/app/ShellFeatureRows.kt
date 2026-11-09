@@ -17,6 +17,7 @@ import com.wasimaster.wmkeyboard.R
 import com.wasimaster.wmkeyboard.app.launcher.LauncherShizukuRow
 import com.wasimaster.wmkeyboard.core.accessibility.ScreenContextService
 import com.wasimaster.wmkeyboard.core.media.hasNotificationAccess
+import com.wasimaster.wmkeyboard.core.otp.NotificationOtpCapture
 import com.wasimaster.wmkeyboard.core.settings.SettingsRepository
 import com.wasimaster.wmkeyboard.core.shell.ShellAccess
 import com.wasimaster.wmkeyboard.core.shell.ShellFeatures
@@ -40,6 +41,7 @@ internal fun ShellFeaturesGroup(repository: SettingsRepository) {
     val scope = rememberCoroutineScope()
     var enabled by remember { mutableStateOf(ShellFeatures.isEnabled(context)) }
     var readsScreen by remember { mutableStateOf(ShellFeatures.replyReadsScreenSetting(context)) }
+    var captures by remember { mutableStateOf(ShellFeatures.capturesScreenSetting(context)) }
     // Bumped after each grant, so the rows re-read what changed.
     var version by remember { mutableIntStateOf(0) }
     val settings by repository.settings.collectAsStateWithLifecycle(initialValue = null)
@@ -123,6 +125,21 @@ internal fun ShellFeaturesGroup(repository: SettingsRepository) {
                 if (!granted) run { ShellGrants.allowNotificationListener(context, LISTENER_SERVICE) }
             }
         }
+        item(visible = enabled && android.os.Build.VERSION.SDK_INT >= 35) {
+            val granted = remember(version) { ShellGrants.readsSensitiveNotifications(context) }
+            NavRow(
+                R.string.shell_access_sensitive_codes_title,
+                stringResource(R.string.shell_access_sensitive_codes_subtitle),
+                value = statusText(granted),
+            ) {
+                if (!granted) {
+                    run {
+                        ShellGrants.allowSensitiveNotifications(context, LISTENER_SERVICE)
+                            ?.also { if (it) NotificationOtpCapture.clearRedacted(context) }
+                    }
+                }
+            }
+        }
         item(visible = enabled) {
             val granted = remember(version) { ScreenContextService.isEnabled(context) }
             NavRow(
@@ -162,6 +179,17 @@ internal fun ShellFeaturesGroup(repository: SettingsRepository) {
             ) {
                 readsScreen = it
                 ShellFeatures.setReplyReadsScreen(context, it)
+            }
+        }
+        item(visible = enabled) {
+            ToggleSetting(
+                R.string.shell_access_capture_title,
+                stringResource(R.string.shell_access_capture_subtitle),
+                captures,
+                default = false,
+            ) {
+                captures = it
+                ShellFeatures.setCapturesScreen(context, it)
             }
         }
     }

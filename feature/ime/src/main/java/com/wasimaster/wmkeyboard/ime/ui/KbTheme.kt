@@ -127,6 +127,10 @@ import com.wasimaster.wmkeyboard.core.theme.TOUCH_BLOOM_LIGHT_RANGE
 import com.wasimaster.wmkeyboard.core.theme.TOUCH_BLOOM_RADIUS_RANGE
 import com.wasimaster.wmkeyboard.core.theme.TOUCH_BLOOM_WOBBLE_RANGE
 import com.wasimaster.wmkeyboard.core.theme.TouchBloomSpec
+import com.wasimaster.wmkeyboard.core.theme.KeyLightingColorMode
+import com.wasimaster.wmkeyboard.core.theme.KeyPressMotion
+import com.wasimaster.wmkeyboard.core.theme.keyLightingColorModeOrNull
+import com.wasimaster.wmkeyboard.core.theme.keyPressMotionOrNull
 import com.wasimaster.wmkeyboard.core.theme.KeyLightingPattern
 import com.wasimaster.wmkeyboard.core.theme.KeyLightingSpec
 import com.wasimaster.wmkeyboard.core.theme.KeyLightingTarget
@@ -369,6 +373,12 @@ data class KbBoardEffect(
     val scale: Float,
     val reactive: Float,
     val halfLifeMs: Int,
+    /**
+     * Whether [colors] are the theme's own choice rather than the accent and
+     * label fallback. A press kind with no colours chosen gives every press a
+     * colour of its own instead of the fallback.
+     */
+    val ownColors: Boolean = true,
 )
 
 /** A [KeyLightingSpec] resolved the same way. */
@@ -382,6 +392,7 @@ data class KbLighting(
     val speed: Float,
     val hueSpanDeg: Float,
     val decayMs: Int,
+    val colorMode: KeyLightingColorMode = KeyLightingColorMode.FIXED,
 )
 
 /**
@@ -402,6 +413,7 @@ internal fun resolveBoardEffect(spec: BoardEffectSpec, accent: Color, keyText: C
         scale = spec.scale.coerceIn(BOARD_EFFECT_SCALE_RANGE),
         reactive = spec.reactive.coerceIn(BOARD_EFFECT_REACTIVE_RANGE),
         halfLifeMs = spec.halfLifeMs.coerceIn(BOARD_EFFECT_HALF_LIFE_RANGE),
+        ownColors = spec.colors.isNotEmpty(),
     )
 }
 
@@ -413,6 +425,7 @@ data class KbTouchBloom(
     val radiusDp: Float,
     val dip: Float,
     val wobble: Float,
+    val motion: KeyPressMotion = KeyPressMotion.SINK,
 )
 
 /** [spec] ready to draw, or null when both halves are turned down to nothing. */
@@ -426,6 +439,7 @@ internal fun resolveTouchBloom(spec: TouchBloomSpec, accent: Color): KbTouchBloo
         radiusDp = spec.radiusDp.coerceIn(TOUCH_BLOOM_RADIUS_RANGE),
         dip = dip,
         wobble = spec.wobble.coerceIn(TOUCH_BLOOM_WOBBLE_RANGE),
+        motion = keyPressMotionOrNull(spec.motion) ?: KeyPressMotion.SINK,
     )
 }
 
@@ -434,7 +448,7 @@ internal fun resolveTouchBloom(spec: TouchBloomSpec, accent: Color): KbTouchBloo
  * saving (which sets it), since there is no still picture of a touch.
  */
 internal val KbTheme.liveTouchBloom: KbTouchBloom?
-    get() = touchBloom?.takeUnless { reduceMotion }
+    get() = touchBloom?.takeIf { motion.themeEffects }
 
 internal fun resolveLighting(spec: KeyLightingSpec, accent: Color): KbLighting? {
     val pattern = keyLightingPatternOrNull(spec.pattern) ?: return null
@@ -447,6 +461,7 @@ internal fun resolveLighting(spec: KeyLightingSpec, accent: Color): KbLighting? 
         speed = spec.speed.coerceIn(LIGHTING_SPEED_RANGE),
         hueSpanDeg = spec.hueSpanDeg.coerceIn(LIGHTING_HUE_SPAN_RANGE),
         decayMs = spec.decayMs.coerceIn(LIGHTING_DECAY_RANGE),
+        colorMode = keyLightingColorModeOrNull(spec.colorMode) ?: KeyLightingColorMode.FIXED,
     )
 }
 
@@ -522,6 +537,14 @@ data class KbMotion(
     val autopilot: Boolean = false,
     /** Grammar fixes and translations animate into place. Opt-in. */
     val toolResults: Boolean = false,
+    /**
+     * The theme's own moving looks play: the moving background and Reacts to
+     * typing, key lighting and the touch bloom. Off under reduce motion unless
+     * the user let them play anyway (#1129), since reduce motion is mostly
+     * about the keyboard's transitions. Power saving's moving-theme drop still
+     * stops them, through [KbTheme.boardEffectStill] and the nulled looks.
+     */
+    val themeEffects: Boolean = true,
 ) {
     companion object {
         /** Everything still. */
@@ -532,12 +555,16 @@ data class KbMotion(
             languageSwitch = false,
             autopilot = false,
             toolResults = false,
+            themeEffects = false,
         )
 
-        /** The flags [settings] asks for, all off under reduce motion. */
+        /**
+         * The flags [settings] asks for, all off under reduce motion but the
+         * theme's own effects, which have a switch to play through it.
+         */
         fun of(settings: KeyboardSettings): KbMotion =
             if (settings.reduceMotion) {
-                None
+                None.copy(themeEffects = settings.accessibility.themeEffectsWithReduceMotion)
             } else {
                 KbMotion(
                     any = true,
@@ -2292,10 +2319,12 @@ fun BoxScope.BoardBackground(kb: KbTheme) {
         )
     }
     // What moves on the board. Reduce motion (and power saving, which sets
-    // it) keeps the picture and stops the clock; so does power saving's
-    // moving-theme drop on its own.
-    kb.boardEffect?.let {
-        BoardEffectLayer(it, Modifier.matchParentSize(), still = kb.reduceMotion || kb.boardEffectStill)
+    // it) keeps the picture and stops the clock, unless the user let the
+    // theme's effects play through it (#1129); power saving's moving-theme
+    // drop stops it either way. A press splash is drawn over the keys
+    // instead, by the key grid ([PressEffectOverlay]).
+    kb.boardEffect?.takeUnless { it.kind.onPress }?.let {
+        BoardEffectLayer(it, Modifier.matchParentSize(), still = !kb.motion.themeEffects || kb.boardEffectStill)
     }
 }
 

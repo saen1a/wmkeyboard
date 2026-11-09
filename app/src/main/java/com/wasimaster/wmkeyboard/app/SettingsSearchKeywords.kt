@@ -153,6 +153,8 @@ internal val SettingsSearchKeywords: Map<Int, Int> = buildMap {
     put(R.string.languages_conjunct_backspace_title, R.string.search_kw_languages_conjunct_backspace)
     put(R.string.languages_fancy_style_row_title, R.string.search_kw_languages_fancy_style_row)
     put(R.string.languages_fancy_fonts_add_title, R.string.search_kw_languages_fancy_fonts_add)
+    put(R.string.languages_fancy_zalgo_add_title, R.string.search_kw_languages_fancy_zalgo_add)
+    put(R.string.languages_fancy_arrange_reset_title, R.string.search_kw_languages_fancy_arrange)
     put(R.string.languages_translit_hints_row_title, R.string.search_kw_languages_translit_hints_row)
     put(R.string.languages_phonetic_strip_fixed_title, R.string.search_kw_languages_phonetic_strip_fixed)
     put(R.string.languages_raw_keys_chip_title, R.string.search_kw_languages_raw_keys_chip)
@@ -262,6 +264,9 @@ internal val SettingsSearchKeywords: Map<Int, Int> = buildMap {
     put(R.string.tooldetail_deepl_write_title, R.string.search_kw_deepl)
     put(R.string.voice_engine_title, R.string.search_kw_voice_engine)
     put(R.string.semantic_mode_title, R.string.search_kw_semantic)
+    put(R.string.clipboard_strip_media_title, R.string.search_kw_strip_media)
+    put(R.string.gallery_strip_location_title, R.string.search_kw_strip_media)
+    put(R.string.gallery_strip_all_title, R.string.search_kw_strip_media)
 }
 
 /** The keywords registered for [title], or 0 when it has none. */

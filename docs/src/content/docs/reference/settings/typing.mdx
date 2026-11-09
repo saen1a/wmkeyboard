@@ -37,6 +37,7 @@ The Typing screen is a hub. Seven of its groups are pages of their own (Automati
 | Correct the word before Enter | Toggle | On | Autocorrect on |
 | Correct the word before punctuation | Toggle | Off | Autocorrect on |
 | Add missing spaces | Toggle | On | Autocorrect on |
+| Undo backspace from the strip | Toggle | Off | always |
 | Learn from my fixes | Toggle | On | always |
 | Learned corrections | Screen | | always |
 | Capitals from the word list | Toggle | On | always |
@@ -57,9 +58,11 @@ The Typing screen is a hub. Seven of its groups are pages of their own (Automati
 | Adapt to app tone | Toggle | On | always |
 | Fix missing apostrophes | Toggle | On | always |
 
-**Autocorrect** is this group's master switch, and thirteen rows hang off it: the ones that tune when and how hard it corrects, from Autocorrect confidence down to Add missing spaces. How often to offer the undo also needs Undo a correction from the strip on. From **Learn from my fixes** downwards the rows stay whether autocorrect is on or off, because none of them needs it: the keyboard still learns from the typos you fix by hand, spells, filters and ranks the strip, and detects the language you type. Detection strength and Remember each app's language need Detect the language you type on. Fix number row slips shows up only while the [number row](/reference/settings/layout/) is on screen, since it corrects a digit to the letter below it.
+**Autocorrect** is this group's master switch, and thirteen rows hang off it: the ones that tune when and how hard it corrects, from Autocorrect confidence down to Add missing spaces. How often to offer the undo also needs Undo a correction from the strip on. From **Undo backspace from the strip** downwards the rows stay whether autocorrect is on or off, because none of them needs it: the keyboard still learns from the typos you fix by hand, spells, filters and ranks the strip, and detects the language you type. Detection strength and Remember each app's language need Detect the language you type on. Fix number row slips shows up only while the [number row](/reference/settings/layout/) is on screen, since it corrects a digit to the letter below it.
 
 **Undo a correction from the strip** puts the word you typed on a chip so you can take a correction back after backspace can no longer reach it, and **How often to offer the undo** is the bar a correction has to fall under to earn that chip. See [Autocorrect](/smart/autocorrect/#taking-a-correction-back-later).
+
+**Undo backspace from the strip** puts whatever backspace took on a chip on the suggestion strip. Press the chip and the text comes back where it was; the chip then reads Redo and deletes it again, so you can flip between the two. A run of presses, a held backspace or a backspace swipe is one delete, and comes back with one press, and the chip takes the whole strip when you have just emptied the field. It goes as soon as you type, move the cursor or select something, and never shows in a password field. Off by default, because it is a chip after every backspace.
 
 **Remember my undos** is one choice of four, and it governs how long the keyboard holds on to a correction you undid, not whether undoing works. See [Autocorrect](/smart/autocorrect/#how-long-an-undo-lasts).
 
@@ -98,8 +101,16 @@ Reached from the Typing hub and from the bottom of Automatic corrections. Three 
 | Close brackets for me | Toggle | Off | always |
 | Close quotes for me | Toggle | Off | always |
 | Continue lists | Toggle | On | always |
+| Smart punctuation key | Toggle | Off | always |
+| Model size | Choice: Standard / Large | Standard | Smart punctuation key on |
+| Also offer the comma | Toggle | Off | Smart punctuation key on |
+| Hide the underline under the word being typed | Toggle | Off | always |
 
 **Space before French punctuation** types the space French keeps in front of `!`, `?`, `;`, `:` and `»`, and behind `«`, and stops the two rules above from taking it back. It only does anything in the languages that are written that way (French, Breton, Occitan, Walloon, Picard, Norman and Franco-Provençal), and every other language types exactly as it did before. See [Autocorrect](/smart/autocorrect/#the-space-in-front-of-a-mark).
+
+**Smart punctuation key** downloads a small model once and has the key beside the spacebar show the mark the sentence so far is heading for, `?` after `how are you`, with the full stop first in its hold; the row's description says when the model has landed. **Model size** picks between the Standard model (5.3 MB) the switch fetches by itself and a Large one (9.5 MB) that reads a few more sentences right; picking the other size downloads it in place of the one on the phone. **Also offer the comma** lets that key show a comma too, when the sentence reads as unfinished. Each language also has its own Smart punctuation key switch on its page under Languages & layouts, shown while this one is on. See [The smart punctuation key](/smart/autocorrect/#the-smart-punctuation-key).
+
+**Hide the underline under the word being typed** sits in its own Word being typed group. The app you type in normally underlines the word the keyboard can still change, such as an Avro word before it turns into Bengali; with this on that word shows as plain text, the way Gboard shows it. Nothing else about typing changes. Chrome, web views and some code editors draw their own underline anyway, and a Japanese conversion keeps its segment underline.
 
 **Double space** is one choice: Two spaces, Full stop or Tab. The **Double space speed** slider only appears while it is Full stop or Tab. **Space after a suggestion** lives in this group even though it governs the suggestion strip, not autocorrect. That's where the app's own settings screen files it, so that's where it is here. Each language also has its own switch on its page in Languages & layouts, and Bangla's is off out of the box, so its endings can follow a pick straight away. While any language's switch is off, this row's description names those languages, so a Bangla pick without a space no longer looks like the row being ignored.
 
@@ -149,6 +160,7 @@ Full writeup: [Suggestions & prediction](/smart/suggestions/) covers Space after
 | Only offer new words | Toggle | Off | always |
 | Word as typed first | Toggle | Off | always |
 | Recent words | Toggle | Off | always |
+| Retype button | Choice: Off / Suggestion bar / Previous-words bar | Off | always; Previous-words bar also needs Recent words on, in a row of their own |
 | Numbers from the letter keys | Toggle | Off | Number row off |
 | Autopilot | Nav row | n/a | always (opens the Autopilot screen below) |
 | Words on the keys | Nav row | n/a | always (opens the Words on the keys screen below) |
@@ -310,6 +322,9 @@ Gestures is a hub of three pages. Its own list is three rows: **Glide typing**, 
 | Pause after a one-letter word | Slider, 100–1500 ms | The shorter of the swiped-word and tapped-word pauses | Two-thumb typing on and All thumbs up |
 | Take the space back | Slider, 0–3000 ms ("Off" at 0) | Twice the swiped-word pause (700 ms) | Two-thumb typing on and All thumbs up |
 | Show the pause on the strip | Toggle | On | Two-thumb typing on and All thumbs up |
+| Two-thumb Backspace | Choice: Current behavior / Undo input step / Retype word / Delete character | Current behavior | Two-thumb typing on |
+| Delete auto-space first | Toggle | Off | Two-thumb typing on; used when Two-thumb Backspace is not Current behavior |
+| Undo Take the space back first | Toggle | Off | Two-thumb typing on; used when Two-thumb Backspace is not Current behavior, with All thumbs up and Take the space back above Off |
 | Swipe finishes typed letters | Toggle | Off | Glide typing on, swipe mode is Type words, and Two-thumb typing off |
 | Glide over Shift to capitalize | Toggle | On | Glide typing on and swipe mode is Type words |
 | What a pass over Shift capitalizes | Choice: Whole word / One letter | Whole word | Glide over Shift to capitalize on |

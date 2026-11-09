@@ -20,9 +20,14 @@ The same library reads text aloud with Meta's MMS-TTS voices
 (`vits_jni.cpp`, driven by `core.voice.speech.MmsSpeech`). That part is not
 sherpa-onnx: it runs the VITS network through ONNX Runtime's C++ API. An MMS
 voice reads characters, so its whole text frontend (lower-casing, one id per
-character, the blank between them) is a few lines of Kotlin, and building
-sherpa-onnx's TTS would link espeak-ng, which is GPL-3.0, for phonemes these
-voices never use.
+character, the blank between them) is a few lines of Kotlin.
+
+Kokoro voices go through sherpa-onnx's own offline TTS (`kokoro_jni.cpp`,
+driven by `core.voice.speech.KokoroSpeech`). Since 2.0 sherpa-onnx phonemises
+from the lexicon files a model ships (English and Chinese for Kokoro v1.0)
+and no longer links espeak-ng, so turning its TTS on brings no GPL code into
+this library. A word missing from the lexicon is skipped; `KokoroText` spells
+out English numbers before the text gets here.
 
 Add punctuation and capitals runs here too (`tagger_jni.cpp`, driven by
 `core.voice.punctuation.DictationPunctuation`): a generic token classifier on
@@ -37,6 +42,21 @@ DPDFNet baseline model (DeepFilterNet2 with dual-path RNN blocks, Apache-2.0,
 16 kHz), with 12 dB of the microphone mixed back under the cleaned audio. See
 [Choosing the Strong model](#choosing-the-strong-model) below for why that model
 and that mix.
+
+A second library, `libwmsherpa_qnn.so` (`qnn_jni.cpp`, arm64 only, its own
+gate `sherpaqnn`), is sherpa-onnx configured again with
+`SHERPA_ONNX_ENABLE_QNN`, for the NPU builds of Parakeet TDT 0.6B v3 and
+Moonshine Tiny: k2-fsa's QNN context binaries from the `asr-models-qnn-binary-2`
+and `-3` releases, one set per Snapdragon chip and fixed clip length, run by
+sherpa-onnx's offline recognizer (`provider=qnn`). The C API has no QNN
+fields, so this bridge uses the C++ API. It compiles against QAIRT
+2.40.0.251030's `include/QNN` (the SDK k2-fsa compiled the binaries with,
+fetched by `../executorch-jni/qnn_headers.py`) and opens Qualcomm's
+`libQnnHtp.so` and `libQnnSystem.so` by path from the `npu` gate's runtime
+directory at run time; `ADSP_LIBRARY_PATH` points the DSP at the chip's skel
+there. Kotlin side: `SherpaQnnNative` and `QnnSpeech`. Built by `build.sh`
+unless `WMKB_SHERPA_QNN=0`; `WMKB_SHERPA_PLAIN=0 WMKB_ABIS=arm64-v8a` builds
+only it.
 
 The bridge is a thin JNI layer over sherpa-onnx's C API, which is linked in
 statically with only speech recognition switched on (no TTS, no diarization,

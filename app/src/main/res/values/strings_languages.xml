@@ -50,6 +50,8 @@
     <!-- ===== One language: layouts, clusters, numerals ===== -->
 
     <string name="languages_layouts_title">Layouts</string>
+    <!-- Description of the button beside the Layouts heading that opens every layout card of the language in a full-screen grid. -->
+    <string name="languages_layouts_gallery_open">Show all layouts</string>
     <string name="languages_layouts_info">Each card shows the keyboard as it looks with your theme and settings. Tap a card to turn that layout on or off. Scroll the row sideways to see all the layouts.</string>
     <string name="languages_layout_keep_one">At least one layout must stay on.</string>
 
@@ -156,6 +158,10 @@
     <string name="languages_autocorrect_info">Turn this off to keep each word you type in <xliff:g id="language" example="Bengali">%1$s</xliff:g> as you typed it, while other languages are still corrected. The suggestion strip still shows its suggestions, and you can tap one. The autocorrect switch in Typing turns autocorrect off for all languages.</string>
 
     <string name="languages_spacing_group">Spacing</string>
+    <string name="languages_punctuation_group">Punctuation</string>
+    <string name="languages_smart_punctuation_title">Smart punctuation key</string>
+    <string name="languages_smart_punctuation_subtitle">The period key shows the mark the sentence is heading for in this language</string>
+    <string name="languages_smart_punctuation_info">Turn this off to keep an ordinary period key while typing <xliff:g id="language" example="Bengali">%1$s</xliff:g>; other languages keep the guessing key. Worth turning off for a language the model reads thinly or was never trained on. The Smart punctuation key switch in Typing turns it off for all languages.</string>
     <string name="languages_space_after_suggestion_title">Space after a suggestion</string>
     <string name="languages_space_after_suggestion_subtitle">Add a space when you select a word from the suggestion strip</string>
     <!-- %1$s is the English name of the language, for example "Bengali". -->
@@ -233,6 +239,21 @@
     <string name="languages_fancy_fonts_too_many">%1$d characters, more than %2$d. Separate letters with spaces if one letter is several characters.</string>
     <string name="languages_fancy_fonts_reversed_title">Write backwards</string>
     <string name="languages_fancy_fonts_reversed_subtitle">For upside-down letters: the line is reversed so it reads with the phone turned round. Types letter by letter, without suggestions.</string>
+    <string name="languages_fancy_zalgo_group">Zalgo</string>
+    <string name="languages_fancy_zalgo_info">Zalgo piles random marks above, below and through every letter. Each zalgo style here has its own level, from 1 (a mark or two) to 10 (a tower), and each one is a separate style on the strip, so you can keep a light one and a heavy one side by side. The marks are picked anew each time the keyboard starts, but a word keeps its marks while you type it.</string>
+    <string name="languages_fancy_zalgo_add_title">Add a zalgo level</string>
+    <string name="languages_fancy_zalgo_add_subtitle">Pick how wild it gets, with a live preview</string>
+    <string name="languages_fancy_zalgo_full">Room for 10. Delete one to add another.</string>
+    <string name="languages_fancy_zalgo_edit_title">Edit zalgo</string>
+    <string name="languages_fancy_zalgo_empty">No zalgo styles. Add one to type in it.</string>
+    <string name="languages_fancy_zalgo_level">Level %1$d of %2$d</string>
+    <string name="languages_fancy_zalgo_name_hint">Optional. Left empty, it\'s named after its level.</string>
+    <string name="languages_fancy_arrange_group">Styles on the strip</string>
+    <string name="languages_fancy_arrange_info">Drag a style to move it along the strip over the keys, and switch it off to take it off the strip. The same order and choice apply to the selection actions\' Fancy conversions and the fancy row of the suggestion pages. A style you switch off can still be picked in the Fancy style row above, and the style you are typing in always stays on the strip. Styles added later, and fonts you make, join at the end.</string>
+    <string name="languages_fancy_arrange_summary">%1$d of %2$d shown</string>
+    <string name="languages_fancy_arrange_reset_title">Reset the strip</string>
+    <string name="languages_fancy_arrange_reset_subtitle">Every style, in the order they ship</string>
+    <string name="languages_fancy_arrange_reset_action">Reset</string>
     <string name="languages_vietnamese_tones_title">Tone marks</string>
     <string name="languages_vietnamese_strict_tones_title">Only tone real syllables</string>
     <string name="languages_vietnamese_strict_tones_subtitle">A tone key is a letter unless the word is one the language spells</string>
@@ -326,7 +347,7 @@ The model runs on the phone, and nothing you type leaves it. One download covers
     <!-- %1$s is the English name of the language, for example "Bengali". -->
     <string name="languages_neural_leads_info">The space bar usually writes what the phonetic rules spell. When that is not a word in the <xliff:g id="language" example="Bengali">%1$s</xliff:g> word list or among your own words, and the known-spellings list has nothing for what you typed, this lets the model\'s best reading that is in the word list go first instead, so a space writes it. The rules\' spelling comes right after it in the strip, one tap away.
 
-On test words the space bar wrote the right word 56%% of the time instead of 25%% in Bengali, and 49%% instead of 41%% in Hindi. The cost: a name or a rare word spelled exactly by the rules, but missing from the word list, can come out as a listed word that looks like it. About one such spelling in six did in Bengali, one in fifteen in Hindi. Words the list knows are left alone.</string>
+On test words the space bar wrote the right word more often in every language that has this switch: for example 53%% of the time instead of 25%% in Bengali, 62%% instead of 44%% in Kannada, and 48%% instead of 40%% in Hindi. The cost: a name or a rare word spelled correctly by the rules, but missing from the word list, can come out as a listed word that looks like it. Words the list knows are left alone.</string>
     <!-- %1$s is the size on the phone, for example "13 MB". -->
     <string name="languages_neural_phonetic_delete_title">Delete the neural suggestions model?</string>
     <string name="languages_neural_phonetic_delete_body">Neural suggestions turn off on every language that has them. Turning them on again downloads the model again.</string>
@@ -773,10 +794,5 @@ With this on, the keyboard draws Burmese in its own copy of Noto Sans Myanmar, a
     <string name="languages_data_download_dismiss_action">Not now</string>
 
 
-    <!-- Dialog after the user removes a language that has downloaded files. -->
-    <string name="languages_data_delete_title">Delete the downloaded files?</string>
-    <!-- %1$s is the language name, %2$s a data size like "4.2 MB". -->
-    <string name="languages_data_delete_body"><xliff:g id="language" example="German">%1$s</xliff:g> has files downloaded for it, such as its word list, emoji keywords, spell checker or dictionaries. Delete them and get about <xliff:g id="size" example="4.2 MB">%2$s</xliff:g> of storage back?</string>
-    <string name="languages_data_delete_dismiss_action">Keep them</string>
 
 </resources>

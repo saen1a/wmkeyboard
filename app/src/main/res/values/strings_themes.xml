@@ -566,6 +566,13 @@
     <string name="theme_editor_undo_desc">Undo the last change to this theme</string>
     <string name="theme_editor_redo_desc">Redo the change you undid</string>
     <string name="theme_pick_hint">Press a key, a tool or the strip</string>
+    <string name="theme_pick_several_chip">Several keys</string>
+    <string name="theme_pick_several_hint">Press the keys to style together</string>
+    <string name="theme_pick_several_style">Style</string>
+    <plurals name="theme_pick_several_title">
+        <item quantity="one"><xliff:g id="count" example="1">%1$d</xliff:g> key</item>
+        <item quantity="other"><xliff:g id="count" example="10">%1$d</xliff:g> keys</item>
+    </plurals>
     <!-- Words the preview's suggestion strip shows while the strip is being styled, separated by commas. -->
     <string name="theme_pick_strip_sample_words">Hello,Thanks,Okay</string>
     <string name="theme_parts_section_title">Toolbar, strip and popups</string>
@@ -629,14 +636,23 @@
     <string name="theme_font_sound_section_title">Font and sound</string>
     <string name="theme_font_sound_section_body">The theme can bring its own key font and key sound. If the device does not have them, the keyboard uses your global choices. Fonts and sounds install as add-ons, so you can also use them with other themes.</string>
     <string name="theme_font_title">Key font</string>
+    <string name="theme_font_overrides_body">Overrides your keyboard font setting. Picking a font here sets that setting back to Default.</string>
+    <string name="theme_font_hidden_body">Your keyboard font setting hides this font. Pick it again here to use it.</string>
     <string name="theme_sound_title">Key sound</string>
     <string name="theme_follow_settings_label">Follow settings</string>
     <!-- %1$s is the name of a script, such as Bengali. -->
     <string name="theme_script_font_title">%1$s font</string>
     <string name="theme_script_font_add_title">Add a font for a script</string>
-    <string name="theme_script_font_add_body">The key font above is used for Latin, Cyrillic and Greek. Other scripts keep their own font unless the theme gives them one.</string>
+    <string name="theme_script_font_add_body">The key font above is used for Latin, Cyrillic and Greek. Other scripts keep their own font unless the theme gives them one. A font picked here overrides your own font for that script.</string>
     <string name="theme_script_font_default_label">Use the script default</string>
     <string name="theme_script_font_all_set_body">Every script already has a font in this theme.</string>
+
+    <!-- Theme editor: the glyphs the theme draws on the keyboard's own keys. -->
+    <string name="theme_key_icons_section_title">Key icons</string>
+    <string name="theme_key_icons_section_body">The theme can draw its own icon on the delete, shift, enter and other keys. Pick a picture from Your icons. The theme keeps its own copy, so the icon goes with the theme when you export it. An icon pack or an icon you picked under Appearance, then Icons, comes first.</string>
+    <string name="theme_key_icons_from_theme_label">From this theme</string>
+    <string name="theme_key_icons_hidden_label">Hidden by your icon pack or the Icons screen</string>
+    <string name="theme_key_icons_remove_action">Remove from the theme</string>
 
     <!-- Gradient editor. -->
     <!-- Caption over the choice of gradient shape. -->
@@ -798,9 +814,10 @@
     <string name="theme_lighting_hue_span_title">Rainbow spread</string>
     <string name="theme_lighting_hue_span_body">How far the colour turns from the left of the keyboard to the right. At 0 every key has the same colour. At 360 the keys show the whole rainbow.</string>
     <string name="theme_lighting_decay_title">Fade time</string>
-    <string name="theme_motion_held_body">Reduce motion is on, so the moving background holds still, and key lighting, touch bloom and Reacts to typing are off. Turn it off to see them move.</string>
-    <string name="theme_motion_held_system_body">Your phone is set to remove animations, so on the keyboard the moving background holds still, and key lighting, touch bloom and Reacts to typing are off. The preview here still moves.</string>
+    <string name="theme_motion_held_body">Reduce motion is on, so the moving background holds still, and key lighting, touch bloom and Reacts to typing are off. Let the theme\'s effects play anyway and Reduce motion keeps everything else still, or turn it off.</string>
+    <string name="theme_motion_held_system_body">Your phone is set to remove animations, so on the keyboard the moving background holds still, and key lighting, touch bloom and Reacts to typing are off. The preview here still moves. Let the theme\'s effects play anyway to see them move on the keyboard too.</string>
     <string name="theme_motion_held_turn_off">Turn off Reduce motion</string>
+    <string name="theme_motion_held_play_anyway">Play effects anyway</string>
     <string name="theme_touch_bloom_section_title">Touch bloom</string>
     <string name="theme_touch_bloom_section_body">The keyboard answers your finger. A soft light blooms out from where you touch, and the keys near your finger dip and spring back with a small wobble while the rest stay still. When you glide, the light and the dip follow your finger, and the bubble over a pressed key lights up in the same colour. It stops when Reduce motion or power saving is on.</string>
     <string name="theme_touch_bloom_title">Touch bloom</string>
@@ -887,6 +904,16 @@
     <string name="theme_board_effect_kind_scan_label">Scanner</string>
     <string name="theme_board_effect_kind_sheen_label">Sheen</string>
     <string name="theme_board_effect_kind_ripples_label">Ripples</string>
+    <string name="theme_board_effect_kind_paint_label">Paint splash</string>
+    <string name="theme_board_effect_kind_ink_label">Ink blot</string>
+    <string name="theme_board_effect_kind_light_pool_label">Light pool</string>
+    <string name="theme_board_effect_kind_flood_label">Colour flood</string>
+    <string name="theme_board_effect_kind_puff_label">Smoke puff</string>
+    <string name="theme_board_effect_kind_glint_label">Glint</string>
+    <string name="theme_board_effect_kind_pop_label">Pop</string>
+    <string name="theme_board_effect_kind_swoosh_label">Swoosh</string>
+    <string name="theme_board_effect_kind_specks_label">Specks</string>
+    <string name="theme_board_effect_kind_body">Snow, Stars and the effects up to Ripples move behind the keys all the time. Paint splash, Ink blot and the effects after them splash over the keys each time you press one, and go away a moment later. If you do not choose a colour, each press gets a colour of its own.</string>
     <string name="theme_lighting_pattern_steady_label">Steady</string>
     <string name="theme_lighting_pattern_breathe_label">Breathe</string>
     <string name="theme_lighting_pattern_wave_label">Wave</string>
@@ -902,6 +929,22 @@
     <string name="theme_lighting_target_face_label">Key faces</string>
     <string name="theme_lighting_target_edge_label">Key edges</string>
     <string name="theme_lighting_target_glow_label">Behind the keys</string>
+    <string name="theme_lighting_target_fill_label">Filled key</string>
+    <string name="theme_lighting_target_gradient_label">Two-tone fill</string>
+    <string name="theme_lighting_target_glitter_label">Glitter</string>
+    <string name="theme_lighting_color_mode_title">Colour choice</string>
+    <string name="theme_lighting_color_mode_body">On a pattern that answers presses, each press gets a colour of its own. On a pattern that runs by itself, each key gets a colour of its own.</string>
+    <string name="theme_lighting_color_mode_fixed_label">Light colour</string>
+    <string name="theme_lighting_color_mode_random_label">Bright, each press</string>
+    <string name="theme_lighting_color_mode_pastel_label">Pastel, each press</string>
+    <string name="theme_touch_bloom_motion_title">Key motion</string>
+    <string name="theme_touch_bloom_motion_body">Sink moves all the keys near your finger, and the nearest key moves the most. The other motions move only the key under your finger. Key dip sets how far the key moves, and Wobble sets how much it bounces back.</string>
+    <string name="theme_touch_bloom_motion_sink_label">Sink</string>
+    <string name="theme_touch_bloom_motion_grow_label">Grow</string>
+    <string name="theme_touch_bloom_motion_shrink_label">Shrink</string>
+    <string name="theme_touch_bloom_motion_rise_label">Rise</string>
+    <string name="theme_touch_bloom_motion_tilt_label">Tilt</string>
+    <string name="theme_touch_bloom_motion_jelly_label">Jelly</string>
     <string name="theme_deleted_snackbar">Deleted %1$s</string>
     <!-- Accessibility label for long-pressing a theme card: it ticks the card for deleting several themes at once. -->
     <string name="theme_pick_label">Select</string>

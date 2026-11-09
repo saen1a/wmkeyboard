@@ -21,7 +21,9 @@ import com.wasimaster.wmkeyboard.core.layout.Layouts
 import com.wasimaster.wmkeyboard.core.layout.hasAmbiguousKeys
 import com.wasimaster.wmkeyboard.core.layout.hasKanaVariantKeys
 import com.wasimaster.wmkeyboard.core.layout.isAmbiguous
+import com.wasimaster.wmkeyboard.core.layout.letterOwners
 import com.wasimaster.wmkeyboard.core.layout.letterSet
+import com.wasimaster.wmkeyboard.core.layout.lettersPlacedHere
 import com.wasimaster.wmkeyboard.core.media.MediaSnapshot
 import com.wasimaster.wmkeyboard.core.input.composer.Composer
 import com.wasimaster.wmkeyboard.core.input.composer.NoComposer
@@ -387,6 +389,20 @@ data class LayoutSet(
      */
     val keymanLayerKeys: Set<String>? = null,
     /**
+     * The page of [named] drawn in place of [letters] while the text before
+     * the caret ends in a consonant (`LayerSpec.afterConsonant`): an Indic
+     * layout's page of vowel signs. Null for every other layout.
+     */
+    val consonantLayer: String? = null,
+    /**
+     * Every page of that layout after the letters, in order, while it has a
+     * [consonantLayer]; empty otherwise. What its page key steps through,
+     * the way Samsung's does: after a consonant the vowel signs, the further
+     * pages and then the vowels (1/4 to 4/4); otherwise the vowels and the
+     * further pages, with no vowel signs (1/3 to 3/3).
+     */
+    val consonantPages: List<String> = emptyList(),
+    /**
      * Whether the letters layer is a handwriting canvas over [letters]' one
      * row (`LayoutSpec.handwriting`, issue #557).
      */
@@ -556,8 +572,8 @@ data class LayoutSet(
                         // anchor, so a word continuing with any letter of a T9
                         // key floats over that key.
                         BASE_PASS -> if (key.isAmbiguous()) {
-                            for (letter in key.letterSet()) {
-                                out.putIfAbsent(Character.toLowerCase(letter.code), anchor)
+                            for (letter in key.lettersPlacedHere(letterOwners)) {
+                                out.putIfAbsent(letter, anchor)
                             }
                         } else {
                             claim(key.output ?: key.label, anchor)
@@ -582,6 +598,9 @@ data class LayoutSet(
      * would be a row scan per character typed.
      */
     val ambiguousKeys: Boolean = letters.hasAmbiguousKeys()
+
+    /** See [letterOwners]: set letters with a key of their own are placed only there. */
+    val letterOwners: Map<Int, Int> by lazy { letters.letterOwners() }
 
     /**
      * The letter grid a glide is decoded against: one entry per character the
@@ -660,8 +679,8 @@ data class LayoutSet(
                         // is emitted exactly as it always was, composed and
                         // decomposed spellings and all.
                         BASE_PASS -> if (key.isAmbiguous()) {
-                            for (letter in key.letterSet()) {
-                                out.add(KeyCenter(Character.toLowerCase(letter.code), x, y))
+                            for (letter in key.lettersPlacedHere(letterOwners)) {
+                                out.add(KeyCenter(letter, x, y))
                             }
                         } else {
                             emit(key.output ?: key.label, x, y)
@@ -2653,7 +2672,20 @@ sealed interface StripOfferAction {
 
     /** The same chip's ✕: not in this field. */
     data object DismissPasswordManager : StripOfferAction
+
+    /** The backspace undo chip: put the deleted text back, or delete it again. */
+    data object UndoDelete : StripOfferAction
+
+    /** The same chip's ✕: leave the text as it is. */
+    data object DismissDeleteUndo : StripOfferAction
 }
+
+/**
+ * The strip's backspace undo chip: [text] is what the run of presses deleted,
+ * as the chip shows it (one line, cut short; empty for nothing but spaces).
+ * With [redo] it is back in the field and the chip deletes it again.
+ */
+data class DeletionChip(val text: String, val redo: Boolean)
 
 /**
  * What the strip's Zawgyi chip is offering: text the keyboard found in
@@ -2752,6 +2784,9 @@ sealed interface WordCardAction {
 
     /** Leave the spelling bar without respelling anything (#138). */
     data object CancelSpelling : WordCardAction
+
+    /** Paste the clipboard's first word into the spelling bar at its caret (#1190). */
+    data object PasteSpelling : WordCardAction
 
     /**
      * Put the spelling bar's selection from [start] to [end] — a tap is a
@@ -3045,6 +3080,12 @@ data class WordSpell(
     val cursor: Int = draft.length,
     /** The fixed end of the selection; [cursor] when nothing is selected. */
     val anchor: Int = cursor,
+    /**
+     * The word a transliterating layout is spelling at the caret (#1190): its
+     * keys so far and where their reading starts in [draft]. Null when the
+     * keys type themselves.
+     */
+    val run: SpellRun? = null,
 ) {
     val selectionStart: Int get() = minOf(cursor, anchor).coerceIn(0, draft.length)
     val selectionEnd: Int get() = maxOf(cursor, anchor).coerceIn(0, draft.length)
@@ -3123,9 +3164,71 @@ data class WordSpell(
         )
     }
 
-    private fun collapsedAt(text: String, at: Int) = copy(draft = text, cursor = at, anchor = at)
+    /**
+     * [key] typed on a layout whose keys spell another script (#1190): Avro's
+     * roman letters, Hangul jamo, a Telex vowel. It joins the word being
+     * composed at the caret, and the draft shows [render]'s reading of all of
+     * that word's keys, the way the app's field shows its composing word. The
+     * bar used to take the bare key, so a Bangla word could only be respelled
+     * in Latin letters. A key that would push the draft past [maxLength] is
+     * refused whole, since cutting a reading in half spells nothing.
+     */
+    fun composed(key: String, render: (String) -> String, maxLength: Int): WordSpell {
+        val live = liveRun(render)
+        val start = live?.start ?: selectionStart
+        val replaced = live?.let { render(it.keys).length } ?: (selectionEnd - selectionStart)
+        val keys = live?.keys.orEmpty() + key
+        val shown = render(keys)
+        val next = draft.substring(0, start) + shown + draft.substring(start + replaced)
+        if (next.length > maxLength) return this
+        val at = start + shown.length
+        return copy(draft = next, cursor = at, anchor = at, run = SpellRun(start, keys))
+    }
+
+    /**
+     * Backspace inside the word being composed: [unkey] takes back a key and
+     * the reading is drawn again, as the app's field does (#1190). Null when
+     * no word is being composed at the caret, for an ordinary backspace.
+     */
+    fun uncomposed(render: (String) -> String, unkey: (String) -> String): WordSpell? {
+        val live = liveRun(render) ?: return null
+        val keys = unkey(live.keys)
+        val shown = if (keys.isEmpty()) "" else render(keys)
+        val end = live.start + render(live.keys).length
+        val next = draft.substring(0, live.start) + shown + draft.substring(end)
+        val at = live.start + shown.length
+        return copy(draft = next, cursor = at, anchor = at, run = SpellRun(live.start, keys).takeIf { keys.isNotEmpty() })
+    }
+
+    /**
+     * [run], while the draft still shows its reading with the caret right
+     * after it and nothing selected; else null. A tap or a selection that
+     * moved the caret elsewhere ends the word, as it does in a field.
+     */
+    fun liveRun(render: (String) -> String): SpellRun? {
+        val r = run ?: return null
+        if (hasSelection) return null
+        val shown = render(r.keys)
+        val live = r.start >= 0 && cursor == r.start + shown.length && cursor <= draft.length &&
+            draft.regionMatches(r.start, shown, 0, shown.length)
+        return r.takeIf { live }
+    }
+
+    /**
+     * The clipboard's [text] pasted at the caret (#1190). A spelling is one
+     * word, so only the clip's first word goes in; the rest of a copied
+     * sentence would make a word no list could hold.
+     */
+    fun pasted(text: String, maxLength: Int): WordSpell {
+        val word = text.trim().split(WHITESPACE, limit = 2).firstOrNull().orEmpty()
+        return if (word.isEmpty()) this else typed(word, maxLength)
+    }
+
+    private fun collapsedAt(text: String, at: Int) = copy(draft = text, cursor = at, anchor = at, run = null)
 
     private companion object {
+        val WHITESPACE = Regex("\\s+")
+
         fun stepBack(s: String, at: Int): Int =
             if (at >= 2 && Character.isLowSurrogate(s[at - 1]) && Character.isHighSurrogate(s[at - 2])) at - 2
             else (at - 1).coerceAtLeast(0)
@@ -3140,6 +3243,9 @@ data class WordSpell(
     }
 }
 
+
+/** A word [WordSpell] is composing (#1190): its [keys], and where their reading starts in the draft. */
+data class SpellRun(val start: Int, val keys: String)
 
 /**
  * The snippets panel showing what one snippet offers, after a tile was held.
@@ -3461,6 +3567,13 @@ data class KeyboardUiState(
      * switched off.
      */
     val correctionUndo: String? = null,
+    /**
+     * What a run of backspaces took away, offered back on the strip, or
+     * deleted again once it has been put back ([DeletionChip.redo]). Null
+     * while the setting is off, and as soon as anything but a backspace
+     * moves the caret.
+     */
+    val deletionUndo: DeletionChip? = null,
     /** Spacing form of the dead-key accent waiting for a letter, if any. */
     val pendingDeadKey: String? = null,
     /**
@@ -3617,6 +3730,23 @@ data class KeyboardUiState(
      * it is a key of the grid's `remember`, and it moves kana by kana.
      */
     val kanaVariantReady: Boolean = false,
+    /**
+     * The syllable the text before the caret ends in (`IndicSyllable`), on a
+     * layout with a consonant page ([LayoutSet.consonantLayer]); empty when it
+     * ends in anything else. While it is set the letters draw that page, each
+     * of its vowel-sign keys showing the syllable a tap would write.
+     *
+     * Empty on every other layout: it is a key of the grid's `remember`, and
+     * it moves with every keystroke.
+     */
+    val consonantSyllable: String = "",
+    /**
+     * The letters were asked for by hand from a page of the paginated cycle
+     * while [consonantSyllable] was set, so they stay up in place of the
+     * consonant page until the next key: an independent vowel after a
+     * consonant (कई) is typed from there.
+     */
+    val vowelsPinned: Boolean = false,
     /**
      * Probability weight (0..1) of each letter being typed next, given the
      * current composing word. Drives smart key-hit detection, which nudges
@@ -4101,6 +4231,14 @@ data class KeyboardUiState(
      * key in place of an action icon.
      */
     val enterActionLabel: String? = null,
+    /**
+     * The mark the smart punctuation key shows in place of the full stop:
+     * what the model expects the sentence so far to end with, already in the
+     * script's own form (`SmartPunctuation.glyph`), or null to leave the key
+     * as laid out. Published by the service off the keystroke's thread; the
+     * grid rebuilds when it changes (`rememberCurrentLayout`).
+     */
+    val smartPunctuation: String? = null,
     /** Torch state, mirrored from CameraManager for the flashlight tool. */
     val torchOn: Boolean = false,
     /** The Notes panel (#560); survives the panel closing like [vocab]. */
@@ -4248,6 +4386,19 @@ data class KeyboardUiState(
      * returns to the clipboard. Cleared on every panel change, like [ocrImage].
      */
     val cameraImage: String? = null,
+    /**
+     * [ocrImage] or [cameraImage] is a capture of the screen (Shizuku or
+     * root) rather than a clip's picture, so back stays in the tool instead
+     * of going to the clipboard. Cleared on every panel change.
+     */
+    val pictureFromScreen: Boolean = false,
+    /**
+     * The open OCR, camera or AI reply panel offers "Capture screen"
+     * ([com.wasimaster.wmkeyboard.core.shell.ScreenCapture]): the F-Droid or
+     * GitHub build, the user's switches on, and Shizuku or root ready. Set by
+     * [WMKeyboardService.onPanelChange].
+     */
+    val screenCapture: Boolean = false,
     val translate: TranslateUi = TranslateUi(),
     val grammar: GrammarUi = GrammarUi(),
     val wiki: WikiUi = WikiUi.Idle,
@@ -4874,8 +5025,12 @@ data class KeyboardUiState(
         CaptureTarget.KDE_HOST -> kde.hostDraft
         CaptureTarget.KDE_REMOTE, CaptureTarget.KDE_COMPOSE -> kde.line
         CaptureTarget.PLUGIN -> pluginFocusedInput?.let { pluginInputs[it] }.orEmpty()
-        CaptureTarget.FIND_QUERY -> findReplace?.query.orEmpty()
-        CaptureTarget.FIND_REPLACEMENT -> findReplace?.replacement.orEmpty()
+        // A term left from last time reads as empty to the keys (#970): it is
+        // drawn selected, so the first key types over it instead of after it.
+        CaptureTarget.FIND_QUERY ->
+            findReplace?.takeUnless { FindReplaceField.FIND in it.remembered }?.query.orEmpty()
+        CaptureTarget.FIND_REPLACEMENT ->
+            findReplace?.takeUnless { FindReplaceField.REPLACE in it.remembered }?.replacement.orEmpty()
         CaptureTarget.LEARN_EDIT -> learnFromText?.editText.orEmpty()
         CaptureTarget.CALC -> calcExpression
         CaptureTarget.CONVERTER -> converterValue

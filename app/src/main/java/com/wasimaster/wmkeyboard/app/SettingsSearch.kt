@@ -23,7 +23,6 @@ import com.wasimaster.wmkeyboard.core.translate.BergamotTranslator
 import com.wasimaster.wmkeyboard.core.translate.NllbTranslator
 import com.wasimaster.wmkeyboard.core.translate.OfflineTranslation
 import com.wasimaster.wmkeyboard.core.translate.OnDeviceTranslator
-import com.wasimaster.wmkeyboard.core.accessibility.ScreenshotService
 import com.wasimaster.wmkeyboard.ime.AppLaunchModes
 
 /**
@@ -414,6 +413,7 @@ private fun SearchStrings.typingCorrectionsRows(): List<SettingsSearchEntry> {
         row(R.string.typing_undo_memory_title, R.string.typing_undo_memory_subtitle),
         row(R.string.typing_stop_after_declines_title, R.string.typing_stop_after_declines_subtitle),
         row(R.string.typing_learned_gate_title, R.string.typing_learned_gate_subtitle),
+        row(R.string.typing_undo_delete_chip_title, R.string.typing_undo_delete_chip_subtitle),
         row(R.string.typing_learn_corrections_title, R.string.typing_learn_corrections_subtitle),
         row(R.string.typing_adapt_taps_title, R.string.typing_adapt_taps_subtitle),
         row(R.string.typing_mistype_tolerance_title, R.string.typing_mistype_tolerance_subtitle),
@@ -467,11 +467,15 @@ private fun SearchStrings.typingWritingRows(): List<SettingsSearchEntry> {
             R.string.typing_language_punctuation_spacing_title,
             R.string.typing_language_punctuation_spacing_subtitle,
         ),
+        row(R.string.typing_smart_punctuation_title, R.string.typing_smart_punctuation_subtitle),
+        row(R.string.typing_smart_punctuation_size_title, R.string.typing_smart_punctuation_size_subtitle),
+        row(R.string.typing_smart_punctuation_comma_title, R.string.typing_smart_punctuation_comma_subtitle),
         row(R.string.typing_space_after_suggestion_title, R.string.typing_space_after_suggestion_subtitle),
         row(R.string.typing_wrap_selection_title, R.string.typing_wrap_selection_subtitle),
         row(R.string.typing_auto_close_quotes_title, R.string.typing_auto_close_quotes_subtitle),
         row(R.string.typing_auto_close_brackets_title, R.string.typing_auto_close_brackets_subtitle),
         row(R.string.typing_continue_lists_title, R.string.typing_continue_lists_subtitle),
+        row(R.string.typing_hide_composing_underline_title, R.string.typing_hide_composing_underline_subtitle),
     )
 }
 
@@ -520,6 +524,7 @@ private fun SearchStrings.typingSuggestionsRows(): List<SettingsSearchEntry> {
         row(R.string.typing_skip_typed_word_title, R.string.typing_skip_typed_word_subtitle),
         row(R.string.typing_typed_word_first_title, R.string.typing_typed_word_first_subtitle),
         row(R.string.typing_recent_word_bar_title, R.string.typing_recent_word_bar_subtitle),
+        row(R.string.typing_retype_button_title, R.string.typing_retype_button_subtitle),
         row(R.string.typing_number_prediction_title, R.string.typing_number_prediction_subtitle),
         row(R.string.typing_group_octopus_title, R.string.typing_group_octopus_subtitle),
         row(R.string.typing_word_menu_title, R.string.typing_word_menu_subtitle),
@@ -673,6 +678,9 @@ private fun SearchStrings.typingGlideRows(): List<SettingsSearchEntry> {
         row(R.string.typing_two_thumb_one_letter_pause_title, R.string.typing_two_thumb_one_letter_pause_subtitle),
         row(R.string.typing_two_thumb_retract_title, R.string.typing_two_thumb_retract_subtitle),
         row(R.string.typing_two_thumb_pause_band_title, R.string.typing_two_thumb_pause_band_subtitle),
+        row(R.string.typing_two_thumb_backspace_title),
+        row(R.string.typing_two_thumb_backspace_space_first_title, R.string.typing_two_thumb_backspace_space_first_subtitle),
+        row(R.string.typing_two_thumb_backspace_join_first_title, R.string.typing_two_thumb_backspace_join_first_subtitle),
         row(R.string.typing_swipe_continues_typed_title, R.string.typing_swipe_continues_typed_subtitle),
         row(R.string.typing_shift_glide_capitals_title, R.string.typing_shift_glide_capitals_subtitle),
         row(R.string.typing_shift_glide_mode_title, R.string.typing_shift_glide_mode_subtitle),
@@ -863,6 +871,10 @@ private fun SearchStrings.keyPressRows(): List<SettingsSearchEntry> {
             R.string.keypress_alternates_columns_subtitle,
         ),
         row(
+            R.string.keypress_alternates_balanced_title,
+            R.string.keypress_alternates_balanced_subtitle,
+        ),
+        row(
             R.string.keypress_alternates_nearest_title,
             R.string.keypress_alternates_nearest_subtitle,
         ),
@@ -1034,7 +1046,7 @@ private fun SearchStrings.appearanceRows(): List<SettingsSearchEntry> {
         icon(R.string.plugins_icons_pack_title),
         icon(R.string.plugins_icons_import_title, R.string.plugins_icons_import_subtitle),
         icon(R.string.plugins_icons_reset_title, R.string.plugins_icons_reset_subtitle),
-        icon(R.string.plugins_icons_picker_use_svg_action),
+        icon(R.string.plugins_icons_library_title, R.string.plugins_icons_library_subtitle_empty),
         row(R.string.appearance_key_corner_radius_title, R.string.appearance_key_corner_radius_subtitle),
         row(R.string.appearance_key_label_size_title, R.string.appearance_key_label_size_subtitle),
         row(R.string.appearance_key_hint_size_title, R.string.appearance_key_hint_size_subtitle),
@@ -1042,7 +1054,6 @@ private fun SearchStrings.appearanceRows(): List<SettingsSearchEntry> {
         row(R.string.appearance_key_hint_offset_x_title, R.string.appearance_key_hint_offset_x_subtitle),
         row(R.string.appearance_key_label_offset_x_title, R.string.appearance_key_label_offset_x_subtitle),
         row(R.string.appearance_key_label_offset_y_title, R.string.appearance_key_label_offset_y_subtitle),
-        row(R.string.home_reset_pinned_tools_title, R.string.home_reset_pinned_tools_subtitle),
     )
 }
 
@@ -1056,6 +1067,8 @@ private fun SearchStrings.appearanceToolbarRows(): List<SettingsSearchEntry> {
         row(R.string.appearance_toolbar_show_title, R.string.appearance_toolbar_show_subtitle),
         row(R.string.appearance_toolbar_placement_title, R.string.appearance_toolbar_placement_subtitle),
         row(R.string.appearance_toolbar_show_strip_title, R.string.appearance_toolbar_show_strip_subtitle),
+        row(R.string.appearance_toolbar_bar_toolbox_title, R.string.appearance_toolbar_bar_toolbox_subtitle),
+        row(R.string.appearance_toolbar_tools_arrow_title, R.string.appearance_toolbar_tools_arrow_subtitle),
         row(R.string.appearance_toolbar_landscape_column_title, R.string.appearance_toolbar_landscape_column_subtitle),
         row(R.string.appearance_toolbar_swipe_down_title, R.string.appearance_toolbar_swipe_down_subtitle),
         row(R.string.appearance_toolbar_drag_title, R.string.appearance_toolbar_drag_subtitle),
@@ -1075,6 +1088,7 @@ private fun SearchStrings.appearanceToolbarRows(): List<SettingsSearchEntry> {
         row(R.string.appearance_suggestion_spacing_title, R.string.appearance_suggestion_spacing_subtitle),
         row(R.string.appearance_suggestion_primary_color_title, R.string.appearance_suggestion_primary_color_subtitle),
         row(R.string.appearance_suggestion_new_word_color_title, R.string.appearance_suggestion_new_word_color_subtitle),
+        row(R.string.home_reset_pinned_tools_title, R.string.home_reset_pinned_tools_subtitle),
         row(R.string.appearance_tool_circle_title, R.string.appearance_tool_circle_subtitle),
         row(R.string.appearance_tool_shape_title, R.string.appearance_tool_shape_subtitle),
         row(R.string.appearance_tool_width_title, R.string.appearance_tool_width_subtitle),
@@ -1229,11 +1243,20 @@ private fun SearchStrings.floatingButtonRows(): List<SettingsSearchEntry> {
     return listOfNotNull(
         row(R.string.floating_button_enable_title, R.string.floating_button_enable_subtitle),
         row(R.string.floating_button_screen_title, R.string.floating_button_screen_subtitle),
-        row(R.string.floating_button_screenshot_title, R.string.floating_button_screenshot_subtitle)
-            .takeIf { ChannelFeatures.SCREENSHOT },
+        row(R.string.floating_button_system_buttons_title, R.string.floating_button_system_buttons_subtitle)
+            .takeIf { ChannelFeatures.SYSTEM_BUTTONS },
         row(R.string.floating_button_tap_title),
         row(R.string.floating_button_double_tap_title),
         row(R.string.floating_button_hold_title),
+        row(R.string.floating_button_docked_title, R.string.floating_button_docked_subtitle),
+        row(R.string.floating_button_flick_up_title),
+        row(R.string.floating_button_flick_up_right_title),
+        row(R.string.floating_button_flick_right_title),
+        row(R.string.floating_button_flick_down_right_title),
+        row(R.string.floating_button_flick_down_title),
+        row(R.string.floating_button_flick_down_left_title),
+        row(R.string.floating_button_flick_left_title),
+        row(R.string.floating_button_flick_up_left_title),
         row(R.string.floating_button_tap_typing_title),
         row(R.string.floating_button_double_tap_typing_title),
         row(R.string.floating_button_menu_add_title),
@@ -1306,6 +1329,8 @@ private fun SearchStrings.languageRows(): List<SettingsSearchEntry> {
         row(R.string.languages_zawgyi_key_font_title, R.string.languages_zawgyi_key_font_subtitle),
         row(R.string.languages_fancy_style_row_title, R.string.languages_fancy_style_row_subtitle),
         row(R.string.languages_fancy_fonts_add_title, R.string.languages_fancy_fonts_add_subtitle),
+        row(R.string.languages_fancy_zalgo_add_title, R.string.languages_fancy_zalgo_add_subtitle),
+        row(R.string.languages_fancy_arrange_reset_title, R.string.languages_fancy_arrange_reset_subtitle),
         row(R.string.languages_vietnamese_strict_tones_title, R.string.languages_vietnamese_strict_tones_subtitle),
         row(R.string.languages_vietnamese_restore_marks_title, R.string.languages_vietnamese_restore_marks_subtitle),
         // The subtitle names the language it is about, so it is a format string
@@ -1472,6 +1497,12 @@ private fun SearchStrings.voiceRows(): List<SettingsSearchEntry> {
             R.string.voice_system_on_device_title, R.string.voice_system_on_device_subtitle,
         ),
         providerEntry(ProviderTool.VOICE, ProviderTypes.WHISPER, R.string.voice_translate_title, R.string.voice_translate_subtitle),
+        // The pause and the detector, on the page of an engine that shows words as you speak (#1174).
+        providerEntry(
+            ProviderTool.VOICE, ProviderTypes.PARAKEET,
+            R.string.voice_silence_stop_title, R.string.voice_silence_stop_subtitle,
+        ),
+        providerEntry(ProviderTool.VOICE, ProviderTypes.PARAKEET, R.string.voice_vad_title, R.string.voice_vad_subtitle),
         providerEntry(
             ProviderTool.VOICE, ProviderTypes.WHISPER,
             R.string.models_whisper_compute_title, R.string.models_whisper_compute_subtitle,
@@ -1579,6 +1610,7 @@ private fun SearchStrings.clipboardRulesRows(): List<SettingsSearchEntry> {
     return listOf(
         row(R.string.clipboard_private_copies_title, R.string.clipboard_private_copies_subtitle),
         row(R.string.clipboard_password_paste_title, R.string.clipboard_password_paste_subtitle),
+        row(R.string.clipboard_strip_media_title, R.string.clipboard_strip_media_subtitle),
         row(R.string.clipboard_sensitive_title, R.string.clipboard_sensitive_subtitle),
         row(R.string.clipboard_detect_sensitive_title, R.string.clipboard_detect_sensitive_subtitle),
         row(R.string.clipboard_sensitive_expiry_title, R.string.clipboard_sensitive_expiry_subtitle),
@@ -2596,7 +2628,7 @@ private fun SearchStrings.otherRows(): List<SettingsSearchEntry> {
         plugin(R.string.plugins_allow_title, R.string.plugins_allow_subtitle),
         plugin(R.string.tooldetail_plugins_manage_title, R.string.tooldetail_plugins_manage_subtitle),
         plugin(R.string.plugins_install_file_title, R.string.plugins_install_file_subtitle),
-        plugin(R.string.plugin_ide_entry_title, R.string.plugin_ide_entry_subtitle),
+        plugin(R.string.plugin_ide_entry_title, R.string.plugin_ide_entry_subtitle_python),
         privacy(R.string.privacy_learn_typing_title, R.string.privacy_learn_typing_subtitle),
         privacy(R.string.privacy_system_dictionary_title, R.string.privacy_system_dictionary_subtitle),
         privacy(R.string.privacy_dict_shortcuts_title, R.string.privacy_dict_shortcuts_subtitle),
@@ -2702,9 +2734,9 @@ private fun SearchStrings.otherRows(): List<SettingsSearchEntry> {
             R.string.privacy_permissions_screen_content_subtitle,
         ).takeIf { ChannelFeatures.SCREEN_CONTEXT },
         permission(
-            R.string.privacy_permissions_screenshot_title,
-            R.string.privacy_permissions_screenshot_subtitle,
-        ).takeIf { ChannelFeatures.SCREENSHOT && ScreenshotService.supported },
+            R.string.privacy_permissions_system_buttons_title,
+            R.string.privacy_permissions_system_buttons_subtitle,
+        ).takeIf { ChannelFeatures.SYSTEM_BUTTONS },
         permission(
             R.string.privacy_permissions_split_screen_title,
             R.string.privacy_permissions_split_screen_subtitle,
@@ -2770,7 +2802,9 @@ private fun SearchStrings.otherRows(): List<SettingsSearchEntry> {
         access(R.string.accessibility_text_size_title, R.string.accessibility_text_size_subtitle),
         access(R.string.accessibility_keyboard_font_title, R.string.accessibility_keyboard_font_subtitle),
         access(R.string.accessibility_reduce_motion_title, R.string.accessibility_reduce_motion_subtitle),
+        access(R.string.accessibility_theme_effects_title, R.string.accessibility_theme_effects_subtitle),
         access(R.string.accessibility_classic_popup_title, R.string.accessibility_classic_popup_subtitle),
+        access(R.string.accessibility_open_folds_title, R.string.accessibility_open_folds_subtitle),
         access(R.string.accessibility_panel_motion_title, R.string.accessibility_panel_motion_subtitle),
         access(R.string.accessibility_selection_motion_title, R.string.accessibility_selection_motion_subtitle),
         access(R.string.accessibility_language_switch_motion_title, R.string.accessibility_language_switch_motion_subtitle),

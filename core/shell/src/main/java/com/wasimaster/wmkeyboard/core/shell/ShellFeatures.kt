@@ -38,6 +38,7 @@ object ShellFeatures {
     private const val PREFS = "shell_features"
     private const val KEY_ENABLED = "enabled"
     private const val KEY_REPLY_SCREEN = "reply_screen"
+    private const val KEY_CAPTURE = "screen_capture"
 
     /** The master switch: "Use Shizuku or root for keyboard features". */
     fun isEnabled(context: Context): Boolean = offered && prefs(context).getBoolean(KEY_ENABLED, false)
@@ -55,6 +56,18 @@ object ShellFeatures {
 
     fun setReplyReadsScreen(context: Context, on: Boolean) {
         prefs(context).edit().putBoolean(KEY_REPLY_SCREEN, on).apply()
+    }
+
+    /**
+     * OCR, Translate's photo side and the AI reply panel offer a "Capture
+     * screen" button ([ScreenCapture]) that needs no consent dialog.
+     */
+    fun capturesScreen(context: Context): Boolean = isEnabled(context) && capturesScreenSetting(context)
+
+    fun capturesScreenSetting(context: Context): Boolean = prefs(context).getBoolean(KEY_CAPTURE, false)
+
+    fun setCapturesScreen(context: Context, on: Boolean) {
+        prefs(context).edit().putBoolean(KEY_CAPTURE, on).apply()
     }
 
     private fun prefs(context: Context) = deviceContext(context).getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -126,6 +139,44 @@ object ShellGrants {
     suspend fun allowNotificationListener(context: Context, listenerService: String): Boolean? {
         val component = ComponentName(context.packageName, listenerService).flattenToString()
         return ShellAccess.exec(context, "cmd notification allow_listener $component")?.ok
+    }
+
+    private const val SENSITIVE_PERMISSION = "android.permission.RECEIVE_SENSITIVE_NOTIFICATIONS"
+
+    /**
+     * Whether Android 15+ lets the notification listener read one-time codes.
+     * Without RECEIVE_SENSITIVE_NOTIFICATIONS (signature|role, so no prompt
+     * can grant it) the listener gets "Sensitive notification content hidden"
+     * instead of the code. Always true before Android 15.
+     */
+    fun readsSensitiveNotifications(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < 35) return true
+        if (ContextCompat.checkSelfPermission(context, SENSITIVE_PERMISSION) == PackageManager.PERMISSION_GRANTED) {
+            return true
+        }
+        return runCatching {
+            val appOps = context.getSystemService(android.app.AppOpsManager::class.java)
+            val op = android.app.AppOpsManager.permissionToOp(SENSITIVE_PERMISSION) ?: return false
+            appOps.unsafeCheckOpNoThrow(op, android.os.Process.myUid(), context.packageName) ==
+                android.app.AppOpsManager.MODE_ALLOWED
+        }.getOrDefault(false)
+    }
+
+    /**
+     * Allows the app op behind RECEIVE_SENSITIVE_NOTIFICATIONS, then rebinds
+     * [listenerService] so the listener is trusted from its next notification
+     * on. The rebind's allow_listener always runs, so a failed disallow never
+     * leaves notification access off.
+     */
+    suspend fun allowSensitiveNotifications(context: Context, listenerService: String): Boolean? {
+        if (Build.VERSION.SDK_INT < 35) return true
+        val user = android.os.Process.myUid() / 100_000
+        val component = ComponentName(context.packageName, listenerService).flattenToString()
+        return ShellAccess.exec(
+            context,
+            "cmd appops set --user $user ${context.packageName} RECEIVE_SENSITIVE_NOTIFICATIONS allow && " +
+                "{ cmd notification disallow_listener $component; cmd notification allow_listener $component; }",
+        )?.ok
     }
 
     /**

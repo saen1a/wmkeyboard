@@ -76,6 +76,54 @@ class FloatingButtonModelTest {
     }
 
     @Test
+    fun aSystemButtonReadsBackFromItsToken() {
+        val back = FloatingAction.System(SystemButton.BACK)
+        assertEquals("system:BACK", back.token)
+        assertEquals(back, FloatingAction.parse(back.token))
+        assertNull(FloatingAction.parse("system:HOME_SCREEN"))
+        val button = SummonButtonSettings(tap = FloatingAction.System(SystemButton.RECENTS))
+        assertTrue(button.pressesSystemButtons())
+        assertFalse(SummonButtonSettings().pressesSystemButtons())
+    }
+
+    @Test
+    fun aSwipeGoesToTheNearestBoundDirection() {
+        val all = FlickDirection.entries
+        // Screen y points down: a swipe with negative dy is up.
+        assertEquals(FlickDirection.UP, flickDirectionOf(0f, -50f, all))
+        assertEquals(FlickDirection.DOWN_RIGHT, flickDirectionOf(40f, 40f, all))
+        assertEquals(FlickDirection.LEFT, flickDirectionOf(-60f, 5f, all))
+        // Only the four sides bound: a diagonal lands on the nearer side.
+        val sides = listOf(FlickDirection.UP, FlickDirection.RIGHT, FlickDirection.DOWN, FlickDirection.LEFT)
+        assertEquals(FlickDirection.UP, flickDirectionOf(20f, -50f, sides))
+        // Only up bound: a swipe down is near nothing.
+        assertNull(flickDirectionOf(0f, 50f, listOf(FlickDirection.UP)))
+        assertNull(flickDirectionOf(0f, 0f, all))
+    }
+
+    @Test
+    fun swipesRoundTripThroughTheirStoredForm() {
+        val flicks = mapOf(
+            FlickDirection.UP to voice,
+            FlickDirection.LEFT to FloatingAction.System(SystemButton.BACK),
+            FlickDirection.DOWN_RIGHT to maps,
+        )
+        assertEquals(flicks, decodeFloatingFlicks(encodeFloatingFlicks(flicks)))
+        assertEquals(mapOf(FlickDirection.UP to voice), decodeFloatingFlicks("UP=tool:VOICE,SIDEWAYS=tool:VOICE,DOWN=nonsense"))
+        // Unfixed, the swipes run nothing, and reach nothing.
+        val button = SummonButtonSettings(flicks = flicks)
+        assertTrue(button.activeFlicks.isEmpty())
+        assertTrue(button.copy(docked = true).pressesSystemButtons())
+    }
+
+    @Test
+    fun aMenuHoldsSixteenSlots() {
+        val many = (1..20).map { FloatingAction.App("com.a.p$it") }
+        assertEquals(16, FloatingAction.parseMenu(FloatingAction.menuToken(many)).size)
+        assertEquals(MAX_FLOATING_MENU_ITEMS, categoryItems(many).size)
+    }
+
+    @Test
     fun aCategoryKeepsItsIcon() {
         val categories = listOf(FloatingCategory("c1", "Work", listOf(maps), icon = "work"), FloatingCategory("c2", "B"))
         assertEquals(categories, decodeFloatingCategories(encodeFloatingCategories(categories)))
@@ -114,7 +162,7 @@ class FloatingButtonModelTest {
         val raw = """[
             {"id":"c1","name":"  A  ","items":["category:c2","tool:VOICE","tool:VOICE","menu","app:com.a.b"]},
             {"id":"c1","name":"again","items":[]},
-            {"id":"c2","name":"${"x".repeat(80)}","items":[${(1..12).joinToString(",") { "\"app:com.a.p$it\"" }}]}
+            {"id":"c2","name":"${"x".repeat(80)}","items":[${(1..MAX_FLOATING_MENU_ITEMS + 4).joinToString(",") { "\"app:com.a.p$it\"" }}]}
         ]"""
         val read = decodeFloatingCategories(raw)
         assertEquals(listOf("c1", "c2"), read.map { it.id })

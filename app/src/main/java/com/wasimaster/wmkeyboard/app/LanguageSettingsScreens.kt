@@ -18,6 +18,7 @@ import com.wasimaster.wmkeyboard.core.gesture.GlideTolerances
 import com.wasimaster.wmkeyboard.core.icons.symbols.outlined.Close
 import com.wasimaster.wmkeyboard.core.icons.symbols.outlined.Delete
 import com.wasimaster.wmkeyboard.core.icons.symbols.outlined.Search
+import com.wasimaster.wmkeyboard.core.icons.symbols.outlined.OpenInFull
 import com.wasimaster.wmkeyboard.core.icons.symbols.outlined.SwapHoriz
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
@@ -63,7 +64,6 @@ import com.wasimaster.wmkeyboard.core.dictionaries.WordlistDownloadManager
 import com.wasimaster.wmkeyboard.core.emoji.EmojiDictCatalog
 import com.wasimaster.wmkeyboard.core.emoji.EmojiDictDownloadManager
 import com.wasimaster.wmkeyboard.core.emoji.EmojiDictEntry
-import com.wasimaster.wmkeyboard.core.emoji.EmojiDictStore
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import kotlinx.coroutines.Dispatchers
@@ -94,10 +94,8 @@ import com.wasimaster.wmkeyboard.core.layout.language
 import com.wasimaster.wmkeyboard.core.layout.isShippedLayoutId
 import com.wasimaster.wmkeyboard.core.layout.resolveLayout
 import com.wasimaster.wmkeyboard.core.netlog.InternetPermission
-import com.wasimaster.wmkeyboard.core.prediction.DivvunRuntime
 import com.wasimaster.wmkeyboard.core.prediction.PhoneticSchemes
 import com.wasimaster.wmkeyboard.core.prediction.HunspellRuntime
-import com.wasimaster.wmkeyboard.core.prediction.VoikkoRuntime
 import com.wasimaster.wmkeyboard.core.prediction.PhoneticStripSource
 import com.wasimaster.wmkeyboard.core.prediction.PhoneticCandidateList
 import com.wasimaster.wmkeyboard.core.prediction.SpellingMap
@@ -607,33 +605,6 @@ internal fun startLanguageDataDownload(
  */
 private val AUTO_DOWNLOAD_SIZE = DictionaryCatalog.DictionarySize.LARGE
 
-/** Bytes a language's downloaded files are taking up right now. */
-internal fun downloadedLanguageBytes(context: Context, settings: KeyboardSettings, langId: String): Long =
-    languageDataFiles(context, settings, langId).sumOf { file ->
-        file.walkBottomUp().filter { it.isFile }.sumOf { it.length() }
-    }
-
-/**
- * Every downloaded file only [langId] uses, which is what removing it may
- * delete: its word list and phonetic index, emoji keywords, word pairs, CJK
- * dictionaries, spellers and Bangla's Avro dictionary. The neural model is
- * shared, so it counts only when no other language left on would still use
- * it. One list, so the question, the size it quotes and the delete cannot
- * disagree about what goes.
- */
-private fun languageDataFiles(context: Context, settings: KeyboardSettings, langId: String): List<File> = buildList {
-    val filesDir = context.filesDir
-    add(DictionaryStore.downloadedFile(filesDir, langId))
-    add(DictionaryStore.phoneticFile(filesDir, langId))
-    add(EmojiDictStore.packFile(filesDir, langId))
-    add(NgramPackDownloadManager.packFile(filesDir, langId))
-    add(DivvunRuntime.bhfstFile(filesDir, langId))
-    add(DivvunRuntime.zhfstFile(filesDir, langId))
-    add(VoikkoRuntime.dictionaryDir(filesDir, langId))
-    CjkDictCatalog.forLang(langId).forEach { add(CjkDictStore.packDir(filesDir, it)) }
-    if (langId == PhoneticSchemes.BENGALI.languageId) add(AvroDictionaryDownloads.file(filesDir))
-}.filter(File::exists) + listOfNotNull(orphanedNeuralModel(context, settings, langId))
-
 /** IndicXlit's directory when [langId] is the last language on that has neural suggestions. */
 private fun orphanedNeuralModel(context: Context, settings: KeyboardSettings, langId: String): File? {
     val neural = settings.suggestionStrip.neuralPhoneticLangs
@@ -758,11 +729,12 @@ private fun LanguageDataDownloadDialog(
     )
 }
 
-/** Whether [langId] has anything downloaded that removing it could leave behind. */
-internal fun hasLanguageData(context: Context, settings: KeyboardSettings, langId: String): Boolean =
-    languageDataFiles(context, settings, langId).isNotEmpty()
-
-/** Deletes what [languageDataFiles] lists, each through its own store so its screen hears of it. */
+/**
+ * Deletes every downloaded file only [langId] uses, each through its own store
+ * so its screen hears of it: its word list and phonetic index, emoji keywords,
+ * word pairs, spellers, CJK dictionaries and Bangla's Avro dictionary. The
+ * neural model is shared, so it goes only when no language left on uses it.
+ */
 internal suspend fun deleteLanguageData(
     context: Context,
     repository: SettingsRepository,
@@ -802,36 +774,41 @@ internal suspend fun removeLanguageLayouts(
     return true
 }
 
-/** The mirror of [LanguageDataDownloadDialog], for a language on its way out. */
-@Composable
-internal fun LanguageDataDeleteDialog(
-    language: LanguageDef,
-    bytes: Long,
-    onKeep: () -> Unit,
-    onDelete: () -> Unit,
-) {
-    AlertDialog(
-        onDismissRequest = onKeep,
-        title = { Text(stringResource(R.string.languages_data_delete_title)) },
-        text = {
-            Text(
-                stringResource(
-                    R.string.languages_data_delete_body,
-                    language.displayName,
-                    formatBytes(bytes),
-                ),
-            )
-        },
-        confirmButton = {
-            TextButton(onClick = onDelete) {
-                Text(stringResource(CommonR.string.common_delete))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onKeep) {
-                Text(stringResource(R.string.languages_data_delete_dismiss_action))
-            }
-        },
+/**
+ * Removes [langId]: its layouts leave the enabled set, every other language
+ * stops borrowing its words ("Also suggest from"), and what was downloaded
+ * for it is deleted. False, with nothing changed, when it is the last language.
+ *
+ * Downloads go without asking: they can be fetched again, and a language that
+ * is gone has no use for them. What the keyboard learned from the user's own
+ * typing stays, because nothing could bring that back.
+ */
+internal suspend fun removeLanguage(
+    context: Context,
+    repository: SettingsRepository,
+    settings: LiveSettings,
+    langId: String,
+): Boolean {
+    // Read before the layouts go: whether the shared neural model is still
+    // wanted depends on which languages were on.
+    val before = settings.value
+    if (!removeLanguageLayouts(repository, settings, langId)) return false
+    forgetAsSecondary(repository, before, langId)
+    deleteLanguageData(context, repository, before, langId)
+    return true
+}
+
+/**
+ * Drops [langId] from every language's "Also suggest from". Its switch is only
+ * drawn while it is enabled, so a pick left behind could never be turned off.
+ */
+internal suspend fun forgetAsSecondary(repository: SettingsRepository, settings: KeyboardSettings, langId: String) {
+    val current = settings.secondaryLanguages
+    if (current.none { (primary, ids) -> primary == langId || langId in ids }) return
+    repository.setSecondaryLanguages(
+        current.filterKeys { it != langId }
+            .mapValues { (_, ids) -> ids - langId }
+            .filterValues { it.isNotEmpty() },
     )
 }
 
@@ -871,11 +848,30 @@ internal fun addLanguage(
  * detail screen whatever its origin — a screen that lists what this language
  * types must not hide half of the answer behind a tap.
  */
-private fun overflowLayoutIds(lang: LanguageDef, settings: KeyboardSettings): List<String> =
+internal fun overflowLayoutIds(lang: LanguageDef, settings: KeyboardSettings): List<String> =
     lang.layoutIds.filter { id ->
         id !in settings.enabledLayoutIds &&
             resolveLayoutKeyman(settings.customLayouts, id) != null
     }
+
+/**
+ * The layouts on [lang]'s shelf — the row of cards on its screen and the grid in
+ * its gallery: the layouts written for it, less the [overflow] sent to More
+ * layouts, plus the user's own.
+ *
+ * The user's own layouts for this language sit on the same shelf as the
+ * shipped ones: a grid made in the editor or imported as a file used to be
+ * reachable only from Layout & size, and "turn it on under Languages" sent
+ * people to a screen that did not list it. Edited copies of shipped layouts
+ * keep the shipped id and are already on the shelf; secondary layouts have no
+ * on/off at all.
+ */
+internal fun shelfLayoutIds(lang: LanguageDef, settings: KeyboardSettings, overflow: List<String>): List<String> {
+    val own = settings.customLayouts
+        .filter { it.langId == lang.id && !it.secondary && !isShippedLayoutId(it.id) }
+        .map { it.id }
+    return (lang.layoutIds - overflow.toSet()) + own
+}
 
 /**
  * The Layouts group for one language: the layouts we wrote for it plus whichever
@@ -906,18 +902,7 @@ private fun LayoutsGroup(
     val toggle = rememberLayoutToggle(settings, repository, scope) { rulesRefresh++ }
 
     val overflow = settings.watch { overflowLayoutIds(lang, it) }
-    // The user's own layouts for this language sit on the same shelf as the
-    // shipped ones: a grid made in the editor or imported as a file used to be
-    // reachable only from Layout & size, and "turn it on under Languages" sent
-    // people to a screen that did not list it. Edited copies of shipped layouts
-    // keep the shipped id and are already on the shelf; secondary layouts have
-    // no on/off at all.
-    val own = settings.watch { s ->
-        s.customLayouts
-            .filter { it.langId == lang.id && !it.secondary && !isShippedLayoutId(it.id) }
-            .map { it.id }
-    }
-    val listed = (lang.layoutIds - overflow.toSet()) + own
+    val listed = settings.watch { shelfLayoutIds(lang, it, overflow) }
     val title = stringResource(R.string.languages_layouts_title)
 
     HighlightableRow(title, coarse = true) {
@@ -926,6 +911,21 @@ private fun LayoutsGroup(
                 title,
                 info = stringResource(R.string.languages_layouts_info),
                 modifier = Modifier.padding(start = 32.dp, end = 16.dp, top = 4.dp, bottom = 8.dp),
+                // The whole shelf at once, as a grid the cards fly out to. Only
+                // once there is more than the row shows at a glance.
+                action = if (listed.size + (if (overflow.isEmpty()) 0 else 1) > 2) {
+                    {
+                        IconButton(onClick = { onNavigate(layoutGalleryRoute(lang.id)) }) {
+                            Icon(
+                                Icons.Outlined.OpenInFull,
+                                contentDescription = stringResource(R.string.languages_layouts_gallery_open),
+                                modifier = Modifier.size(18.dp),
+                            )
+                        }
+                    }
+                } else {
+                    null
+                },
             )
             LayoutCarousel(
                 layoutIds = listed,
@@ -1151,33 +1151,10 @@ internal fun LanguageDetailScreen(
     val filesDir = context.filesDir
     val notifyDownload = rememberDownloadNotifier()
     val lang = LanguageRegistry.byId(langId)
-    var pendingDelete by remember { mutableStateOf(false) }
-
-    val removeLanguage: () -> Unit = {
+    val removeThisLanguage: () -> Unit = {
         scope.launch {
-            if (removeLanguageLayouts(repository, settings, langId)) onRemoved()
+            if (removeLanguage(context, repository, settings, langId)) onRemoved()
         }
-    }
-
-    if (pendingDelete) {
-        LanguageDataDeleteDialog(
-            language = lang,
-            bytes = downloadedLanguageBytes(context, settings.value, langId),
-            // Either answer removes the language: the dialog is about the
-            // files on disk, not about the removal the user already asked for.
-            onKeep = {
-                pendingDelete = false
-                removeLanguage()
-            },
-            onDelete = {
-                pendingDelete = false
-                val before = settings.value
-                scope.launch {
-                    deleteLanguageData(context, repository, before, langId)
-                    if (removeLanguageLayouts(repository, settings, langId)) onRemoved()
-                }
-            },
-        )
     }
 
     // A shipped layout always validates, but an *edited* one is stored under the
@@ -1234,6 +1211,22 @@ internal fun LanguageDetailScreen(
         }
     }
 
+    // The smart punctuation key, per language the same way: the model reads
+    // some languages thinly, and one it never saw gets a guess from the words
+    // it half knows. Only while the Typing switch is on, which rules them all.
+    val smartPunctuationOn = settings.watch { it.autoText.smartPunctuation }
+    SettingsGroup(stringResource(R.string.languages_punctuation_group)) {
+        item(visible = smartPunctuationOn, level = SettingLevel.STANDARD) {
+            ToggleSetting(
+                R.string.languages_smart_punctuation_title,
+                stringResource(R.string.languages_smart_punctuation_subtitle),
+                settings.watch { langId !in it.autoText.smartPunctuationOffLangs },
+                info = stringResource(R.string.languages_smart_punctuation_info, lang.englishName),
+                default = true,
+            ) { scope.launch { repository.setSmartPunctuationForLanguage(langId, it) } }
+        }
+    }
+
     LanguageGlideRadiiGroup(langId, lang.englishName, settings, repository, scope)
 
     // Fancy Text: the style the one fancy layout draws and types. The strip
@@ -1245,6 +1238,7 @@ internal fun LanguageDetailScreen(
                 // Read so the options are drawn again when a font of the
                 // user's own is added; the table itself is not snapshot state.
                 settings.watch { it.layoutBehavior.customFancyFonts }
+                settings.watch { it.layoutBehavior.zalgoStyles }
                 ChoiceSetting(
                     R.string.languages_fancy_style_row_title,
                     subtitle = stringResource(R.string.languages_fancy_style_row_subtitle),
@@ -1256,7 +1250,9 @@ internal fun LanguageDetailScreen(
                 ) { scope.launch { repository.setFancyStyle(it.id) } }
             }
         }
+        ZalgoStylesGroup(repository, settings)
         CustomFancyFontsGroup(repository, settings)
+        FancyStyleArrangementGroup(repository, settings)
     }
 
     // Vietnamese tone marking. One answer for both boards: Telex and VNI are
@@ -1664,7 +1660,7 @@ internal fun LanguageDetailScreen(
             item {
                 OutlinedButton(
                     onClick = {
-                        if (hasLanguageData(context, settings.value, langId)) pendingDelete = true else removeLanguage()
+                        removeThisLanguage()
                     },
                     modifier = Modifier
                         .fillMaxWidth()
