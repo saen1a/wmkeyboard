@@ -90,6 +90,8 @@ jobs:
     name: Native glide engine (host parity + Android .so)
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    env:
+      ABIS: arm64-v8a armeabi-v7a x86_64
     steps:
       - uses: actions/checkout@v7
 
@@ -140,7 +142,23 @@ jobs:
           fi
           echo "ANDROID_NDK=$ndk" >> "$GITHUB_ENV"
 
+      # The release APK uses the committed jniLibs, while this job builds a
+      # fresh copy below. Check the committed files first: a stale library
+      # without glideTuningVersion silently drops the new lift/preview budgets.
+      - name: Verify the committed jniLibs carry the new tuning symbol
+        run: |
+          nm=$(ls "$ANDROID_NDK"/toolchains/llvm/prebuilt/*/bin/llvm-nm)
+          symbol=Java_com_wasimaster_wmkeyboard_core_prediction_PredictionNative_glideTuningVersion
+          for abi in $ABIS; do
+            so=core/language/src/main/jniLibs/$abi/libwm_engine_jni.so
+            [ -s "$so" ] || { echo "::error::missing committed $so"; exit 1; }
+            "$nm" -D --defined-only "$so" | grep -q "$symbol" \
+              || { echo "::error::$so is stale (no $symbol); rebuild with native/wm-engine-jni/build.sh"; exit 1; }
+          done
+
       - name: Build the Android JNI bridge for all three ABIs
+        env:
+          WMKB_ABIS: ${{ env.ABIS }}
         run: native/wm-engine-jni/build.sh
 
       # The versioned envelope, the unversioned 32-value array and the old
@@ -155,7 +173,7 @@ jobs:
           readelf=$(ls "$ANDROID_NDK"/toolchains/llvm/prebuilt/*/bin/llvm-readelf)
           nm=$(ls "$ANDROID_NDK"/toolchains/llvm/prebuilt/*/bin/llvm-nm)
           symbol=Java_com_wasimaster_wmkeyboard_core_prediction_PredictionNative_glideTuningVersion
-          for abi in arm64-v8a armeabi-v7a x86_64; do
+          for abi in $ABIS; do
             so=core/language/src/main/jniLibs/$abi/libwm_engine_jni.so
             [ -s "$so" ] || { echo "::error::missing $so"; exit 1; }
             machine=$("$readelf" -h "$so" | awk -F': *' '/Machine:/{print $2}')
@@ -186,7 +204,7 @@ jobs:
       - name: Checksums
         run: |
           mkdir -p dist/native-engine
-          for abi in arm64-v8a armeabi-v7a x86_64; do
+          for abi in $ABIS; do
             cp "core/language/src/main/jniLibs/$abi/libwm_engine_jni.so" \
               "dist/native-engine/libwm_engine_jni-$abi.so"
           done
