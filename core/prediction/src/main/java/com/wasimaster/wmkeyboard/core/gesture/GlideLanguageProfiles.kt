@@ -167,12 +167,13 @@ object GlideLanguageProfiles {
     )
 
     /**
-     * English: the decoder defaults are its fit, and the context model's small
-     * list result is the one the reference model measured (+4.9 top-1 at
-     * 0.7/3.0 on the 17k bundled list). On the 26,523-stroke public English
-     * set over the 160k AOSP list, spelling unlisted candidates reads 79.57 %
-     * against 80.55 % without it; scoring listed candidates only reads
-     * 80.74 % with top-4 unchanged at 88.50 %, at no piece pass.
+     * English: the decoder defaults are its fit. The small bundled list uses
+     * 0.7/3.0 with pieces: +4.9 top-1 on the original 2,129/1,824 hard slice,
+     * +3.25 on the full 26,523 public set. The large list uses 0.5/5.0 on
+     * listed candidates only: 80.74 / 88.50 against 80.55 / 88.50 without it
+     * (paired +0.20 pp, CI [-0.05, +0.44], p = 0.121), which is non-negative
+     * but not a proven gain, at no piece pass. Spelling unlisted candidates
+     * on the large list reads 79.57 / 87.83.
      */
     val ENGLISH = Profile(
         freqWeight = GlideBeam.Tuning.DEFAULT.freqWeight,
