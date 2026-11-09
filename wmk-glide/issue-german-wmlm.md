@@ -1,5 +1,11 @@
 # [FEAT]: Train and publish a German context model (`de_context.wmlm`)
 
+> **Status 2026-11-09:** published upstream as the **G6P 90k**
+> `data/de/de_context.wmlm` (10,856,360 B, SHA-256 `4fe6d6b4…`, G7 PASS,
+> +0.73 pp Glide vs 2M). The earlier local Phase 1 model
+> (`10,856,432 B`, `e921…`) is not the release artifact. The data card records
+> the CC BY-NC / OpenSubtitles attribution and non-commercial notice.
+
 ## Summary
 
 German has no neural context model. `ContextModelCatalog` publishes `en` and

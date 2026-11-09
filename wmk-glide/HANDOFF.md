@@ -7,11 +7,20 @@ tree, the new `artifacts/` directory and this file.
 
 ## Stand
 
+> **Release identity:** the upstream file `data/de/de_context.wmlm` is the
+> **G6P 90k** candidate (**10,856,360 B**, SHA-256
+> `4fe6d6b44af85eafcda1458f6e30f991033cd96177d9f77ddf5695d294845beb`), G7 PASS,
+> Glide +0.73 pp vs the 2M baseline (CI +0.15…+1.31, p = 0.018). The local
+> artifact below is the earlier 4B/150k **Phase 1** model. The published model
+> measures AOSP **81.68 / 87.56** at the shipped 0.75 profile + 0.5/5.0 blend,
+> and **82.88 / 87.71** at the 0.5 profile (in-sample; fair split pending). The
+> data card records the CC BY-NC / OpenSubtitles attribution.
+
 Das erste deutsche Modell ist trainiert, exportiert und gemessen:
 
 | | |
 |---|---|
-| Modell | `wmk-glide/artifacts/models/de_context.wmlm` |
+| Modell (lokal, Phase 1) | `wmk-glide/artifacts/models/de_context.wmlm` |
 | Größe / SHA256 | **10.856.432 Bytes** / `e9212c5d986010c260d2db4d5c4f98820eb7885b6efff80fc49f181f59c8435c` |
 | Architektur | d256 / 6 Layer / 4 Heads / ff768 / ctx40 / vocab24576 / `langs ["de"]` |
 | Lehrer | `Qwen/Qwen3.5-4B-Base`, 150k Sätze (Tatoeba DE + Leipzig News 2023) |
@@ -139,10 +148,14 @@ Lies zuerst:
 - wmk-glide/state.md §2.7
 - wmk-glide/wmlm-training-plan.md
 
-Stand: Das deutsche d256/6/768-Modell (10,86 MB, SHA256 e9212c5d…) erreicht
-im Harness 77,40/83,42 auf 150k und 78,48/84,85 mit 441k Komposita bei
-Blend 0,5/5,0; Tippen 60,80/76,60. d288/6/896 brachte keinen Gewinn und ist
-verworfen. Die 150k Soft-Targets liegen unter wmk-glide/artifacts/out/.
+Stand: Veröffentlicht ist der **G6P 90k** (`data/de/de_context.wmlm`,
+**10,856,360 B**, SHA256 `4fe6d6b4…`, G7 PASS, +0.73 pp vs 2M). Das lokale
+d256/6/768-Phase-1-Modell (`10,856,432 B`, SHA256 `e9212c5d…`) erreicht im
+Harness 77,40/83,42 auf 150k und 78,48/84,85 mit 441k Komposita bei Blend
+0,5/5,0; Tippen 60,80/76,60. Der veröffentlichte G6P 90k misst AOSP
+81,68/87,56 (0,75) bzw. 82,88/87,71 (0,5, in-sample). d288/6/896 brachte
+keinen Gewinn und ist verworfen. Die 150k Soft-Targets liegen unter
+wmk-glide/artifacts/out/.
 
 Der App/Harness-Gap ist geschlossen: `ContextModel.scoresSpelled` +
 `lmScoresSpelled` im JNI, der Glide-Blend bewertet nur die ersten 8–16

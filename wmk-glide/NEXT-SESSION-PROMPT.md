@@ -43,8 +43,12 @@ zuerst den im Prompt genannten Pfad prüfen; die Artefakte liegen dort.
 
 ## Ausgangslage (nicht neu entscheiden)
 
-- Deutsches `de_context.wmlm`: d256/6/768, 10,86 MB, 77,40/83,42 auf 150k,
-  78,48/84,85 mit 441k Komposita, 0,5/5,0; App/Harness-Gap geschlossen.
+- Veröffentlichtes deutsches `de_context.wmlm`: **G6P 90k**, 10.856.360 Bytes,
+  SHA256 `4fe6d6b4…`, G7 PASS, +0,73 pp vs 2M; AOSP 81,68/87,56 (0,75) bzw.
+  82,88/87,71 (0,5, in-sample). Das lokale Phase-1-Modell
+  (`artifacts/models/de_context.wmlm`, 10.856.432 Bytes, `e921…`) ist nicht
+  die Release-Datei; seine 150k-Werte 77,40/83,42 und 78,48/84,85 bleiben die
+  Phase-1-Referenz. App/Harness-Gap geschlossen.
 - Korpus bereits gebaut:
   `wmk-glide/artifacts/corpora/de_1m_200k_chat.tsv`,
   **1.200.000 Zeilen**, 640k Tatoeba/Chat + 560k News (53,3/46,7),

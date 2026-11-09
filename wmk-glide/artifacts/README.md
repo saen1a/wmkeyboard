@@ -6,7 +6,7 @@ files are intentionally **not** tracked; see `.gitignore`.
 
 | Path | Size | Contents |
 |---|---:|---|
-| `models/de_context.wmlm` | 10,86 MB | the shippable d256/6/768 model; SHA256 `e9212c5d…` |
+| `models/de_context.wmlm` | 10,86 MB | local Phase 1 d256/6/768 model; SHA256 `e9212c5d…`; the release is the upstream G6P 90k (`10,856,360 B`, SHA256 `4fe6d6b4…`) |
 | `models/de_context_d288.wmlm` | 12,82 MB | rejected d288/6/896 experiment (no Glide gain) |
 | `out/de_soft_150k.npz` | 112 MB | 150k teacher soft targets, 91,3 % rows with mass |
 | `out/de_soft_150k.npz.sha256` | 87 B | SHA256 of the soft targets |

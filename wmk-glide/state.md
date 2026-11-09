@@ -307,6 +307,24 @@ kein Engine-Patch.
 
 ### 2.7 Deutsches `.wmlm` Phase 1 (28.10.2026): Gate erfüllt
 
+> **Published upstream (2026-11-09):** the release file is
+> `data/de/de_context.wmlm`, the **G6P 90k** candidate: **10,856,360 B**,
+> SHA-256 `4fe6d6b44af85eafcda1458f6e30f991033cd96177d9f77ddf5695d294845beb`,
+> G7 PASS, Glide **77.36 / 76.62** vs the 2M baseline (**+0.73 pp**, 95 % CI
+> [+0.15, +1.31], p = 0.018; model card). The local
+> `artifacts/models/de_context.wmlm` (**10,856,432 B**, `e921…`) is the earlier
+> 4B/150k **Phase 1** model measured below; it is not the published release.
+> The 72-byte difference is an export/header difference, not a payload
+> downgrade. On the shipped German AOSP source the published model measures
+> **81.68 / 87.56** at the 0.75 profile + 0.5/5.0 blend, and **82.88 / 87.71**
+> at the 0.5 profile (in-sample; a fair sentence/session split is still the
+> gate for switching the default). The data card
+> (`wasi-master/wmkeyboard-data/data/de/de_context.md`) records the CC BY-NC /
+> OpenSubtitles attribution; the app should link it with the non-commercial
+> notice.
+>
+> The Phase 1 numbers below are the earlier local model, not the release.
+
 Das erste deutsche Modell ist trainiert und gemessen. Lehrer
 `Qwen/Qwen3.5-4B-Base`, 150.000 Sätze (Tatoeba+Leipzig), Soft-Targets
 1.723.966 Zeilen, 91,3 % mit Lehrer-Masse. Schüler d256/6/768, 30.000 Steps,
