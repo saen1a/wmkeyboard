@@ -18,6 +18,7 @@ import org.junit.Test
 class ClipboardManifestAuditTest {
 
     private val manifest = File("src/main/AndroidManifest.xml").readText()
+    private val debugManifest = File("src/debug/AndroidManifest.xml").readText()
     private val method = File("src/main/res/xml/method.xml").readText()
     private val appBuild = File("build.gradle.kts").readText()
 
@@ -65,5 +66,13 @@ class ClipboardManifestAuditTest {
     fun `sdk levels match the build`() {
         assertTrue("targetSdk must be 36", Regex("""targetSdk\s*=\s*36\b""").containsMatchIn(appBuild))
         assertTrue("compileSdk must be 37", Regex("""release\(37\)""").containsMatchIn(appBuild))
+    }
+
+    @Test
+    fun `debug autofill fixtures stay out of the main manifest`() {
+        assertFalse(manifest.contains("FakeAutofillService"))
+        assertFalse(manifest.contains("InlineAutofillTestActivity"))
+        assertTrue(debugManifest.contains("FakeAutofillService"))
+        assertTrue(debugManifest.contains("InlineAutofillTestActivity"))
     }
 }
