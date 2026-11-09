@@ -13,12 +13,10 @@ API-level suites, static manifest and backup audits, emulator instrumentation
 and the manual password-manager matrix. **Not covered:** the general test
 conventions of the repository, which live on [Testing](/development/testing/).
 
-**Verified against** commit `c91fcba1a` plus the current uncommitted clipboard
-fix work in this worktree, on 2026-11-09. The suites below were committed in the
-clipboard refactor series. This documentation pass did not re-run the Gradle or
-emulator suites, so their current status is the recorded status, not a fresh
-run. The one exception is the T7 secure-window run recorded in commit
-`cac37a30e`.
+**Verified against** commit `c91fcba1a` plus the final clipboard
+fixes, on 2026-11-09. The local JVM/Robolectric matrix and the T7 emulator
+`FLAG_SECURE` test were re-run after the main merge and passed. T6 remains
+blocked and T8 remains unexecuted; neither is a pass.
 
 <Mermaid
 caption="The test stack. Pure JVM tests cover contracts, Robolectric pins the API level, static audits read the build inputs, and only the emulator and manual rows can prove device behavior."
@@ -40,14 +38,14 @@ flowchart LR
 
 | Unit | Layer | What it proves | Primary suite | Command | Latest status |
 |---|---|---|---|---|---|
-| T1 | Pure JVM | Inline suggestion lane assignment, budgets and empty input, with no chip content | `InlineSuggestionClassifierTest`, `InlineChipClipTest` | `./gradlew :feature:ime:testDebugUnitTest --tests "com.wasimaster.wmkeyboard.ime.InlineSuggestionClassifierTest" --tests "com.wasimaster.wmkeyboard.ime.InlineChipClipTest"` | Tests committed in `aeb21d41a`; not re-run by this page |
-| T2 | Static audit | IME stays in the main process and is not isolated, is direct-boot aware, advertises inline suggestions, targetSdk is 36, compileSdk is 37, backup rules exclude `clipboard`, debug fixtures stay out of release | `ClipboardManifestAuditTest`, `ClipboardBackupRulesTest` | `./gradlew :app:testIntlDebugUnitTest --tests "com.wasimaster.wmkeyboard.app.ClipboardManifestAuditTest" --tests "com.wasimaster.wmkeyboard.app.ClipboardBackupRulesTest"` | Tests committed in `aeb21d41a` and `45e385834`; not re-run by this page |
-| T3 | Pure JVM | Restore drops sensitive items and items whose kind lacks its path, deletes a corrupt snapshot, and covers external reload merge and delete | `ClipboardStoreTest` | `./gradlew :app:testIntlDebugUnitTest --tests "com.wasimaster.wmkeyboard.core.clipboard.ClipboardStoreTest"` | Tests committed; not re-run by this page |
-| T3B | Pure JVM | Crafted sync and ConfigBackup items drop alone, benign text survives, ids deconflict under the path lock | `ClipboardSyncSanitizerTest`, `SyncedClipboardIdsTest` | `./gradlew :core:content:testDebugUnitTest --tests "com.wasimaster.wmkeyboard.core.clipboard.ClipboardSyncSanitizerTest"` then `./gradlew :core:settings:testDebugUnitTest --tests "com.wasimaster.wmkeyboard.core.settings.SyncedClipboardIdsTest"` | Tests committed in `aeb21d41a` and `2fb751ae1`; not re-run by this page |
-| T4 | Pure JVM | The secure-window predicate is true for a password field, incognito and a secret panel, and false for clear state | `SecureWindowTest` | `./gradlew :feature:ime:testDebugUnitTest --tests "com.wasimaster.wmkeyboard.ime.SecureWindowTest"` | Tests committed in `aeb21d41a`; not re-run by this page |
+| T1 | Pure JVM | Inline suggestion lane assignment, budgets and empty input, with no chip content | `InlineSuggestionClassifierTest`, `InlineChipClipTest` | `./gradlew :feature:ime:testDebugUnitTest --tests "com.wasimaster.wmkeyboard.ime.InlineSuggestionClassifierTest" --tests "com.wasimaster.wmkeyboard.ime.InlineChipClipTest"` | Re-run after the main merge: EXIT=0 |
+| T2 | Static audit | IME stays in the main process and is not isolated, is direct-boot aware, advertises inline suggestions, targetSdk is 36, compileSdk is 37, backup rules exclude `clipboard`, debug fixtures stay out of release | `ClipboardManifestAuditTest`, `ClipboardBackupRulesTest` | `./gradlew :app:testIntlDebugUnitTest --tests "com.wasimaster.wmkeyboard.app.ClipboardManifestAuditTest" --tests "com.wasimaster.wmkeyboard.app.ClipboardBackupRulesTest"` | Re-run after the main merge: EXIT=0 |
+| T3 | Pure JVM | Restore drops sensitive items and items whose kind lacks its path, deletes a corrupt snapshot, and covers external reload merge and delete | `ClipboardStoreTest` | `./gradlew :app:testIntlDebugUnitTest --tests "com.wasimaster.wmkeyboard.core.clipboard.ClipboardStoreTest"` | Re-run after the main merge: EXIT=0 |
+| T3B | Pure JVM | Crafted sync and ConfigBackup items drop alone, benign text survives, ids deconflict under the path lock | `ClipboardSyncSanitizerTest`, `SyncedClipboardIdsTest` | `./gradlew :core:content:testDebugUnitTest --tests "com.wasimaster.wmkeyboard.core.clipboard.ClipboardSyncSanitizerTest"` then `./gradlew :core:settings:testDebugUnitTest --tests "com.wasimaster.wmkeyboard.core.settings.SyncedClipboardIdsTest"` | Re-run after the main merge: EXIT=0 |
+| T4 | Pure JVM | The secure-window predicate is true for a password field, incognito and a secret panel, and false for clear state | `SecureWindowTest` | `./gradlew :feature:ime:testDebugUnitTest --tests "com.wasimaster.wmkeyboard.ime.SecureWindowTest"` | Re-run after the main merge: EXIT=0 |
 | T5 | Robolectric API 36 | Sensitive flag and clipboard extras at the target API, device-protected palette context, and a loud failure if the API 36 jar is missing | `ClipboardApi36Test` | `./gradlew :feature:ime:testDebugUnitTest --tests "com.wasimaster.wmkeyboard.ime.ClipboardApi36Test"` | Test committed in `aeb21d41a`; not re-run by this page |
 | T6 | Emulator | A debug fake autofill provider returns a deterministic chip through the inline lane | `InlineAutofillEmulatorTest` | `./gradlew :app:connectedIntlDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.wasimaster.wmkeyboard.InlineAutofillEmulatorTest` | **Blocked.** The test is `@Ignore`d. No pass. |
-| T7 | Emulator plus manual | `FLAG_SECURE` on the IME window for a password field, `bmgr` exclusion of `clipboard/`, and a locked-boot clipboard gate | `SecureWindowEmulatorTest` | `./gradlew :app:connectedIntlDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.wasimaster.wmkeyboard.SecureWindowEmulatorTest` | `FLAG_SECURE` pass recorded in `cac37a30e`. `bmgr` and locked boot remain manual and were not run here. |
+| T7 | Emulator plus manual | `FLAG_SECURE` on the IME window for a password field, `bmgr` exclusion of `clipboard/`, and a locked-boot clipboard gate | `SecureWindowEmulatorTest` | `./gradlew :app:connectedIntlDebugAndroidTest -Pandroid.testInstrumentationRunnerArguments.class=com.wasimaster.wmkeyboard.SecureWindowEmulatorTest` | `FLAG_SECURE` pass re-run after the main merge on API 36: EXIT=0. `bmgr` and locked boot remain manual and were not run here. |
 | T8 | Manual matrix | Bitwarden and Proton Pass inline and popup, locked vault, passkey field, incognito, Samsung One UI | None; see [Operations](/development/clipboard/operations/#samsung-vendor-history) | Not a command | **Unexecuted.** No licensed APK, test vault, passkey provider or One UI hardware locally. |
 
 Nothing in this table is a T6 or T8 pass. A blocked or unexecuted row is a known
