@@ -227,6 +227,10 @@ The glide decoder has its own subsystem documentation:
 pipeline, runtime scenarios, stores, integration, language profiles and
 decisions.
 
+The clipboard system has its own subsystem documentation:
+[Clipboard system](/development/clipboard/), which explains the single write
+gate, the memory-only secret store and the Android provider boundary.
+
 `NativeEngine` (`core/language`, package `core.engine`) loads
 libwm_engine_jni once for every class that calls into it, on a device and in
 a JVM test alike. `NativeEngine.forceKotlin` pins the SIMD kernels to their

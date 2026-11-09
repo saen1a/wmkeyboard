@@ -1,0 +1,256 @@
+---
+title: "Clipboard architecture"
+description: "The clipboard containers and components, the single write gate, the self-write ledger, store ownership and the process model."
+sidebar:
+  label: "Architecture"
+  order: 9
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** The C4 container and component views of the clipboard subsystem, the
+one keyboard-originated write path, state ownership and the Android process
+model. **Not covered:** request-by-request sequences, which the
+[runtime page](/development/clipboard/runtime/) owns, and the data retention
+rules on the [data page](/development/clipboard/data-and-state/).
+
+**Verified against** commit `c91fcba1a` plus the current uncommitted clipboard
+fix work in this worktree, on 2026-11-09. Line numbers move; class and function
+names are the stable reference.
+
+## Containers
+
+<Mermaid
+	caption="C4 level 2. The IME service and its helpers run in the app main process. The store and sanitizer are Kotlin libraries in core content, settings are a core model, and Android owns the clipboard service. Debug fixtures exist only in a debug build."
+	chart={`
+flowchart TB
+  subgraph App[":app"]
+    SettingsApp["Settings and backup screens"]
+    Backup["WMBackupAgent<br/>and backup rule files"]
+    Debug["FakeAutofillService and test activity<br/>debug builds only"]
+  end
+  subgraph IME[":feature:ime<br/>main process"]
+    Service["WMKeyboardService<br/>listener, gates, paste routing"]
+    Gate["ClipboardWriteGate"]
+    Ledger["SelfWriteLedger"]
+    Inline["InlineAutofill"]
+    Panel["Clipboard panel UI<br/>ClipboardFields"]
+  end
+  subgraph Core[":core:content"]
+    Store["ClipboardStore"]
+    Secrets["SecretMemoryStore"]
+    Sanitizer["ClipboardSyncSanitizer"]
+    Classifier["ClipSensitivity and clip rules"]
+  end
+  SettingsCore[":core:settings<br/>ClipboardSettings"]
+  Platform["Android platform<br/>ClipboardManager, ClipData, InputConnection"]
+  Disk[("filesDir/clipboard<br/>history.json and images")]
+  Vendor["Samsung One UI history<br/>vendor app-private data"]
+  Sync["ConfigBackup and sync bundle"]
+
+  SettingsApp -->|"writes ClipboardSettings"| SettingsCore
+  SettingsCore -->|"limits and handling"| Service
+  Backup -->|"excludes the clipboard directory"| Disk
+  Debug -. "debug only" .-> Inline
+  Service -->|"every keyboard write"| Gate
+  Gate -->|"one-shot token"| Ledger
+  Service -->|"classify and add"| Store
+  Service -->|"inline chip request"| Inline
+  Service -->|"panel actions"| Panel
+  Store -->|"owns"| Secrets
+  Store -->|"reads and writes"| Disk
+  Store -->|"uses"| Classifier
+  Sync -->|"raw JSON"| Sanitizer
+  Sanitizer -->|"portable items only"| Store
+  Service -->|"setPrimaryClip or clear"| Platform
+  Platform -->|"clip changes"| Service
+  Service -->|"commitText or commitContent"| Platform
+`}
+/>
+
+| Container | Technology | Responsibility | State it owns |
+|---|---|---|---|
+| `:app` | Kotlin, Compose, Android manifest | Settings screens, ConfigBackup entry points, manifest and backup rules, debug-only fixtures | Preferences, backup files, the debug test activity |
+| `:feature:ime` | Kotlin, `InputMethodService`, Compose | Clipboard listener, access gates, paste routing, write gate, self-write ledger, inline chips, panel UI | `KeyboardUiState.clipboardItems`, `KeyboardClipboard.held`, pending self-write tokens |
+| `:core:content` | Kotlin | History model, secret memory store, sync sanitizer, sensitivity and copy rules | `ClipboardStore` items, `SecretMemoryStore` entries |
+| `:core:settings` | Kotlin, DataStore | `ClipboardSettings` and the ConfigBackup writer | Persisted settings and the clipboard section of a backup |
+| Android platform | System services | Owns the primary clip, enforces the default-IME or focus read rule, hosts `InputConnection` | The one primary `ClipData` |
+| App-private storage | JSON and image files | Durable clear history and copied image bytes | `history.json`, `images/` |
+| ConfigBackup and sync | User-initiated JSON bundle | Carries portable clips between installs | The bundle, never the secret store |
+| Samsung One UI history | Vendor system data | Samsung's own clipboard history | Not reachable from this app |
+| Debug fake provider | `AutofillService`, debug source set | Answers inline requests with one deterministic chip | No real credential |
+
+## Components
+
+<Mermaid
+	caption="C4 level 3. Capture enters through one listener, uses one classifier and one store. Every keyboard write leaves through ClipboardWriteGate, and the listener consumes the token that gate stamped. The store keeps clear clips on disk and secrets in memory."
+	chart={`
+flowchart TB
+  subgraph Capture["Capture"]
+    Listener["clipboardListener"]
+    Access["isClipboardAccessible<br/>and capture gates"]
+    Media["Image and URI capture"]
+    Text["captureTextClip"]
+  end
+  subgraph Classify["Classify and tidy"]
+    SourceFlag["clipMarkedSensitive<br/>EXTRA_IS_SENSITIVE"]
+    Heuristic["ClipSensitivity"]
+    Rules["ClipCopyRules and tracker stripping"]
+    Entities["ClipEntities and ClipLinks"]
+  end
+  subgraph Write["Keyboard write path"]
+    Gate["ClipboardWriteGate"]
+    Ledger["SelfWriteLedger"]
+    Private["KeyboardClipboard"]
+  end
+  subgraph Persist["Ownership"]
+    Store["ClipboardStore"]
+    Secrets["SecretMemoryStore"]
+    Memory["process memory only"]
+    Disk[("history.json and images")]
+  end
+  subgraph Surface["Surfaces"]
+    Panel["ClipboardFields"]
+    Strip["Copy chip and entity chips"]
+  end
+  subgraph Trust["Untrusted input"]
+    Sanitizer["ClipboardSyncSanitizer"]
+  end
+
+  Listener --> Access
+  Access --> SourceFlag
+  SourceFlag --> Heuristic
+  Heuristic -->|"text and HTML"| Text
+  Access -->|"image, file, folder, video"| Media
+  Text --> Rules
+  Text --> Entities
+  Text -->|"clear text"| Store
+  Text -->|"secret"| Secrets
+  Media -->|"image bytes"| Store
+  Media -->|"URI reference"| Store
+  Store -->|"clear items"| Disk
+  Secrets -->|"stays in"| Memory
+  Store -->|"merged list"| Panel
+  Store -->|"latest text"| Strip
+  Panel -->|"every copy, clear, undo"| Gate
+  Strip -->|"copy fragment"| Gate
+  Gate -->|"token in ClipData extras"| Ledger
+  Gate -->|"private hold"| Private
+  Gate -->|"setPrimaryClip"| Listener
+  Listener -->|"consume token"| Gate
+  Sanitizer -->|"portable items"| Store
+`}
+/>
+
+| Component | Responsibility | Important type | Depends on |
+|---|---|---|---|
+| `clipboardListener` | Receives every primary clip change while the service is alive, skips own writes, starts the capture path | `ClipboardManager.OnPrimaryClipChangedListener` | Android clipboard service |
+| Access gate | Rejects capture and panel access before first unlock or while the keyguard is showing | `isClipboardAccessible`, `isDeviceLocked` | `KeyguardManager`, user unlock state |
+| Capture gates | Apply history, incognito, password-field and sensitive handling rules | `clipCapturePaused`, `secureCopyKeptMasked` | `KeyboardUiState`, `ClipboardSettings` |
+| Source sensitivity check | Reads Android 13's `EXTRA_IS_SENSITIVE` flag from the copying app | `clipMarkedSensitive` | `ClipData.description.extras` |
+| `ClipSensitivity` | Heuristic classifier for bare one-time codes and generated-looking tokens | `ClipSensitivity.looksSensitive` | Text only |
+| Copy rules | Plain letters, user copy rules and tracker stripping before storage | `ClipCopyRules`, `SelectionMacros.stripTrackersInText` | Text only |
+| Media capture | Copies images into app storage; records files, folders and videos by URI | `copyImageCapped`, `addFileClips` | `ContentResolver`, `UsageStatsManager` optional |
+| `ClipboardWriteGate` | The only keyboard-originated system clipboard write path | `ClipboardWriteGate` | `ClipboardManager`, `KeyboardClipboard`, `SelfWriteLedger` |
+| `SelfWriteLedger` | One-shot, five-second tokens so the listener does not record the keyboard's own write twice | `SelfWriteLedger` | `ClipData.description.extras` |
+| `KeyboardClipboard` | Holds the keyboard's own text copy in memory while private mode is on | `KeyboardClipboard` | Service callback |
+| `ClipboardStore` | History model, expiry, cap, pin, tag, edit, order, detach and merge | `ClipboardStore`, `ClipItem`, `ClipKind` | `SnapshotFile`, `SecretMemoryStore` |
+| `SecretMemoryStore` | Memory-only home for sensitive text, with no file, image, pin or search index | `SecretMemoryStore` | Process memory |
+| `ClipboardSyncSanitizer` | Untrusted-bundle boundary for ConfigBackup and sync | `ClipboardSyncSanitizer` | `ClipboardJson` |
+| `InlineAutofill` | Builds the inline suggestion request and inflates returned chips | `InlineAutofill`, `InlineSuggestionClassifier` | Android inline suggestions API |
+| `ClipboardFields` | Panel cells, search, editor, entity strip and panel actions | `ClipboardPanelActions`, `ClipboardField` | `KeyboardUiState` |
+| `ClipboardDiagnostics` | Content-free counters for capture and inline autofill | `ClipboardDiagnostics` | None |
+| `FakeAutofillService` | Debug-only deterministic inline provider for the emulator test | `FakeAutofillService` | Android autofill framework |
+
+`ClipboardClassifier` is a role on this page, not a class. The concrete code is
+`ClipSensitivity` for the heuristic, `clipMarkedSensitive` for the platform
+flag, and `ClipLinks` and `ClipEntities` for the derived link and entity chips.
+
+## The one write path
+
+Every keyboard-originated write goes through `ClipboardWriteGate`: panel copies,
+tool copies, clean-text write-back, Clear, and Undo restores. The gate carries the
+caller's sensitivity decision onto the clip, optionally stamps a self-write
+token, and calls `setPrimaryClip`. `ClipboardWriteGate.clear` is the matching
+clear path.
+
+The architecture test
+`keyboard clipboard writes go through the write gate` fails any new direct
+`setPrimaryClip` or `clearPrimaryClip` call under `feature/ime` outside
+`ClipboardWriteGate.kt`. That is the enforcement point for the one-writer rule.
+
+The self-write token is a random identifier in `ClipData.description.extras`
+with a private key. `SelfWriteLedger` keeps it for five seconds and consumes it
+once. A write-back uses the token because the clean text is already in history.
+It does not use the token to hide a stale write: the service first checks that
+the system clipboard still holds the exact text it captured.
+
+## Process model
+
+| Fact | Evidence | Consequence |
+|---|---|---|
+| The IME service runs in the app main process | `WMKeyboardService` has no `android:process` attribute | Clipboard state is process-local and shares the app's lifecycle |
+| The IME is not isolated | The manifest has no `isolatedProcess` for the service | It can use app-private files and normal Android services |
+| The IME is direct-boot aware | `android:directBootAware="true"` | The service can start before first unlock, but clipboard data stays gated |
+| `:crash`, `:semantic` and `:imagegen` are separate processes | Manifest entries for unrelated components | They do not own clipboard state and do not receive clipboard changes |
+| Process death clears memory-only secrets | `SecretMemoryStore` has no file | A password retained with Keep or Short-lived is gone after the process dies |
+| Destroy saves the clear history and removes the listener | `onDestroy` | A clean shutdown preserves clear clips; a kill can lose the last unsaved change |
+
+The `:crash` process hosts the crash handler, `:semantic` hosts embedding
+work and `:imagegen` hosts image generation. They are named here only to rule
+them out: none of them is a clipboard container, and none changes the process
+boundary above.
+
+## State ownership
+
+| State | Owner | Survives service destroy | Survives process death |
+|---|---|---|---|
+| Clear text, HTML and link clips | `ClipboardStore` over `history.json` | Yes, after `save` | Yes |
+| Copied image bytes | `ClipboardStore` over `images/` | Yes | Yes |
+| File, folder and video references | `ClipboardStore` over `history.json` | Yes | Yes, while the provider grant lasts |
+| Retained secrets | `SecretMemoryStore` | No | No |
+| Private keyboard copy | `KeyboardClipboard.held` | No | No |
+| Self-write tokens | `SelfWriteLedger` | No | No |
+| Panel snapshot | `KeyboardUiState.clipboardItems` | No | No |
+| Capture counters | `ClipboardDiagnostics` | No | No |
+
+## Failure modes
+
+| Failure | What the subsystem does | What the user sees |
+|---|---|---|
+| Another app becomes the default IME | The listener may stay registered, but reads fail the platform rule | Copies are missed silently |
+| The IME process is killed | No listener and no in-memory state until the service starts again | The history is stale and retained secrets are gone |
+| `history.json` is corrupt | The store deletes the unreadable file and starts empty | Clear history is lost, not partially resurrected |
+| An external writer deletes the history | `clearFromExternal` drops clear items and secrets | The panel is empty |
+| An image copy exceeds the hard cap | The partial file is deleted and the clip is rejected | The image is not in history |
+| A file URI grant has expired | Paste probes readability, removes the item and shows a toast | The clip disappears with an error message |
+| A sync bundle is malformed | The sanitizer returns an empty bundle or drops one item | Other clips still restore |
+| Inline autofill has no provider | No chips are produced | Typing still works; no credential is invented |
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| IME service declaration | `app/src/main/AndroidManifest.xml:1361` |
+| IME main process and direct boot | `app/src/main/AndroidManifest.xml:1362` |
+| Unrelated private processes | `app/src/main/AndroidManifest.xml:1332`, `:1643`, `:1651` |
+| Write gate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ClipboardWriteGate.kt:19` |
+| Self-write token key | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ClipboardWriteGate.kt:26` |
+| Self-write ledger | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/SelfWriteLedger.kt:13` |
+| Private clipboard | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/KeyboardClipboard.kt:21` |
+| Listener | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:3866` |
+| Access gate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:7526` |
+| Store construction | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:5793` |
+| Store settings | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:9115` |
+| History store | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:269` |
+| Secret store | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/SecretMemoryStore.kt:17` |
+| Sync sanitizer | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardSyncSanitizer.kt:33` |
+| Sensitivity classifier | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipSensitivity.kt:21` |
+| Inline autofill | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/InlineAutofill.kt:45` |
+| Panel UI | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ui/ClipboardFields.kt:735` |
+| Diagnostics | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ClipboardDiagnostics.kt:16` |
+| Debug fake provider | `app/src/debug/java/com/wasimaster/wmkeyboard/FakeAutofill.kt:30` |
+| Write-gate architecture test | `tools/architecture/src/test/kotlin/com/wasimaster/wmkeyboard/architecture/ArchitectureTest.kt:183` |
+| Process audit test | `app/src/test/java/com/wasimaster/wmkeyboard/app/ClipboardManifestAuditTest.kt:36` |
+
+*Drafted by the WM Keyboard documentation agent.*

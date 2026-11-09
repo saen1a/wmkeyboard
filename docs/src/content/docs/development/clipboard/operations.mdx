@@ -1,0 +1,250 @@
+---
+title: "Clipboard operations"
+description: "Rollout, compatibility and rollback for the clipboard system: the Never save default, forward-only backup exclusion, vendor history, API 24/25 and target 36/37 readiness."
+sidebar:
+  label: "Operations"
+  order: 15
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** What changes for an install, what a release manager must check, and
+how to disable or roll back the behavior. **Not covered:** the user guide on
+[Clipboard manager](/tools/clipboard/) or the test matrix on
+[Testing](/development/clipboard/testing/).
+
+**Verified against** commit `c91fcba1a` plus the current uncommitted clipboard
+fix work in this worktree, on 2026-11-09. Line numbers move; class and function
+names are the stable reference.
+
+## Rollout shape
+
+<Mermaid
+caption="The rollout order. The user-visible default changes first, the backup exclusion protects new backups, and old backups and vendor history remain outside the app's control."
+chart={`
+flowchart LR
+  Default["Default changes to<br/>Never save"]
+  Rules["Backup rules exclude<br/>the clipboard directory"]
+  NewBackup["New OS backups<br/>carry no clipboard"]
+  OldBackup["Old backups may still<br/>carry clipboard text"]
+  Vendor["Samsung vendor history<br/>stays outside the app"]
+  Default --> Rules
+  Rules --> NewBackup
+  OldBackup -.->|"user replaces or invalidates"| NewBackup
+  Vendor -.->|"no public API"| NewBackup
+`}
+/>
+
+The change has three independent parts:
+
+1. **The default handling becomes Never save.** A clip Android marks
+   sensitive, or one the heuristic flags, is dropped instead of retained. A
+   user can still choose Keep or Short-lived, and those choices stay in process
+   memory only.
+2. **The backup exclusion covers the whole clipboard directory.** New Android
+   backups and device transfers carry no clear history and no image bytes.
+   Explicit ConfigBackup and sync are separate sanitized paths.
+3. **The vendor history is out of scope.** Samsung One UI keeps its own history.
+   Making WM Keyboard the default keyboard does not read, import, replace or
+   delete it.
+
+## Default change to Never save
+
+`ClipboardSettings.sensitiveHandling` defaults to
+`SensitiveClipHandling.NEVER_SAVE`. The earlier prototype default was `KEEP`, so
+the visible behavior changes on a fresh install or a profile with no stored
+value:
+
+| Before | After | What the user sees |
+|---|---|---|
+| A flagged copy was kept in memory for the normal history lifetime | A flagged copy is dropped at capture | A password-manager copy does not appear in the panel |
+| A user had to opt out of retention | A user must opt in to Keep or Short-lived | The safe behavior is the default |
+| A retained secret used the normal history timer | A retained secret uses the secret timer | Keep uses the normal expiry; Short-lived uses its own timer |
+
+An existing install with an explicit stored choice keeps that choice. The
+default applies when the key is absent, which is the normal upgrade path for a
+new preference.
+
+The heuristic precision cost is real. A benign clip that looks like a one-time
+code can be dropped. The user can turn off the heuristic recognition under
+**Clipboard / Passwords and codes**, while the platform sensitive flag stays
+authoritative. The default is documented for users on
+[Clipboard manager](/tools/clipboard/#passwords-are-handled-deliberately).
+
+## Backup exclusion is forward-only
+
+`data_extraction_rules.xml` and `backup_rules.xml` exclude the whole
+`clipboard` directory for cloud backup, device transfer and the legacy path.
+This protects backups made after the rule ships. It cannot edit a backup that
+already exists.
+
+A pre-fix backup can therefore contain clipboard text, including sensitive
+text, because an older build wrote the clear history to `history.json` and did
+not exclude it. Rollout actions:
+
+1. Tell users who enabled Android backup to create a fresh backup after the
+   update, or to delete the old backup if their backup provider allows it.
+2. Do not describe the old backup as sanitized. It is not.
+3. Treat an explicit ConfigBackup as a separate artifact. Its clipboard section
+   is sanitized on import, but an old exported file is still a plain file that
+   the user controls.
+4. Do not run `bmgr wipe` or a factory reset on a user device as part of a
+   normal release. A wipe is destructive and belongs only in a disposable test
+   environment.
+
+The app also declines an OS backup while the user's Android backup switch is
+off. The exclusion is not a substitute for that switch; both protect the same
+data from different directions.
+
+## Samsung vendor history
+
+One UI adds a vendor clipboard history that is not the AOSP clipboard. On
+current Galaxy devices the Samsung Keyboard package is reported as
+`com.samsung.android.honeyboard`, with app-private history files such as
+`ClipItem.db`. This page does not verify that package name or file name on a
+device.
+
+WM Keyboard cannot read, import, write or replace that history. It can change
+which package holds default-IME clipboard access, but it cannot stop the vendor
+store or clear it. Support guidance:
+
+- Clear the vendor history in One UI, from Samsung Keyboard's clipboard button
+  or the clipboard Edge panel.
+- Do not promise that disabling the vendor service is supported. It is a vendor
+  change outside the app and can affect Samsung features.
+- Do not say that a clip is gone from the device when it may still be in the
+  vendor history.
+- A default-keyboard switch changes typing and default-IME access. It does not
+  remove Samsung's settings or its history.
+
+The [security page](/development/clipboard/security/#samsung-vendor-history)
+records this as an accepted, unverified risk.
+
+## API 24 and 25 file fallback
+
+`core:common` and `:app` support `minSdk 24` with no core library desugaring.
+`java.nio.file` is API 26+, so the snapshot writer has two replacement paths:
+
+| API | Replacement | Behavior |
+|---|---|---|
+| 26 and later | `Files.move` with `ATOMIC_MOVE`, then `REPLACE_EXISTING` if atomic move is unsupported | The part file replaces the live file in one step where the file system supports it |
+| 24 and 25 | `replaceLegacy` | Rename the part over the live file; if that fails, rename the old file aside, rename the part in, and restore the old file if the second rename fails |
+
+The live file is never deleted before the replacement succeeds. A part file is
+unique per write and is cleaned up on failure. A crash leaves at most a stale
+part or backup file, not a truncated history.
+
+The JVM test sees `Build.VERSION.SDK_INT == 0` and takes the legacy branch.
+`SnapshotFileApi34Test` takes the API 26+ branch.
+
+This fallback is about snapshot files. Media paste is a separate fallback: a
+field that refuses `commitContent` can receive the image or URI through the
+system clipboard, and that path is not gated by API 24/25. A sensitive source
+never takes the media fallback.
+
+## Target 36 and 37 readiness
+
+The active build targets 36 and compiles against 37. `ClipboardManifestAuditTest`
+pins both values and checks that `ACCESS_LOCAL_NETWORK` is absent while target
+is 36.
+
+A target-37 bump is not a version-string change. Before it ships:
+
+1. Declare `ACCESS_LOCAL_NETWORK` in the manifest and request it at runtime
+   where KDE Connect clipboard sync or another LAN feature needs it. A
+   declaration alone is not enough.
+2. Re-run the clipboard and KDE Connect LAN paths on an Android 17 image.
+3. Check the Android 17 content-capture change. `FLAG_SECURE` covers the IME
+   window, but target 37 deprecates `setContentCaptureEnabled` for some paths.
+4. Keep the existing caps: text, image and snapshot bounds still apply on 37.
+5. Re-run the secure-window emulator test. The recorded T7 pass is an API 36
+   run, not an API 37 run.
+
+Universal Clipboard remains a system service. The listener may see its clips,
+but WM Keyboard cannot replace the provider.
+
+## Diagnostics
+
+`ClipboardDiagnostics` counts events, never content. It covers inline requests,
+responses, raw suggestions, each lane, inflation and withdrawal, plus capture
+attempts, self-write skips, gate drops, sensitive drops, stored kinds and
+aborted captures.
+
+`DebugLog.d("autofill", ClipboardDiagnostics.summary())` writes the autofill
+counters at debug level. `DebugLog.i("clipboard", ...)` writes the capture
+counters once in `onDestroy`, not on every copy. A support report can attach the
+summary without attaching clip text, a chip label, a URI, a package name or a
+credential.
+
+Use the counters to tell a missed capture from a gate drop:
+
+- `capture_attempts` without a stored count means the clip was read and then
+  rejected.
+- `self_write_skips` counts keyboard-originated writes the listener ignored.
+- `gate_drops` counts a rejected unlock, keyguard, history or incognito gate.
+- `sensitive_drops` counts a flagged clip dropped under Never save.
+- `aborted_image` counts a failed or over-cap image copy.
+
+The counters are process-local. A restart resets them.
+
+## Release checklist
+
+Run these from the repository root before a release that includes the clipboard
+change.
+
+- [ ] `./gradlew unitTests -Pwmkb.skipBenchmarks=true` exits 0.
+- [ ] `./gradlew :tools:architecture:test` exits 0, so the one write gate holds.
+- [ ] The T1 to T5 and T3B commands on [Testing](/development/clipboard/testing/)
+      have a fresh pass. A committed test is not a fresh run.
+- [ ] T7 has a fresh API 36 secure-window pass, or the release note names the
+      recorded `cac37a30e` run and the later harness change.
+- [ ] T6 is still marked blocked and T8 still unexecuted. Neither is reported as
+      a pass.
+- [ ] The release note tells users that the default is Never save and that old
+      Android backups can still contain clipboard text.
+- [ ] The release note keeps Samsung vendor history out of the app's claims.
+- [ ] `cd docs; $env:CHECK_LINKS="1"; npx astro build` exits 0.
+- [ ] `./gradlew staticAnalysis` is run or its skip is recorded. It is slow, so
+      it can be a separate gate, but a skipped run is unverified.
+
+## Rollback and disable paths
+
+These paths reduce or remove the feature without a code change:
+
+| Goal | Path | Limit |
+|---|---|---|
+| Stop new history | Turn off **History** on the Clipboard settings screen | Capture stops; existing history stays until cleared |
+| Drop retained secrets | Set **Sensitive clips** to **Never save** | Clears secrets already in memory; does not reveal them |
+| Remove all clear history | Use the panel's clear action, or delete app data | Pinned clips and selected behavior follow the clear rule |
+| Keep keyboard copies off the system clipboard | Turn on **Keep the keyboard's copies private** | Applies to keyboard-originated copies, not to other apps |
+| Stop Android backup | Turn off the Android backup switch | Does not affect an existing backup |
+| Stop being the default IME | Switch the default keyboard in Android settings | The listener loses read access and capture stops |
+| Undo a bad write-back | Copy the original text again, or paste from history | A write-back is guarded by the exact-text check |
+
+A build rollback changes behavior, not stored files. A pre-refactor build reads
+the same history path but restores the old `KEEP` default and the old write
+path. Test a rollback against a copy of `history.json` before shipping one. The
+file format itself has a version field, but this page does not claim a
+downgrade migration that is not tested.
+
+Rollback does not undo a backup. A backup made before the exclusion landed
+still contains whatever it contained. The only safe action is to replace or
+invalidate that backup, as described above.
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| Sensitive handling default | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:7329` |
+| History default | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:7298` |
+| Backup exclusions | `app/src/main/res/xml/data_extraction_rules.xml:40` |
+| Legacy backup exclusions | `app/src/main/res/xml/backup_rules.xml:18` |
+| Target and compile SDK audit | `app/src/test/java/com/wasimaster/wmkeyboard/app/ClipboardManifestAuditTest.kt:52` |
+| Snapshot replacement | `core/common/src/main/java/com/wasimaster/wmkeyboard/core/util/SnapshotFile.kt:156` |
+| Legacy replacement branch | `core/common/src/main/java/com/wasimaster/wmkeyboard/core/util/SnapshotFile.kt:211` |
+| Diagnostics registry | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ClipboardDiagnostics.kt:17` |
+| Autofill summary log | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:9067` |
+| Capture summary log | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:9609` |
+| Media fallback | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:49530` |
+
+*Drafted by the WM Keyboard documentation agent.*

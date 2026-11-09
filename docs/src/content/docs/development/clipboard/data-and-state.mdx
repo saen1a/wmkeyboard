@@ -1,0 +1,183 @@
+---
+title: "Clipboard data and state"
+description: "What the clipboard stores, where each kind lives, how long it survives, and the state machine for a sensitive clip."
+sidebar:
+  label: "Data and state"
+  order: 11
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** The data map, the retention rules, the secret state machine and the
+security invariants that connect them. **Not covered:** the runtime order of a
+request, which the [runtime page](/development/clipboard/runtime/) owns, and the
+threat model on the [security page](/development/clipboard/security/).
+
+**Verified against** commit `c91fcba1a` plus the current uncommitted clipboard
+fix work in this worktree, on 2026-11-09. Line numbers move; class and function
+names are the stable reference.
+
+## Data flow
+
+<Mermaid
+	caption="Read from the system clipboard to the classifier, then to the store that owns each kind. Clear clips reach the JSON snapshot and image clips reach the images directory. Secrets never leave process memory, and only portable text can reach a sync bundle."
+	chart={`
+flowchart LR
+  System["System clipboard<br/>one primary ClipData"] --> Listener["clipboardListener"]
+  Listener --> Flag{"Source sensitive flag?"}
+  Flag -- yes --> Secrets["SecretMemoryStore<br/>process memory"]
+  Flag -- no --> Heuristic{"ClipSensitivity or media?"}
+  Heuristic -- "text, HTML, link" --> Text["ClipboardStore textual item"]
+  Heuristic -- "image" --> Image["Image file plus ClipItem"]
+  Heuristic -- "file, folder, video" --> Uri["URI reference ClipItem"]
+  Text --> Snapshot["history.json"]
+  Image --> Images["filesDir/clipboard/images"]
+  Image --> Snapshot
+  Uri --> Snapshot
+  Snapshot --> Sanitizer["ClipboardSyncSanitizer"]
+  Sanitizer -->|"text, HTML, link only"| Sync["ConfigBackup and sync"]
+  Secrets --> Masked["Masked panel card"]
+  Snapshot --> Panel["Clipboard panel and paste"]
+  Images --> Panel
+`}
+/>
+
+| Stage | Input | Transformation | Output | Owner |
+|---|---|---|---|---|
+| 1 | Primary `ClipData` | Read through `ClipboardManager` | Item text or URI | `WMKeyboardService` |
+| 2 | Item and source flag | Apply unlock, keyguard, history, incognito and password gates | Accepted or dropped capture | `WMKeyboardService` |
+| 3 | Accepted text | Source flag, then `ClipSensitivity`, then copy rules and tracker stripping | Clear or sensitive `ClipItem` | `WMKeyboardService` |
+| 4 | Accepted image | Copy bytes under the hard cap | App-owned image file plus `ClipItem` | `ClipboardStore` |
+| 5 | Accepted URI | Resolve name, MIME type, size and video duration | Reference-only `ClipItem` | `ClipboardStore` |
+| 6 | Clear `ClipItem` list | Encode, prune, cap and merge | `history.json` | `ClipboardStore` |
+| 7 | Secret `ClipItem` | Merge into the displayed list only | Masked card, memory only | `SecretMemoryStore` |
+| 8 | Raw backup or sync JSON | Filter portable items and deconflict ids | Sanitized bundle | `ClipboardSyncSanitizer` |
+
+## Retention
+
+| Data class | Where it lives | Default lifetime | Other bounds | Leaves the device |
+|---|---|---|---|---|
+| Clear text, HTML and link | `filesDir/clipboard/history.json` | 24 hours for unpinned clips | 100 unpinned clips, 100,000 text characters, 256 KiB of HTML | No in an OS backup; yes in an explicit ConfigBackup or sync |
+| Image | `filesDir/clipboard/images/` plus a `history.json` item | 24 hours for unpinned clips | 8 MiB per image, 8 MiB encoded snapshot | No in an OS backup; not portable in sync |
+| File, folder and video | `history.json` reference only | 24 hours for unpinned clips | Source URI, name, MIME type and size only | No in an OS backup; not portable in sync |
+| Secret under Never save | Nowhere | Not stored | Default handling | No |
+| Secret under Keep | `SecretMemoryStore` | Normal history expiry, 24 hours by default | 20 entries, 32,768 characters each, memory only | No |
+| Secret under Short-lived | `SecretMemoryStore` | 5 minutes by default | Same entry caps, memory only | No |
+| Pinned clear clip | `history.json` | No expiry | Exempt from the unpinned cap | No in an OS backup; may travel in explicit ConfigBackup or sync |
+| Private keyboard copy | `KeyboardClipboard.held` | Until private mode ends or another app copies | One text value, memory only | No |
+| Detached clip awaiting Undo | Store memory | Until Undo or discard | An image file is kept until discard | No |
+| Diagnostics | `ClipboardDiagnostics` | Process lifetime | Counters only, no content | No |
+| Debug fixture | Debug manifest and debug source set | Debug build only | Absent from release | Not applicable |
+
+The three bounds are independent. A clip expires, falls off the cap, or is
+removed by the user, whichever comes first. Pinning is the explicit exception:
+a pinned clear clip is exempt from expiry and the cap. A secret cannot be
+pinned, because `setPinned` only reaches the clear item list.
+
+The snapshot itself is capped at 8 MiB. When the encoded snapshot exceeds that
+cap, the store evicts the oldest unpinned clear clip and re-encodes, until the
+snapshot fits or only pinned clips remain.
+
+## Secret state machine
+
+<Mermaid
+	caption="Read from capture to the seven exits. The default handling drops a secret at capture. Retained secrets are memory-only and leave on expiry, screen off, external clear, a switch to Never save, a password purge or process death."
+	chart={`
+stateDiagram-v2
+  [*] --> Captured
+  Captured --> Dropped: Never save
+  Captured --> Retained: Keep or Short-lived
+  Retained --> Retained: ordinary unlock or panel reload
+  Retained --> Pasted: user pastes
+  Pasted --> Retained: normal field
+  Pasted --> Removed: password purge
+  Retained --> Expired: TTL reached
+  Retained --> Locked: screen off
+  Retained --> ExternalClear: history file deleted or emptied
+  Retained --> Cleared: handling switched to Never save
+  Retained --> ProcessDeath: process ends
+  Dropped --> [*]
+  Removed --> [*]
+  Expired --> [*]
+  Locked --> [*]
+  ExternalClear --> [*]
+  Cleared --> [*]
+  ProcessDeath --> [*]
+`}
+/>
+
+| State | Entered when | Exits when | Side effect |
+|---|---|---|---|
+| Captured | The source flags the clip, or `ClipSensitivity` matches it, and handling is Keep or Short-lived | The item is dropped or retained | No disk write |
+| Dropped | Handling is Never save | Terminal | Counter only; the text is not stored |
+| Retained | Keep or Short-lived is active | Expiry, lock, external clear, clear, paste purge or process death | Item is merged into the panel list |
+| Pasted | The user pastes the secret | The next clear or the TTL | The secret stays memory-only unless a password purge removes it |
+| Removed | A password-field paste purges the clip | Terminal | The item and any matching primary clip are cleared |
+| Expired | The TTL passes, including when the clock moves backwards | Terminal | The reference is removed; the string is not zeroized |
+| Locked | `ACTION_SCREEN_OFF` arrives | Terminal for that secret | `SecretMemoryStore.clear` runs |
+| ExternalClear | The history file is deleted or emptied by another writer | Terminal | `clearFromExternal` clears secrets too |
+| Cleared | The setting changes to Never save | Terminal | Retained secrets are dropped, not revealed |
+| ProcessDeath | The IME process ends | Terminal | Memory-only entries are gone |
+
+A secret is retained only as long as its leash allows. Pinning does not extend
+it. An ordinary unlock or a panel reload republishes a live secret; it is not a
+clear. A clear copy of the same text cannot downgrade an existing secret,
+because the textual add path checks `SecretMemoryStore.findTextual` first.
+
+## Security invariants
+
+These are the rules the data model is built to keep. The
+[security page](/development/clipboard/security/) records which ones are
+enforced by code, which by a test, and which remain gaps.
+
+| Invariant | Enforcement |
+|---|---|
+| A secret never enters `history.json` or an OS backup | Separate store; snapshot filters `sensitive`; backup rules exclude the directory |
+| A secret never has an image file, pin, tag or search index | `SecretMemoryStore` has none of those fields |
+| A sensitive image or URI is not retained at all | `addImage` and `addUri` reject `sensitive` |
+| A clear re-copy cannot make a secret persistent | `addTextual` checks the secret store first |
+| An external history clear drops secrets too | `clearFromExternal` clears the secret store |
+| Sync and ConfigBackup never carry a secret or media | `ClipboardSyncSanitizer.isPortableItem` |
+| Keyboard writes have one owner and no duplicate capture | `ClipboardWriteGate` plus `SelfWriteLedger` |
+| Clipboard data is hidden before unlock and on the keyguard | `isClipboardAccessible` |
+| A password-field paste can remove the clip and clear the primary clip | `purgeAfterPasswordPaste` |
+| Writes to `history.json` cannot land out of order across the IME and settings app | `SnapshotFile` path lock and atomic write |
+
+## Types and ownership
+
+| Type | Meaning | Owned by |
+|---|---|---|
+| `ClipItem` | One history record with id, text, kind, timestamps, pin, tags and optional media metadata | `ClipboardStore` |
+| `ClipKind` | `TEXT`, `HTML`, `LINK`, `IMAGE`, `FILE`, `FOLDER`, `VIDEO` | `ClipboardStore` |
+| `LinkPreview` | Fetched title, description, site name and image URL for a link | `ClipboardStore` |
+| `ClipboardSettings` | History, expiry, cap, handling, panel and paste options | `:core:settings` |
+| `SensitiveClipHandling` | `KEEP`, `SHORT_LIVED`, `NEVER_SAVE` | `:core:settings` |
+| `ClipboardPanelSession` | Derived panel state: shown items, folders, search and selection | Panel UI |
+
+`ClipItem.sensitive` is only ever true for a textual clip. Sensitive image,
+file, folder and video clips are dropped instead of retained, so there is no
+memory-only media path that would survive a process death without a disk write.
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| Clip kinds and `ClipItem` | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:26` |
+| Sensitive field contract | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:71` |
+| Default expiry and caps | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:334` |
+| Secret store | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/SecretMemoryStore.kt:17` |
+| Secret entry caps | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/SecretMemoryStore.kt:95` |
+| External clear | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:415` |
+| Textual add and secret check | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:686` |
+| Image add and rejection | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:586` |
+| URI add and rejection | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:630` |
+| Store item merge | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:773` |
+| Snapshot save and cap | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:1092` |
+| Prune and unpinned cap | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:1152` |
+| Sensitivity settings | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:7296` |
+| Sensitive handling enum | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:7095` |
+| Portable item rule | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardSyncSanitizer.kt:70` |
+| Backup exclusion | `app/src/main/res/xml/data_extraction_rules.xml:40` |
+| Backup rule test | `app/src/test/java/com/wasimaster/wmkeyboard/app/ClipboardBackupRulesTest.kt:19` |
+
+*Drafted by the WM Keyboard documentation agent.*

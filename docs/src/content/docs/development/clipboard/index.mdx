@@ -1,0 +1,138 @@
+---
+title: "Clipboard system"
+description: "How WM Keyboard captures, stores and pastes clips on top of Android's clipboard, and why Android keeps ownership of the clipboard provider."
+sidebar:
+  label: "Overview"
+  order: 8
+---
+
+import { CardGrid, LinkCard } from '@astrojs/starlight/components';
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** The clipboard history and paste surface that WM Keyboard adds beside
+Android's system clipboard: capture, classification, storage, paste, backup,
+sync and the security boundary around them. **Not covered:** the user-facing
+tool guide, which lives on [Clipboard manager](/tools/clipboard/), or the
+settings screens themselves.
+
+**Verified against** commit `c91fcba1a` plus the current uncommitted clipboard
+fix work in this worktree (the inline autofill emulator test and its test
+activity), on 2026-11-09. Line numbers move; class and function names are the
+stable reference.
+
+:::caution[The key invariant]
+WM Keyboard is not an Android clipboard provider, and it does not try to become
+one. Android owns the system clipboard in `system_server`. WM Keyboard is a
+default input method when selected, so it can read clip changes and paste into
+the focused field. It cannot replace the provider, and on Samsung devices it
+cannot read or replace the separate One UI vendor history.
+:::
+
+## What the subsystem is
+
+WM Keyboard keeps a searchable history of clips and offers them back through the
+keyboard panel, the suggestion strip and the paste tools. The history is an
+app-private JSON snapshot, not a database. Images are copied into app storage.
+Files, folders and videos are recorded by URI and stay owned by the app that
+shared them. Sensitive text is kept in process memory only.
+
+The subsystem also owns three boundaries that are easy to miss:
+
+- one write gate for every keyboard-originated system clipboard write;
+- one sanitizer for untrusted ConfigBackup and sync bundles;
+- one access gate that hides clipboard data before first unlock and while the
+  keyguard is showing.
+
+## What the subsystem is not
+
+| Not this | Why |
+|---|---|
+| An Android clipboard provider | Android exposes no third-party clipboard role. `ClipboardManager` is a client of `system_server`. |
+| The One UI clipboard history | Samsung stores its history in app-private vendor data with no public API. WM Keyboard cannot read, import, write or replace it. |
+| A permanent record of every copy | Capture depends on the IME service process being alive and on WM Keyboard being the default IME or focused. |
+| A keystore-backed secret vault | Sensitive clips live in process memory. Expiry makes them unreachable and unpasteable; it does not zero the memory. |
+| A replacement for password managers | Inline autofill chips come from the active autofill service. The keyboard never receives the credential content. |
+
+## System context
+
+<Mermaid
+	caption="C4 level 1. Read from the copying app through system_server into the WM Keyboard process, then out to app-private storage, the focused field and the optional backup and sync paths. The Samsung vendor history is a separate store that this subsystem cannot reach."
+	chart={`
+flowchart LR
+  Person["Person using the keyboard"] --> App["Foreground app"]
+  App -->|"setPrimaryClip"| System["Android clipboard service<br/>system_server"]
+  System -->|"onPrimaryClipChanged"| IME["WM Keyboard IME<br/>WMKeyboardService"]
+  IME -->|"getPrimaryClip while default IME"| System
+  IME -->|"commitText or commitContent"| Field["Focused text field"]
+  IME -->|"JSON snapshot and image files"| Disk[("App-private storage<br/>filesDir/clipboard")]
+  IME -->|"masked text or chips"| Panel["Clipboard panel and strip"]
+  IME -.->|"text, HTML, link only"| Sync["ConfigBackup and sync"]
+  IME -.->|"inline chips request"| Autofill["Active autofill service<br/>password manager"]
+  Samsung["Samsung One UI history<br/>vendor app-private data, no public API"]
+`}
+/>
+
+| Actor or system | Type | Responsibility | Failure behavior |
+|---|---|---|---|
+| Person using the keyboard | Person | Copies, searches, pins, edits and pastes clips | The panel shows an empty or reduced history; typing still works |
+| Foreground app | External app | Calls `setPrimaryClip` and pastes through `ClipboardManager` | A read can return null; the keyboard drops that capture |
+| Android clipboard service | System service in `system_server` | Owns the one primary clip and enforces the default-IME or focus read rule | WM Keyboard sees no change and cannot recover the missed clip |
+| WM Keyboard IME | Software system, main process | Listens, classifies, stores, pastes and clears | Capture stops when the process dies or another IME holds the default role |
+| Clipboard panel and strip | UI inside the IME | Search, pin, tag, edit, entity chips, combine, delete and paste | A locked device hides the panel because access is gated |
+| App-private storage | Files under `filesDir/clipboard` | Holds `history.json` and copied image files | A corrupt or deleted snapshot is discarded; secrets are dropped with it |
+| ConfigBackup and sync | User-initiated paths | Carry portable text, HTML and link clips | The sanitizer drops unsafe or malformed items instead of failing the whole restore |
+| Active autofill service | External service, optional | Draws inline username, password and passkey chips | No provider means no chips; the keyboard does not invent credentials |
+| Samsung One UI history | Vendor system data | Samsung's own clipboard history | Not readable, writable or replaceable by WM Keyboard |
+
+## Reading map
+
+<CardGrid>
+	<LinkCard
+		title="Architecture"
+		description="Containers, components, the one write path, state ownership and the process model."
+		href="/development/clipboard/architecture/"
+	/>
+	<LinkCard
+		title="Runtime"
+		description="Sequence diagrams for capture, paste, clean write-back, media, sync import, lock clear and backup restore."
+		href="/development/clipboard/runtime/"
+	/>
+	<LinkCard
+		title="Data and state"
+		description="What is stored where, for how long, and the secret state machine."
+		href="/development/clipboard/data-and-state/"
+	/>
+	<LinkCard
+		title="Security"
+		description="Threat model, trust boundaries, invariants, failure modes, residual risks and evidence gaps."
+		href="/development/clipboard/security/"
+	/>
+</CardGrid>
+
+## Evidence status
+
+The architecture pages separate what the code does from what has been executed
+on a device.
+
+- **T6 is blocked.** The debug-only fake autofill provider cannot be activated
+  for the instrumentation run in the current setup, and the inline chip test
+  has an emulator session-ordering problem. The provider proves chip plumbing
+  only; it proves nothing about passkeys.
+- **T8 is unexecuted.** The real password-manager matrix (Bitwarden, Proton
+  Pass, locked vault, passkey, incognito and Samsung One UI rows) has no local
+  licensed APKs, test vaults or One UI hardware. The rows remain unexecuted.
+- **The secure-window check is reported, not re-run here.** A prior API 36
+  emulator run reported `FLAG_SECURE` on the IME window for a password field.
+  The locked-boot and `bmgr` checks remain manual.
+
+Nothing on these pages should be read as a T6 or T8 pass.
+
+## Related pages
+
+- [Clipboard manager](/tools/clipboard/) for the user-facing tool.
+- [Incognito and secure fields](/privacy/incognito/) for private copies.
+- [Architecture](/development/architecture/) for the repository module layout.
+- [System documentation](/development/system-docs/) for the C4 and arc42 contract
+  these pages follow.
+
+*Drafted by the WM Keyboard documentation agent.*

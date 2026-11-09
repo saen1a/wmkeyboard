@@ -1,0 +1,301 @@
+---
+title: "Clipboard security"
+description: "The clipboard threat model, trust boundaries, security invariants, failure modes and the residual risks that remain unverified."
+sidebar:
+  label: "Security"
+  order: 12
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** The assets, adversaries, trust boundaries and invariants of the
+clipboard subsystem, plus the failure modes and gaps that remain. **Not
+covered:** the repository-wide privacy policy, which lives under
+[Privacy overview](/privacy/overview/), or the user-facing descriptions on
+[Clipboard manager](/tools/clipboard/).
+
+**Verified against** commit `c91fcba1a` plus the current uncommitted clipboard
+fix work in this worktree, on 2026-11-09. A code claim below is structural
+evidence from the source, not proof that a device test ran. The evidence gaps
+are named in [Residual risks and gaps](#residual-risks-and-gaps).
+
+## Assets
+
+| Asset | Why it matters | Where it lives |
+|---|---|---|
+| Current primary clip | Any focused app can read it; it may hold a password | `system_server`, one `ClipData` |
+| Clear clipboard history | A record of what the person copied, often including addresses and messages | `filesDir/clipboard/history.json` |
+| Copied image bytes | Screenshots, photos and document scans | `filesDir/clipboard/images/` |
+| File, folder and video references | A URI and the grant that can open the source app's bytes | `history.json` plus the provider's grant |
+| Retained secret text | A password or one-time code the user chose to keep briefly | `SecretMemoryStore`, process memory only |
+| Private keyboard copy | The keyboard's own text kept away from the system clipboard | `KeyboardClipboard.held`, process memory only |
+| Backup and sync bundles | Portable clips that leave the device by explicit user action | User-selected file or sync transport |
+| Self-write tokens | Short-lived proof that a clipboard change came from the keyboard | `SelfWriteLedger`, process memory only |
+| Diagnostic counters | Usage counts without content | `ClipboardDiagnostics`, process memory only |
+
+## Trust boundaries
+
+<Mermaid
+	caption="Read from other apps through system_server into the IME process, then to app-private storage and the optional backup path. The vendor history and an ADB or root user sit outside the app's control."
+	chart={`
+flowchart TB
+  subgraph Outside["Outside the app"]
+    Apps["Other apps and the focused field"]
+    Vendor["Samsung One UI history"]
+    Adb["ADB or root user"]
+    Autofill["Password manager or autofill provider"]
+  end
+  subgraph System["Android system"]
+    Sys["system_server clipboard service"]
+    Backup["OS backup and device transfer"]
+  end
+  subgraph IME["WM Keyboard main process"]
+    Service["WMKeyboardService"]
+    Gate["ClipboardWriteGate"]
+    Secrets["SecretMemoryStore"]
+    Store["ClipboardStore"]
+    Panel["Clipboard panel and inline chips"]
+  end
+  Disk[("App-private storage<br/>history.json and images")]
+  Bundle[("Explicit ConfigBackup or sync file")]
+
+  Apps -->|"setPrimaryClip"| Sys
+  Sys -->|"clip change to default IME"| Service
+  Service -->|"read while default IME or focused"| Sys
+  Service -->|"every keyboard write"| Gate
+  Gate -->|"setPrimaryClip"| Sys
+  Service -->|"clear clips"| Store
+  Service -->|"secrets"| Secrets
+  Store -->|"JSON and image bytes"| Disk
+  Secrets -->|"memory only"| Secrets
+  Panel -->|"masked text"| Service
+  Service -->|"sanitized portable clips"| Bundle
+  Backup -. "clipboard directory excluded" .-> Disk
+  Autofill -. "inline chips, separate process" .-> Panel
+  Adb -->|"filesystem access"| Disk
+`}
+/>
+
+| Boundary | What crosses it | Who controls it | What the app can enforce |
+|---|---|---|---|
+| `system_server` | The one primary clip, the default-IME read rule and clip-change callbacks | Android platform, with vendor changes | It can read only while it is the default IME or focused, and it can write through `ClipboardWriteGate` |
+| IME main process | Captured text, secrets and tokens in heap memory | The app process, until Android kills it | It can keep secrets out of files and drop them on lock, clear or process death |
+| App-private storage | `history.json` and image bytes | The app sandbox and the OS file-based encryption | It can exclude the directory from OS backup and delete orphaned images |
+| OS backup and device transfer | Whatever the backup rules include | The user's backup settings and the transport | It can exclude the clipboard directory in both rule files |
+| Explicit ConfigBackup and sync | Portable text, HTML and link clips | The user and the receiving install | It can sanitize untrusted bundles and drop secrets and media |
+| Samsung vendor history | Samsung's own clipboard records | Samsung Keyboard and One UI | Nothing: there is no public API to read, write or delete it |
+| ADB and root | The whole app sandbox | The device owner or an attacker with the same access | Nothing at the app level |
+| Password manager or autofill provider | Inline chip content and pending intents | The active provider, in its own process | The keyboard builds the request and inflates returns; it does not receive the credential value |
+| Screenshots and content capture | Pixels and window content | The OS capture path | `FLAG_SECURE` on the IME window for secure fields, incognito and a secret panel |
+
+## Adversaries
+
+| Adversary | Capability | What it can reach | What stops it |
+|---|---|---|---|
+| Another app with input focus | Reads the primary clip and its own field | The current clip, not the history file | Platform focus rule; the app has no idea what another app does with a clip it copied |
+| A background app without focus or IME role | Cannot read the primary clip through the public API | Nothing through `ClipboardManager` | Android's default-IME and focus rule |
+| A malicious clipboard bundle | Supplies crafted JSON to ConfigBackup or sync | The restore path only | `ClipboardSyncSanitizer` drops unsafe, malformed and non-portable items |
+| A malicious or compromised autofill provider | Controls chip content, labels and pending intents | The chips it draws in the autofill lane | The user must tap a chip; the keyboard does not read the credential value |
+| Samsung vendor services | Maintain a separate clipboard history | Data outside the AOSP clipboard | Nothing in this app; the user must clear it in One UI |
+| A local attacker with ADB or root | Reads and writes app-private files | `history.json`, images and process dumps | Nothing at the app level; device security and OS patching are the boundary |
+| A person looking at the screen | Sees the panel and the field | Whatever is visible | Masking, `FLAG_SECURE` on the IME window, and the hide-on-lock setting |
+| A stolen locked device | Holds the hardware before first unlock | Credential-encrypted storage | Direct-boot gating and keyguard checks keep clipboard data unavailable |
+
+## Boundary walkthrough
+
+### system_server
+
+`ClipboardManager` is a client of a service in `system_server`, not a pluggable
+provider. The platform exposes no third-party clipboard role. `getPrimaryClip`
+and `hasPrimaryClip` return null or false unless the caller is the default IME
+or the app with input focus. WM Keyboard uses exactly that hook: selecting it as
+the default keyboard grants the package the default-IME identity, and nothing in
+the app can grant more.
+
+The primary clip is shared by design. A clip the user copies remains readable by
+the focused app and by the default IME. Clearing the primary clip removes that
+one copy, but it does not remove a copy another app already read.
+
+### IME main process
+
+The service runs in the app main process. Clipboard text, retained secrets,
+private copies and self-write tokens all share that heap. Process death clears
+the memory-only values, and `onDestroy` saves the clear history and removes the
+listener. The design accepts that a crash can lose the last unsaved clear clip.
+
+`SecretMemoryStore` removes the reference on expiry, lock, clear or process
+death. Kotlin strings are not zeroized, so the guarantee is "no longer reachable
+or pasteable", not "memory wiped". A heap dump from a rooted or debuggable
+process can still contain the text.
+
+### App-private storage
+
+`history.json` and `images/` live under `filesDir/clipboard`. They are protected
+by the app sandbox and the OS file-based encryption, not by app-level
+encryption. An attacker with root or a debuggable build can read them.
+
+The store deletes an unreadable snapshot instead of keeping a plaintext file it
+cannot decode. It deletes image files whose item is gone, including files left
+by a process death between the image copy and the save. An external delete or
+empty file is treated as a user clear and also clears the secret store.
+
+### Backups
+
+Android Auto Backup and Device Transfer exclude the whole `clipboard` directory
+in `data_extraction_rules.xml` and `backup_rules.xml`. `WMBackupAgent` declines
+the OS backup entirely while the user's "Back up with Android" switch is off.
+Cloud backup also requires client-side encryption with
+`disableIfNoEncryptionCapabilities`.
+
+The exclusion is forward-only. A backup created before the exclusion landed can
+still contain clipboard text, including sensitive text. Replacing or
+invalidating such a backup is a rollout action, not something the app can do
+retroactively.
+
+An explicit ConfigBackup is a separate path. Its clipboard section passes
+through `ClipboardSyncSanitizer`, which keeps only complete, non-sensitive text,
+HTML and link items within the store's hard caps. Image, file, folder and video
+clips are not portable because their bytes or grants exist only on the source
+device.
+
+### Samsung vendor history
+
+One UI adds a vendor clipboard history. On current Galaxy devices the Samsung
+Keyboard package is reported as `com.samsung.android.honeyboard`, with history
+in app-private files such as `ClipItem.db`. This page does not verify that
+package name or the file name on a device.
+
+WM Keyboard cannot read, import, write or replace that history. Making WM
+Keyboard the default keyboard changes which package gets default-IME clipboard
+access. It does not remove Samsung's history, its settings or its ability to
+keep filling while another keyboard is default. Clearing it is a user action in
+One UI, and disabling Samsung's clipboard services is an unsupported vendor
+change outside the app.
+
+### ADB and root
+
+ADB with a debuggable build, or root, can read app-private files and process
+memory. No app-level control prevents that. The backup exclusion and the
+secret store are not protections against a local attacker with those
+privileges. They only keep data out of ordinary OS backups and off ordinary
+disk writes.
+
+### Password managers and autofill
+
+The keyboard builds an inline suggestion request and inflates the chips the
+active autofill service returns. The provider owns the chip content and the
+credential value. A chip touch is handled by the autofill system, not by the
+IME window. The keyboard's diagnostic summary counts requests, responses, lanes
+and inflation, and never stores text, labels or credential values.
+
+A malicious provider can still offer a misleading chip; the user has to tap it.
+Inline autofill is not a password-manager replacement, and the debug fake
+provider proves plumbing only, never passkey behaviour.
+
+### Screenshots and content capture
+
+`updateSecureWindow` adds `FLAG_SECURE` to the IME window when the field is
+secure, incognito is on, or the clipboard panel holds a secret. That covers
+screenshots, screen recording and the Android 17 content-capture path for the
+keyboard window. It does not cover another app's own window, a privileged
+capture path, or a rooted device that ignores the flag.
+
+## Security invariants
+
+| Invariant | Enforcement point | Status |
+|---|---|---|
+| A secret never enters `history.json` | `ClipboardStore.save` filters `sensitive`; `SecretMemoryStore` is separate | Enforced by code |
+| A secret never enters an OS backup | `data_extraction_rules.xml` and `backup_rules.xml` exclude `clipboard` | Enforced by rule files; rule test exists, not re-run here |
+| A secret never has a pin, tag, image or search index | `SecretMemoryStore` exposes none of those operations | Enforced by code |
+| A sensitive image or URI is not retained | `addImage` and `addUri` reject `sensitive` | Enforced by code |
+| A clear re-copy cannot downgrade a secret | `addTextual` checks `SecretMemoryStore.findTextual` first | Enforced by code |
+| An external history clear drops secrets | `ClipboardStore.clearFromExternal` clears the secret store | Enforced by code |
+| Sync never carries a secret or media | `ClipboardSyncSanitizer.isPortableItem` | Enforced by code; unit test exists, not re-run here |
+| Every keyboard write has one owner | `ClipboardWriteGate`; architecture test fails a direct `setPrimaryClip` under `feature/ime` | Enforced by architecture test; not re-run here |
+| The keyboard's own write is not recorded twice | `SelfWriteLedger` token consumed once within five seconds | Enforced by code |
+| A stale write-back cannot overwrite a newer copy | Text comparison before `writeText` | Enforced by code |
+| Clipboard data is unavailable before unlock and on the keyguard | `isClipboardAccessible` | Enforced by code |
+| The IME stays in the main process and is not isolated | Manifest plus `ClipboardManifestAuditTest` | Enforced by manifest and test; not re-run here |
+| Debug fixtures stay out of release | Debug source set and debug manifest plus `ClipboardManifestAuditTest` | Enforced by build layout and test; not re-run here |
+| A password-field paste can remove the clip and clear the primary clip | `purgeAfterPasswordPaste` | Enforced by code when the option is on |
+
+## Failure modes
+
+| Failure | Security consequence | Mitigation |
+|---|---|---|
+| Process killed between image copy and save | An orphan image file can remain until the next start | `restore` sweeps unreferenced images |
+| Process killed before a save | The last clear clip is lost; secrets are gone | Accepted; `onDestroy` saves on a clean shutdown |
+| Snapshot is corrupt | Clear history is lost | The file is deleted rather than kept unreadable |
+| External writer empties the file | The in-memory list could be resurrected | Treated as a user clear, secrets included |
+| Keyguard state arrives late | The panel could briefly show stale data | `isClipboardAccessible` is checked on access; a poll covers late unlock |
+| Clock moves backwards | A secret could outlive its TTL | `SecretMemoryStore.prune` treats a future timestamp as expired |
+| Snapshot exceeds the cap | Old clear clips are lost | Oldest unpinned clear clips are evicted until it fits |
+| Sync bundle is malformed | One bad item could sink the restore | Item-by-item sanitize and typed decode |
+| Provider grant expires | A file clip becomes unreadable | Paste probe removes it and shows a toast |
+| No autofill provider | No inline chips | Typing still works; no credential is invented |
+
+## Residual risks and gaps
+
+These are risks the design accepts or evidence it does not have. They are not
+claims that the control failed; they are the places where the reader should not
+assume more than the code and the run record support.
+
+| Risk or gap | Status | Why it remains |
+|---|---|---|
+| Samsung vendor history | Accepted, unverified | Samsung's store is outside the AOSP clipboard and has no public API. The package name and file name in this page are reports, not device evidence. |
+| Pre-fix backups | Accepted, rollout action | The backup exclusion is forward-only. A backup made before it landed can still contain clipboard text. |
+| Process memory | Accepted | Kotlin strings are not zeroized. A heap dump from a rooted or debuggable process can contain retained secrets. |
+| No clipboard provider replacement | Accepted by platform design | Android owns the primary clip. WM Keyboard cannot become the provider or stop the focused app from reading a clip. |
+| ADB and root | Out of app scope | App-private files and memory are readable to a user with those privileges. |
+| Screenshots and content capture | Partially covered | `FLAG_SECURE` covers the IME window, not another app's window, a privileged capture path or a rooted device. |
+| T6 inline provider proof | Blocked | The debug-only provider cannot be activated for the instrumentation run in the current setup, and the inline chip test has an emulator session-ordering problem. No T6 pass is claimed. |
+| T8 real-app matrix | Unexecuted | No licensed Bitwarden or Proton Pass APK, no test vault, no passkey provider and no One UI hardware are available locally. Every matrix row remains unexecuted. |
+| Secure-window evidence | Reported, not re-verified | A prior API 36 emulator run reported `FLAG_SECURE` on a password field. This page did not run it again. |
+| Locked-boot and `bmgr` checks | Manual, not run here | The static backup-rule test is the fallback evidence. |
+| Android 17 content capture | Not tested | `compileSdk` is 37 but `targetSdk` remains 36; the target-37 matrix has not run. |
+| Universal Clipboard | Unverified | It is a system service. The listener may see its clips, but the provider cannot be replaced. |
+
+:::caution[What T6 and T8 mean]
+T6 is the test-only fake autofill provider and its instrumentation proof. It is
+blocked and has not produced a passing run. T8 is the real password-manager and
+One UI matrix. It is unexecuted. The debug provider proves chip plumbing only;
+neither item proves a production password-manager or passkey flow.
+:::
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| IME service declaration | `app/src/main/AndroidManifest.xml:1361` |
+| Access gate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:7526` |
+| Secure window | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:3850` |
+| Screen-off clear | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:7571` |
+| Password purge | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:49276` |
+| Write gate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ClipboardWriteGate.kt:19` |
+| Self-write ledger | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/SelfWriteLedger.kt:13` |
+| Secret store contract | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/SecretMemoryStore.kt:3` |
+| Secret expiry and caps | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/SecretMemoryStore.kt:84` |
+| External clear | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:415` |
+| Sensitive add rules | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:706` |
+| Sanitizer rules | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardSyncSanitizer.kt:70` |
+| Backup exclusions | `app/src/main/res/xml/data_extraction_rules.xml:40` |
+| Legacy backup exclusions | `app/src/main/res/xml/backup_rules.xml:18` |
+| Backup rule test | `app/src/test/java/com/wasimaster/wmkeyboard/app/ClipboardBackupRulesTest.kt:19` |
+| Manifest audit test | `app/src/test/java/com/wasimaster/wmkeyboard/app/ClipboardManifestAuditTest.kt:36` |
+| Secure-window unit test | `feature/ime/src/test/java/com/wasimaster/wmkeyboard/ime/SecureWindowTest.kt` |
+| Secure-window emulator test | `app/src/androidTest/java/com/wasimaster/wmkeyboard/SecureWindowEmulatorTest.kt` |
+| Debug fake provider | `app/src/debug/java/com/wasimaster/wmkeyboard/FakeAutofill.kt:30` |
+| Debug manifest | `app/src/debug/AndroidManifest.xml:31` |
+| Diagnostics | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ClipboardDiagnostics.kt:16` |
+| Clear after password paste setting | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:7402` |
+
+## Platform references
+
+- [ClipboardManager](https://developer.android.com/reference/android/content/ClipboardManager)
+  documents the default-IME and focus rule.
+- [Secure clipboard handling](https://developer.android.com/privacy-and-security/risks/secure-clipboard-handling)
+  covers the sensitive flag and the platform clipboard timeout.
+- [AOSP ClipboardService](https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/clipboard/ClipboardService.java)
+  shows the default-IME check and the absence of a third-party provider role.
+
+*Drafted by the WM Keyboard documentation agent.*

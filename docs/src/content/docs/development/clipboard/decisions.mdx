@@ -1,0 +1,408 @@
+---
+title: "Clipboard decisions"
+description: "The clipboard subsystem's architecture decisions in MADR form: the forces, the options, the outcome and the evidence that keeps each one honest."
+sidebar:
+  label: "Decisions"
+  order: 13
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** Decisions a future author would otherwise reverse without seeing the
+constraints. **Not covered:** every implementation choice. A choice with no
+consequence beyond one file belongs in a code comment.
+
+**Verified against** commit `c91fcba1a` plus the current uncommitted clipboard
+fix work in this worktree, on 2026-11-09. The decisions predate this record.
+The dates below are the date the record was written, not minutes from a meeting.
+Line numbers move; class and function names are the stable reference.
+
+<Mermaid
+	caption="The decision map. The platform boundary rejects a provider, the refactor rejects a disk vault and extra processes, and the accepted path is one IME-owned history with one write gate and one sanitizer."
+	chart={`
+flowchart TB
+  Platform["Android owns the primary clip<br/>no third-party provider role"]
+  Platform --> RejectProvider["Rejected: replace the provider"]
+  Platform --> Chosen["Accepted: default-IME listener<br/>plus an app-private history"]
+  Chosen --> RejectVault["Rejected: encrypted vault on disk"]
+  Chosen --> RejectProcess["Rejected: dedicated process,<br/>foreground service, isolated parser"]
+  Chosen --> Gate["One write gate<br/>plus self-write ledger"]
+  Chosen --> Lock["One path lock<br/>for history writers"]
+  Chosen --> Sanitize["Sanitized sync and<br/>ConfigBackup boundary"]
+  Chosen --> Autofill["Standard inline autofill<br/>no credential reads"]
+  Chosen --> Snapshot["Atomic snapshot replacement<br/>with an API 24/25 fallback"]
+`}
+/>
+
+## 1. Android owns the clipboard; there is no provider replacement
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+- **Related:** [System context](/development/clipboard/#system-context), [Security](/development/clipboard/security/)
+
+**Context.** `ClipboardManager` is a client of `system_server`, not a pluggable
+provider. The platform exposes no third-party clipboard role, and
+`getPrimaryClip` succeeds only for the default IME or the focused app. Samsung
+adds its own vendor history on top, with no public API.
+
+**Decision drivers.** Platform feasibility, a small security surface, and the
+refusal to use unsupported hooks.
+
+**Considered options.**
+
+1. Replace the system clipboard provider. Impossible without platform changes
+   or a vendor build.
+2. Read and write through an accessibility service or root hook. Rejected: it
+   widens the privilege boundary and still does not own the primary clip.
+3. Act as the default IME, listen for changes, and keep a separate history.
+   Chosen.
+
+**Decision outcome.** WM Keyboard remains an input method that observes and
+writes the system clipboard. It never claims to be the provider.
+
+**Consequences.** Capture needs WM Keyboard to be the default IME or focused,
+and the process must be alive. Samsung's One UI history stays unreachable. The
+user must clear it in One UI. A future Android role change would reopen this
+decision.
+
+**Confirmation.** The IME role and the absence of a provider declaration are
+audited by `ClipboardManifestAuditTest` and the T2 static audit. The platform
+rule is restated on the [security page](/development/clipboard/security/).
+
+## 2. Secrets are memory-only; no encrypted vault in this refactor
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+- **Related:** [Data and state](/development/clipboard/data-and-state/), [Security](/development/clipboard/security/)
+
+**Context.** A sensitive clip may be a password or a one-time code. A disk
+vault needs key management, migration, unlock timing and a recovery story. The
+refactor's goal is to stop secrets reaching the history file and OS backup, not
+to build a password manager.
+
+**Decision drivers.** Fail-closed storage, a small attack surface, and no new
+key lifecycle inside an IME.
+
+**Considered options.**
+
+1. Encrypted vault on disk, keyed by the Android Keystore. More features, more
+   lifecycle and migration risk.
+2. Plain file with a separate secret section. Rejected: it still writes the
+   secret to disk and to any backup that includes the file.
+3. Memory-only `SecretMemoryStore`, cleared on lock, expiry, clear and process
+   death. Chosen.
+
+**Decision outcome.** A retained secret lives in process memory only. It has no
+file, image, pin, tag or search index.
+
+**Consequences.** A process kill loses retained secrets. Kotlin strings are not
+zeroized, so the guarantee is "no longer reachable or pasteable", not "memory
+wiped". The trade is accepted and recorded on the
+[security page](/development/clipboard/security/#residual-risks-and-gaps).
+
+**Confirmation.** `SecretMemoryStore` has no file path, and
+`ClipboardStoreTest.saveNeverWritesASecret` checks the snapshot. The secret
+state machine is on the [data page](/development/clipboard/data-and-state/#secret-state-machine).
+
+## 3. Default handling is Never save; Keep is memory-only
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+- **Related:** [Data and state](/development/clipboard/data-and-state/), [Clipboard manager](/tools/clipboard/#passwords-are-handled-deliberately)
+
+**Context.** A source app can mark a clip sensitive with Android's
+`EXTRA_IS_SENSITIVE`. A heuristic can also flag password-shaped text. Either
+signal is authoritative downward: a clear copy cannot downgrade an existing
+secret.
+
+**Decision drivers.** Safe default, predictable user control, and no silent
+retention of a password-manager copy.
+
+**Considered options.**
+
+1. Default `KEEP`, as an earlier prototype did. A flagged password would be
+   retained in memory for the normal history lifetime.
+2. Default `SHORT_LIVED`. Better than Keep, but still retains by default.
+3. Default `NEVER_SAVE`, with `KEEP` and `SHORT_LIVED` as explicit user
+   choices. Chosen.
+
+**Decision outcome.** A source-flagged clip is dropped at capture by default.
+`KEEP` and `SHORT_LIVED` retain it in `SecretMemoryStore` only.
+
+**Consequences.** A benign secret-shaped clip can be dropped. That precision
+cost is explicit. A user who needs a retained secret must opt in. Switching to
+Never save clears secrets already in memory.
+
+**Confirmation.** `ClipboardSettings.sensitiveHandling` defaults to
+`SensitiveClipHandling.NEVER_SAVE` in `SettingsRepository`. The add and drop
+paths are covered by `ClipboardStoreTest` and `ClipSensitivityTest`.
+
+## 4. One write gate and a self-write ledger
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+- **Related:** [Architecture](/development/clipboard/architecture/#the-one-write-path), [Runtime](/development/clipboard/runtime/#clean-text-write-back)
+
+**Context.** The keyboard writes the system clipboard from the panel, tools,
+clean-text write-back, Clear and Undo. A direct `setPrimaryClip` call at any of
+those sites can forget the sensitivity flag, or the listener records the
+keyboard's own write as a new external copy.
+
+**Decision drivers.** One owner per write, one sensitivity decision, and no
+duplicate history entry.
+
+**Considered options.**
+
+1. Call `setPrimaryClip` at each site. Rejected: the rules drift and a new site
+   is easy to miss.
+2. Wrap some sites in a helper. Rejected: a partial wrapper has no enforcement.
+3. One `ClipboardWriteGate` for every keyboard write, plus `SelfWriteLedger`
+   tokens. Chosen.
+
+**Decision outcome.** Every keyboard-originated write and clear goes through
+`ClipboardWriteGate`. The gate stamps a short-lived one-shot token into the
+clip extras. The listener consumes the token and skips its own write once.
+
+**Consequences.** New direct calls under `feature/ime` fail the architecture
+test. The token is not a licence to hide a stale write: clean-text write-back
+still checks that the system clipboard holds the exact text captured. A write
+from another app between capture and write is kept, and the write-back is
+skipped.
+
+**Confirmation.** The architecture test
+`keyboard clipboard writes go through the write gate` fails a new direct
+`setPrimaryClip` or `clearPrimaryClip` under `feature/ime`. `SelfWriteLedgerTest`
+covers token lifetime and single use.
+
+## 5. One path lock and a single writer for history
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+- **Related:** [Runtime](/development/clipboard/runtime/#configbackup-and-sync-import), [Data and state](/development/clipboard/data-and-state/)
+
+**Context.** Two writers touch `filesDir/clipboard/history.json`: the IME's
+store, and the settings app path used by ConfigBackup and sync. Two writes can
+interleave, and two incoming clips can carry the same id.
+
+**Decision drivers.** No lost update, no truncated file, and no duplicate id
+that the store collapses on load.
+
+**Considered options.**
+
+1. Last writer wins. Rejected: it loses an external sync or a fresh copy.
+2. Keep everything in memory and write only at shutdown. Rejected: a process
+   kill loses the session and the listener already runs in a killable process.
+3. A per-path `SnapshotFile.withLock`, an atomic replacement, and id
+   deconfliction. Chosen.
+
+**Decision outcome.** Reads and writes of the history file take the same path
+lock. The write goes to a part file, is fsync'd, then replaces the live file.
+Incoming sync ids are renumbered above every id in use after the lock is taken.
+
+**Consequences.** The sync path cannot overwrite a local non-text clip, and the
+IME's next save merges rather than replays stale memory. A lock held by a
+crashed writer is process-local and goes with the process. The API 24/25
+replacement branch is described in decision 9.
+
+**Confirmation.** `SyncedClipboardIdsTest` proves both the id renumbering and
+that a sync reads the file after it takes the path lock. `SnapshotFileTest`
+covers ordering, deletes and the write path.
+
+## 6. No dedicated clipboard process, foreground service or isolated parser
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+- **Related:** [Architecture](/development/clipboard/architecture/#process-model)
+
+**Context.** Clipboard reads need the default-IME identity or input focus.
+The data lives in app-private storage. Android can kill the IME at any time.
+
+**Decision drivers.** Platform access, no persistent notification, no duplicate
+state, and direct access to app-private files.
+
+**Considered options.**
+
+1. A dedicated `android:process` for clipboard work. Rejected: it duplicates
+   state and still does not gain clipboard access.
+2. A foreground service to keep capture alive. Rejected: a foreground service
+   does not grant clipboard reads, and it adds a permanent notification for a
+   best-effort history.
+3. An isolated parser process for untrusted sync input. Rejected: the sanitizer
+   is pure JSON work, and an isolated process cannot reach the app's store
+   without a new IPC boundary.
+4. Keep the listener and store in the IME main process. Chosen.
+
+**Decision outcome.** `WMKeyboardService` runs in the app main process, is
+direct-boot aware, and is not isolated. The sanitizer runs in the same process
+as pure code. `ClipboardManifestAuditTest` enforces the manifest shape.
+
+**Consequences.** Capture stops when the process dies. Memory-only secrets go
+with it. A killed process can lose the last unsaved clear clip. There is no
+second process to keep the history warm, by design.
+
+**Confirmation.** `ClipboardManifestAuditTest` fails on `android:process` or
+`isolatedProcess` in the IME service node and checks `directBootAware`.
+
+## 7. Sanitized sync and ConfigBackup boundary
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+- **Related:** [Runtime](/development/clipboard/runtime/#configbackup-and-sync-import), [Security](/development/clipboard/security/)
+
+**Context.** A ConfigBackup file or a sync payload is untrusted input. It can
+carry a sensitive item, media, a missing field, an oversized text or a crafted
+id.
+
+**Decision drivers.** One bad item must not sink a whole restore, and a secret
+or media item must never cross the boundary.
+
+**Considered options.**
+
+1. Trust the bundle and decode it whole. Rejected: one bad item fails the
+   restore and can carry a secret forward.
+2. Reject the whole bundle on any bad item. Rejected: it loses benign clips.
+3. Sanitize the raw JSON per item, then deconflict ids under the path lock.
+   Chosen.
+
+**Decision outcome.** `ClipboardSyncSanitizer` keeps only complete,
+non-sensitive text, HTML and link items within the hard caps. A bad item is
+dropped alone. A missing `items` array becomes an empty bundle, not an error.
+Incoming ids are renumbered against local non-text clips.
+
+**Consequences.** Images, files, folders and videos never sync. A local
+sensitive item already in history is not carried forward. The sanitizer is pure
+and Android-free, so it is unit-testable on the JVM.
+
+**Confirmation.** `ClipboardSyncSanitizerTest` covers crafted shapes and benign
+survivors. `SyncedClipboardIdsTest` covers the id collision and the path lock.
+
+## 8. Standard inline autofill; no password-manager allowlists or credential reads
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+- **Related:** [Security](/development/clipboard/security/#password-managers-and-autofill), [Architecture](/development/clipboard/architecture/)
+
+**Context.** Password managers expose inline username, password and passkey
+chips through Android's autofill framework. The keyboard builds the request and
+inflates what the active service returns.
+
+**Decision drivers.** No credential handling in the keyboard, no per-provider
+integration, and no false claim that a chip proves a passkey flow.
+
+**Considered options.**
+
+1. Read credentials directly or keep a provider allowlist. Rejected: it needs
+   credential access the keyboard must not have and breaks when a provider
+   changes.
+2. Build a custom provider protocol. Rejected: it is outside the platform and
+   duplicates password managers.
+3. Use the standard inline suggestion request and inflate returned chips.
+   Chosen.
+
+**Decision outcome.** The keyboard never receives the credential value. The
+active autofill service owns chip content and the pending intent. A debug-only
+fake provider exercises the plumbing and holds no real credential.
+
+**Consequences.** No provider means no chips, and typing still works. The
+keyboard cannot test a real vault. T6 is blocked and T8 is unexecuted; neither
+is a pass. A malicious provider can still offer a misleading chip that the user
+must tap.
+
+**Confirmation.** `InlineSuggestionClassifierTest` covers lane budgets, lane
+assignment and empty inputs without chip content. `InlineChipClipTest` covers
+chip geometry. The T6 blocker is recorded in the test annotation and the
+[testing page](/development/clipboard/testing/).
+
+## 9. API 24/25 file fallback and atomic snapshot replacement
+
+- **Status:** accepted
+- **Date:** 2026-11-09
+- **Related:** [Data and state](/development/clipboard/data-and-state/), [Operations](/development/clipboard/operations/#api-24-and-25-file-fallback)
+
+**Context.** `core:common` and `:app` support `minSdk 24` with no core library
+desugaring. `java.nio.file` is API 26+. A snapshot write that truncates the
+live file can leave a half-written history when the IME is killed.
+
+**Decision drivers.** No partial live file, no desugaring, and one storage
+contract across API 24 through 37.
+
+**Considered options.**
+
+1. Use `java.nio.file.Files.move` on every API and raise the minimum SDK.
+   Rejected: the module keeps `minSdk 24`.
+2. Keep the old truncate-and-write save. Rejected: a kill mid-write leaves a
+   corrupt file.
+3. Write a part file, fsync it, and replace the live file atomically. On API
+   26+ use `Files.move` with `ATOMIC_MOVE` and a `REPLACE_EXISTING` fallback.
+   On API 24/25, rename the old file aside, rename the part in, and restore the
+   old file if that fails. Chosen.
+
+**Decision outcome.** `SnapshotFile.writeAtomically` is the one replacement
+path for snapshot stores, including the clipboard history. The live file is
+never deleted before the replacement succeeds. Part files are unique and
+cleaned up.
+
+**Consequences.** A crash leaves at most a stale part or backup file, never a
+truncated live history. The legacy branch costs one extra rename on API 24/25.
+The sync and ConfigBackup paths share this replacement contract.
+
+**Confirmation.** `SnapshotFileTest` exercises the JVM `SDK_INT == 0` path,
+which is the API 24/25 branch, and `SnapshotFileApi34Test` exercises the
+`java.nio.file` branch on API 34. The clipboard store's save and reload are
+covered by `ClipboardStoreTest`.
+
+## 10. Debug-only fake provider; the chip test is blocked on API 36
+
+- **Status:** accepted, test blocked
+- **Date:** 2026-11-09
+- **Related:** [Testing](/development/clipboard/testing/), [Security](/development/clipboard/security/)
+
+**Context.** The inline chip path needs a provider that returns deterministic
+content without a real credential. API 36 creates the `AutofillSession` before
+the IME window is visible, so the fill request has no inline spec at the point
+the test can focus the field.
+
+**Decision drivers.** No real credential in a test, no production fixture, and
+an honest record of what has not run.
+
+**Considered options.**
+
+1. Ship a production test provider. Rejected: it would be a live autofill
+   service in release builds.
+2. Use a real password manager in the test. Rejected: no licensed APK, no test
+   vault, and a real credential would be needed.
+3. Keep a debug-only fake provider and ignore the blocked assertion. Chosen.
+
+**Decision outcome.** `FakeAutofillService` and `InlineAutofillTestActivity`
+live in the debug source set and the debug manifest only.
+`InlineAutofillEmulatorTest` is `@Ignore`d with the API 36 session-ordering
+reason. T8 remains a manual matrix.
+
+**Consequences.** The debug provider proves chip plumbing only, never passkey
+behavior. Neither T6 nor T8 is a pass. A future API level or a test harness that
+creates the IME window before the autofill session would reopen the test.
+
+**Confirmation.** `ClipboardManifestAuditTest` proves the fixtures are absent
+from the main manifest and present in the debug manifest. The test annotation
+names the blocker.
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| IME role and process shape | `app/src/main/AndroidManifest.xml:1361` |
+| Write gate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ClipboardWriteGate.kt:19` |
+| Self-write ledger | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/SelfWriteLedger.kt:13` |
+| Secret store | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/SecretMemoryStore.kt:17` |
+| Sensitive handling default | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:7329` |
+| History store | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:269` |
+| Sync sanitizer | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardSyncSanitizer.kt:50` |
+| Sync apply and id deconfliction | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:17857` |
+| Snapshot replacement | `core/common/src/main/java/com/wasimaster/wmkeyboard/core/util/SnapshotFile.kt:156` |
+| Legacy replacement branch | `core/common/src/main/java/com/wasimaster/wmkeyboard/core/util/SnapshotFile.kt:211` |
+| Inline classifier | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/InlineSuggestionClassifier.kt:1` |
+| Debug fake provider | `app/src/debug/java/com/wasimaster/wmkeyboard/FakeAutofill.kt:30` |
+| T6 blocker | `app/src/androidTest/java/com/wasimaster/wmkeyboard/InlineAutofillEmulatorTest.kt:33` |
+| Manifest audit test | `app/src/test/java/com/wasimaster/wmkeyboard/app/ClipboardManifestAuditTest.kt:36` |
+
+*Drafted by the WM Keyboard documentation agent.*

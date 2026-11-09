@@ -1,0 +1,153 @@
+---
+title: "Clipboard references"
+description: "Source anchors by symbol, Android and AOSP references, related user pages and the glossary for the clipboard subsystem."
+sidebar:
+  label: "References"
+  order: 16
+---
+
+**Scope.** The stable anchors, platform references and vocabulary behind the
+clipboard pages. **Not covered:** a bibliography of general Android security
+research, or the user-facing help text.
+
+**Verified against** commit `c91fcba1a` plus the current uncommitted clipboard
+fix work in this worktree, on 2026-11-09. Line numbers move. The class or
+function name is the stable reference; use it when a line number no longer
+matches.
+
+## Source anchors by symbol
+
+### Service and write path
+
+| Symbol | What it owns | Path |
+|---|---|---|
+| `WMKeyboardService` | Clipboard listener, access gates, paste routing and capture | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt` |
+| `ClipboardWriteGate` | The only keyboard-originated system clipboard write and clear path | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ClipboardWriteGate.kt` |
+| `SelfWriteLedger` | One-shot, five-second tokens for the keyboard's own writes | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/SelfWriteLedger.kt` |
+| `KeyboardClipboard` | The keyboard's private text copy in memory | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/KeyboardClipboard.kt` |
+| `ClipboardFields` | Panel cells, search, editor, entity strip and actions | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ui/ClipboardFields.kt` |
+| `ClipboardDiagnostics` | Content-free capture and autofill counters | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ClipboardDiagnostics.kt` |
+| `InlineAutofill` | Inline suggestion request and chip inflation | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/InlineAutofill.kt` |
+| `InlineSuggestionClassifier` | Pure lane split, source priority and budgets | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/InlineSuggestionClassifier.kt` |
+| `SecureWindow` | Pure `FLAG_SECURE` decision predicate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/SecureWindow.kt` |
+
+### History, secrets and classification
+
+| Symbol | What it owns | Path |
+|---|---|---|
+| `ClipboardStore` | History model, expiry, cap, pin, tag, edit, detach and merge | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt` |
+| `ClipItem` | One history record | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt` |
+| `ClipKind` | `TEXT`, `HTML`, `LINK`, `IMAGE`, `FILE`, `FOLDER`, `VIDEO` | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt` |
+| `SecretMemoryStore` | Memory-only sensitive entries, no file and no media | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/SecretMemoryStore.kt` |
+| `ClipSensitivity` | Heuristic for secret-shaped text | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipSensitivity.kt` |
+| `ClipboardSyncSanitizer` | Untrusted bundle boundary for ConfigBackup and sync | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardSyncSanitizer.kt` |
+| `ClipCopyRules` | Plain letters, user copy rules and tracker stripping | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipRules.kt` |
+| `ClipEntities` | Derived entity chips | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipEntities.kt` |
+| `SnapshotFile` | Atomic snapshot replacement, per-path lock and ticket order | `core/common/src/main/java/com/wasimaster/wmkeyboard/core/util/SnapshotFile.kt` |
+
+### Settings and data
+
+| Symbol | What it owns | Path |
+|---|---|---|
+| `ClipboardSettings` | History, expiry, cap, handling, panel and paste options | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt` |
+| `SensitiveClipHandling` | `KEEP`, `SHORT_LIVED`, `NEVER_SAVE` | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt` |
+| `SettingsRepository.applySyncedClipboard` | Sync merge, id deconfliction and atomic write | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt` |
+| `data_extraction_rules.xml` | Cloud backup and device transfer exclusions | `app/src/main/res/xml/data_extraction_rules.xml` |
+| `backup_rules.xml` | Pre-API-31 backup exclusions | `app/src/main/res/xml/backup_rules.xml` |
+| `AndroidManifest.xml` | IME service role, process shape and permissions | `app/src/main/AndroidManifest.xml` |
+
+### Tests and fixtures
+
+| Symbol | What it proves | Path |
+|---|---|---|
+| `InlineSuggestionClassifierTest` | Lane split, budgets, unknown sources | `feature/ime/src/test/java/com/wasimaster/wmkeyboard/ime/InlineSuggestionClassifierTest.kt` |
+| `InlineChipClipTest` | Chip geometry | `feature/ime/src/test/java/com/wasimaster/wmkeyboard/ime/InlineChipClipTest.kt` |
+| `SecureWindowTest` | The secure-window predicate without a window | `feature/ime/src/test/java/com/wasimaster/wmkeyboard/ime/SecureWindowTest.kt` |
+| `ClipboardApi36Test` | API 36 clipboard and direct-boot behavior | `feature/ime/src/test/java/com/wasimaster/wmkeyboard/ime/ClipboardApi36Test.kt` |
+| `ClipboardStoreTest` | History, restore, secrets and media | `app/src/test/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStoreTest.kt` |
+| `ClipboardManifestAuditTest` | Manifest, SDK and release fixture audit | `app/src/test/java/com/wasimaster/wmkeyboard/app/ClipboardManifestAuditTest.kt` |
+| `ClipboardBackupRulesTest` | Backup rule exclusion | `app/src/test/java/com/wasimaster/wmkeyboard/app/ClipboardBackupRulesTest.kt` |
+| `ClipboardSyncSanitizerTest` | Crafted bundle drops and benign survivors | `core/content/src/test/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardSyncSanitizerTest.kt` |
+| `SyncedClipboardIdsTest` | Id deconfliction and path-lock ordering | `core/settings/src/test/java/com/wasimaster/wmkeyboard/core/settings/SyncedClipboardIdsTest.kt` |
+| `SnapshotFileTest` | Ordering, deletes and the legacy replacement branch | `core/common/src/test/java/com/wasimaster/wmkeyboard/core/util/SnapshotFileTest.kt` |
+| `SnapshotFileApi34Test` | The API 26+ `java.nio.file` branch | `core/common/src/test/java/com/wasimaster/wmkeyboard/core/util/SnapshotFileApi34Test.kt` |
+| `SecureWindowEmulatorTest` | `FLAG_SECURE` on the IME window | `app/src/androidTest/java/com/wasimaster/wmkeyboard/SecureWindowEmulatorTest.kt` |
+| `InlineAutofillEmulatorTest` | Blocked inline chip plumbing test | `app/src/androidTest/java/com/wasimaster/wmkeyboard/InlineAutofillEmulatorTest.kt` |
+| `FakeAutofillService` | Debug-only deterministic provider | `app/src/debug/java/com/wasimaster/wmkeyboard/FakeAutofill.kt` |
+
+## Android and AOSP references
+
+- [ClipboardManager](https://developer.android.com/reference/android/content/ClipboardManager)
+  documents the default-IME and focus rule on `getPrimaryClip` and
+  `hasPrimaryClip`.
+- [ClipData](https://developer.android.com/reference/android/content/ClipData)
+  documents the description extras used for the sensitive flag and the
+  self-write token.
+- [Secure clipboard handling](https://developer.android.com/privacy-and-security/risks/secure-clipboard-handling)
+  covers the sensitive flag and the platform clipboard timeout.
+- [AOSP ClipboardService](https://android.googlesource.com/platform/frameworks/base/+/master/services/core/java/com/android/server/clipboard/ClipboardService.java)
+  shows the default-IME check and the absence of a third-party provider role.
+- [AutofillService](https://developer.android.com/reference/android/service/autofill/AutofillService)
+  describes the provider side of the autofill framework.
+- [InlineSuggestion](https://developer.android.com/reference/android/view/inputmethod/InlineSuggestion)
+  documents the chip type the keyboard inflates from the active autofill service.
+- [InputConnection](https://developer.android.com/reference/android/view/inputmethod/InputConnection)
+  documents `commitText` and the editor contract.
+- [InputConnectionCompat](https://developer.android.com/reference/androidx/core/view/inputmethod/InputConnectionCompat)
+  documents `commitContent`, the media path used for images and files.
+- [FileProvider](https://developer.android.com/reference/androidx/core/content/FileProvider)
+  documents the content URI the keyboard uses for copied images and media
+  fallbacks.
+- [Auto Backup](https://developer.android.com/guide/topics/data/autobackup)
+  documents cloud backup, device transfer and the rule files.
+- [Direct boot](https://developer.android.com/training/articles/direct-boot)
+  explains device-protected storage and the first-unlock boundary.
+- [Build.VERSION_CODES](https://developer.android.com/reference/android/os/Build.VERSION_CODES)
+  is the API-level reference used by the snapshot fallback and the tests.
+
+Samsung's vendor clipboard has no public API. The package name and file name in
+these pages are reports, not code-verified facts. Do not treat them as an SDK
+contract.
+
+## Related user documentation
+
+- [Clipboard manager](/tools/clipboard/) for history, search, pinning, media and
+  the password settings.
+- [Incognito and secure fields](/privacy/incognito/) for paused capture, secure
+  fields and keeping keyboard copies off the system clipboard.
+- [Backup and restore](/privacy/backup/) for the explicit ConfigBackup path.
+- [Clipboard settings](/reference/settings/) for the settings reference.
+- [Testing](/development/testing/) for the repository test conventions.
+- [Architecture](/development/architecture/) for module layering and the
+  clipboard subsystem pointer.
+- [System documentation](/development/system-docs/) for the C4, arc42 and MADR
+  contract these pages follow.
+
+## Glossary
+
+| Term | Meaning in this subsystem |
+|---|---|
+| Primary clip | The one `ClipData` Android's clipboard service holds in `system_server`. |
+| Default IME | The input method package Android treats as the active keyboard. It may read the primary clip even when another app has focus. |
+| Sensitive flag | `ClipData` description extra `EXTRA_IS_SENSITIVE`, set by the copying app. It is authoritative downward. |
+| Heuristic | `ClipSensitivity`, the local check for password-shaped or code-shaped text. It can over-classify, and that cost is accepted. |
+| Never save | The default handling. A sensitive clip is dropped at capture and never reaches memory or disk. |
+| Keep | A memory-only handling. The secret stays in `SecretMemoryStore` for the normal history expiry. |
+| Short-lived | A memory-only handling. The secret stays in `SecretMemoryStore` for a short timer. |
+| Secret store | `SecretMemoryStore`, process memory only: no file, image, pin, tag or search index. |
+| Write gate | `ClipboardWriteGate`, the only path for a keyboard-originated system clipboard write or clear. |
+| Self-write token | A random one-shot value in the clip extras, kept by `SelfWriteLedger` for five seconds, so the listener skips the keyboard's own write. |
+| Path lock | `SnapshotFile.withLock`, the per-file lock shared by the IME store and the ConfigBackup and sync writers. |
+| Atomic replacement | Write a part file, fsync it, then replace the live file. No reader sees a half-written snapshot. |
+| Sanitizer | `ClipboardSyncSanitizer`, the untrusted-bundle boundary for ConfigBackup and sync. It drops one bad item without failing the bundle. |
+| Deconfliction | Renumbering incoming sync ids above every id in use, so the store does not collapse two clips. |
+| Inline suggestion | A chip an autofill service returns through Android's inline autofill API. The keyboard inflates it; it does not read the credential value. |
+| Direct boot | The boot state before the first unlock. Device-protected storage is available; credential-protected storage is not. |
+| Device-protected storage | Storage available before first unlock. Clipboard history is not read from there. |
+| ConfigBackup | The app's explicit backup and restore format, separate from Android Auto Backup and device transfer. |
+| Device transfer | Android's device-to-device restore path. It uses the same exclusion rules as cloud backup. |
+| Vendor history | Samsung One UI's own clipboard history. It is outside the AOSP clipboard and has no public API. |
+| T6 | The blocked fake-provider instrumentation proof. |
+| T8 | The unexecuted real password-manager and One UI matrix. |
+
+*Drafted by the WM Keyboard documentation agent.*

@@ -1,0 +1,397 @@
+---
+title: "Clipboard runtime"
+description: "Sequence diagrams for copy capture, paste, clean write-back, media capture, sync import, screen-off clear and backup restore."
+sidebar:
+  label: "Runtime"
+  order: 10
+---
+
+import Mermaid from '@components/Mermaid.astro';
+
+**Scope.** The architecturally relevant clipboard scenarios, one sequence per
+scenario, with the cancellation and error path each one needs. **Not covered:**
+panel drawing and animation, which are view code, and the static structure on
+the [architecture page](/development/clipboard/architecture/).
+
+**Verified against** commit `c91fcba1a` plus the current uncommitted clipboard
+fix work in this worktree, on 2026-11-09. Line numbers move; class and function
+names are the stable reference.
+
+## System copy capture
+
+<Mermaid
+	caption="Read from the copying app through system_server to the listener, then through the access gates into the store. A self-write token is consumed first, so the keyboard's own write-back never becomes a second clip."
+	chart={`
+sequenceDiagram
+  autonumber
+  participant App as Foreground app
+  participant System as system_server
+  participant Service as WMKeyboardService
+  participant Gate as ClipboardWriteGate
+  participant Ledger as SelfWriteLedger
+  participant Store as ClipboardStore
+  participant Panel as Clipboard panel
+
+  App->>System: setPrimaryClip
+  System-->>Service: onPrimaryClipChanged
+  Service->>System: getPrimaryClip
+  Service->>Gate: consumeSelfWrite(clip)
+  Gate->>Ledger: consume(token)
+  alt own write
+    Ledger-->>Gate: token valid
+    Gate-->>Service: true
+    Service-->>System: skip capture
+  else external copy
+    Ledger-->>Gate: no token
+    Gate-->>Service: false
+    Service->>Service: check unlock, keyguard, history, incognito
+    Service->>Service: read source sensitivity flag
+    alt text or HTML
+      Service->>Store: add or addHtml
+    else image
+      Service->>Service: copy bytes into clipboard/images
+      Service->>Store: addImage
+    else file, folder or video
+      Service->>Store: addUri
+    end
+    Store-->>Service: items snapshot
+    Service-->>Panel: publish clipboardItems
+  end
+`}
+/>
+
+1. The copying app calls `setPrimaryClip`.
+2. `system_server` updates the primary clip and notifies the registered listener.
+3. `WMKeyboardService` reads the clip. The read succeeds only while WM Keyboard
+   is the default IME or has input focus.
+4. The listener first checks the self-write token and the keyboard's own
+   `FileProvider` fallback, then counts a capture attempt.
+5. The access gates reject the capture when the user is not unlocked, the
+   keyguard is showing, history is off, or incognito pauses capture.
+6. The source sensitivity flag is read before any tidy or write-back.
+7. Text, image and URI clips take their separate add path.
+8. The store saves and the service publishes a new list to the panel.
+
+**Cancellation and errors.** A null primary clip or a null item is dropped and
+counted as a gate drop or an aborted capture. A read that fails because another
+IME is default is silent. A sensitive clip under Never save is dropped before
+storage. Capture stops entirely when the service process dies.
+
+## Paste
+
+<Mermaid
+	caption="Read from the tapped clip to the focused field, then through the password purge and optional bump. URI-backed clips are probed for readability before any commit attempt."
+	chart={`
+sequenceDiagram
+  autonumber
+  actor User
+  participant Panel as Clipboard panel
+  participant Service as WMKeyboardService
+  participant System as system_server
+  participant Field as Focused text field
+
+  User->>Panel: tap clip
+  Panel->>Service: onClipboardItemTapped
+  Service->>Service: isClipboardAccessible
+  alt URI-backed clip
+    Service->>Service: probe provider readability
+    alt provider gone
+      Service->>Service: remove clip and show toast
+    else readable
+      Service->>Field: commitContent or folder name
+      Service->>System: copy URI for a folder
+    end
+  else text clip
+    alt bare one-time code
+      Service->>Field: type character by character
+    else normal text
+      Service->>Field: commitText
+    end
+  else image clip
+    Service->>Field: commitContent
+    Service->>System: copy URI when the field refuses
+  end
+  Service->>Service: purgeAfterPasswordPaste
+  Service->>Service: bumpPastedClip when enabled
+  Service-->>Panel: close when configured
+`}
+/>
+
+1. The panel, paste chip or entity strip calls `onClipboardItemTapped` or a
+   related handler.
+2. The service checks clipboard accessibility again.
+3. A file or video URI is probed off the main thread. A failed probe removes the
+   clip, saves, and shows the file-copy error toast.
+4. Text commits with `commitText`. A bare code can be typed one character at a
+   time for boxes that take one character each.
+5. An image uses `InputConnectionCompat.commitContent`. If the field refuses the
+   MIME type, the image is offered through the gallery fallback or put on the
+   system clipboard.
+6. A file or video uses `commitContent`; a refusal falls back to the URI on the
+   system clipboard.
+7. A folder types its name and puts the folder URI on the system clipboard.
+8. In a password field with the setting on, the pasted clip is removed from
+   history and the primary clip is cleared when it still holds that clip.
+9. Bump on paste moves the clip to the top and may put it back on the system
+   clipboard, except in a secure field or private mode.
+
+**Cancellation and errors.** A provider that no longer serves the URI removes
+the clip instead of leaving a broken entry. A field that refuses a MIME type
+gets the documented fallback. A hidden clip or private clipboard leaves the
+system clipboard alone. A paste into a password field never bumps the clip back
+onto the system clipboard.
+
+## Clean-text write-back
+
+<Mermaid
+	caption="Read from the captured text to the tidy and tracker steps, then to the guarded write-back and the one-shot token. The write happens only while the system clipboard still holds the exact text that was captured."
+	chart={`
+sequenceDiagram
+  autonumber
+  participant Service as WMKeyboardService
+  participant System as system_server
+  participant Gate as ClipboardWriteGate
+  participant Ledger as SelfWriteLedger
+  participant Store as ClipboardStore
+
+  Service->>Service: captureTextClip
+  Service->>Service: classify sensitive
+  alt sensitive
+    Service->>Store: add as secret only
+  else clear text
+    Service->>Service: tidyCopy and strip trackers
+    Service->>System: read current primary text
+    alt primary still equals the copied text
+      Service->>Gate: writeText(selfWrite = true)
+      Gate->>Ledger: record token
+      Gate->>System: setPrimaryClip
+      System-->>Service: onPrimaryClipChanged
+      Service->>Gate: consumeSelfWrite
+      Gate->>Ledger: consume token
+      Service->>Service: skip duplicate capture
+    else another app copied meanwhile
+      Service->>Service: keep the newer copy
+    end
+    Service->>Store: add cleaned text
+  end
+`}
+/>
+
+1. The off-main `captureTextClip` classifies the text.
+2. A sensitive clip is never tidied and never written back in clear form.
+3. Clear text can lose decorated letters, pass through the user's copy rules,
+   and lose tracking parameters from links.
+4. The service re-reads the system clipboard and compares the current text with
+   the text it captured.
+5. Only an exact match allows the write-back.
+6. `ClipboardWriteGate` stamps a random token and writes the clean text.
+7. The listener sees its own change, consumes the token once, and skips the
+   duplicate.
+8. The cleaned text is added to the store.
+
+**Cancellation and errors.** If another app copied between the capture and the
+write, the write is skipped so the newer clip is not lost. The token is
+deliberately not used to mask a stale write. A failed write returns false and
+leaves the captured text in history. A sensitive clip is stored only in
+`SecretMemoryStore`.
+
+## Image, file and folder capture
+
+<Mermaid
+	caption="Read from a URI-bearing clip to the two capture branches. Images are copied and capped; files, folders and videos keep only a reference and a best-effort persisted grant."
+	chart={`
+sequenceDiagram
+  autonumber
+  participant App as Foreground app
+  participant Service as WMKeyboardService
+  participant Provider as Content provider
+  participant Store as ClipboardStore
+  participant Disk as filesDir/clipboard
+
+  App->>Service: clipboard change with URI
+  Service->>Service: resolve MIME type
+  alt image MIME
+    Service->>Provider: openInputStream
+    Service->>Disk: copyImageCapped under 8 MiB
+    alt copy succeeds
+      Service->>Store: addImage
+      Store->>Disk: take ownership of the file
+    else copy fails or exceeds the cap
+      Service->>Disk: delete the partial file
+      Service->>Service: count aborted image capture
+    end
+  else file, folder or video URI
+    Service->>Service: addFileClips on the IO dispatcher
+    loop up to 20 URIs
+      Service->>Provider: resolve name, type and size
+      Service->>Provider: takePersistableUriPermission best effort
+      Service->>Store: addUri as FILE, FOLDER or VIDEO
+    end
+  end
+  Service->>Service: save and publish
+`}
+/>
+
+1. The listener resolves the URI's MIME type once.
+2. An image is copied into `filesDir/clipboard/images` while the clip's URI grant
+   is still valid. The copy is capped at 8 MiB and leaves no partial file.
+3. A file, folder or video is recorded by URI only. The bytes stay with the
+   copying app.
+4. Each URI gets a best-effort persistable read grant. Most providers refuse.
+5. Up to 20 URIs are taken from one copy.
+6. The store saves and the panel refreshes.
+
+**Cancellation and errors.** An image over the hard cap is rejected and its
+partial file is deleted. A sensitive image or URI is not retained at all. A
+provider that cannot report a name or type is skipped. A grant that later
+expires makes the clip unreadable, and the paste probe removes it.
+
+## ConfigBackup and sync import
+
+<Mermaid
+	caption="Read from an untrusted bundle through the sanitizer to the atomic write. Only portable text, HTML and link items survive, and local non-text clips are kept."
+	chart={`
+sequenceDiagram
+  autonumber
+  participant User as User
+  participant Repo as SettingsRepository
+  participant Sanitizer as ClipboardSyncSanitizer
+  participant Lock as SnapshotFile
+  participant Disk as history.json
+  participant Store as ClipboardStore
+
+  User->>Repo: restore or sync clipboard section
+  Repo->>Sanitizer: sanitize(raw JSON)
+  Sanitizer-->>Repo: portable items only
+  Repo->>Repo: deconflict ids against local non-text clips
+  Repo->>Lock: withLock(path)
+  Lock->>Disk: read current history
+  Repo->>Repo: keep local image, file, folder and video clips
+  Repo->>Disk: writeAtomically merged JSON
+  Store->>Disk: reload or next save merge
+`}
+/>
+
+1. A ConfigBackup restore or a sync payload supplies a clipboard section as raw
+   JSON.
+2. `ClipboardSyncSanitizer.sanitize` keeps only complete, non-sensitive text,
+   HTML and link items within the store's hard caps.
+3. A malformed, oversized, sensitive or media item is dropped alone. A missing
+   `items` array becomes an empty bundle, not an error.
+4. Incoming ids are deconflicted against local non-text clips; a collision is
+   renumbered above every id in use.
+5. The read, merge and atomic write run under the same per-path lock the IME's
+   save takes.
+6. Local image, file, folder and video clips that never sync are kept.
+7. The IME's next reload or save merges in-memory edits with the external file.
+
+**Cancellation and errors.** A crafted item that fails the store's typed decoder
+is dropped alone. A sensitive item is never carried forward. An external delete
+of the history file is treated as a user clear, not a failed save, and it also
+drops process-memory secrets.
+
+## Screen-off secret clear
+
+<Mermaid
+	caption="Read from the screen-off broadcast to the memory clear and the panel refresh. An ordinary unlock is not a clear, but process death always is."
+	chart={`
+sequenceDiagram
+  autonumber
+  participant Android as Android system
+  participant Service as WMKeyboardService
+  participant Store as ClipboardStore
+  participant Secrets as SecretMemoryStore
+  participant Panel as Clipboard panel
+
+  Android-->>Service: ACTION_SCREEN_OFF
+  Service->>Service: onDeviceLocked
+  Service->>Store: clearSensitive
+  Store->>Secrets: clear
+  Secrets-->>Store: had entries
+  Store-->>Service: changed
+  Service->>Store: save
+  Service-->>Panel: publish merged list
+  Note over Service,Secrets: Process death also drops every secret
+`}
+/>
+
+1. The keyguard receiver listens for `ACTION_SCREEN_OFF` and
+   `ACTION_USER_PRESENT`.
+2. Screen off calls `onDeviceLocked`.
+3. `ClipboardStore.clearSensitive` clears `SecretMemoryStore`.
+4. If anything was cleared, the store saves and the panel receives a new list.
+5. An ordinary unlock republishes the live list and keeps a secret that has not
+   expired.
+6. Process death drops all memory-only secrets regardless of the setting.
+
+**Cancellation and errors.** The clear is idempotent. Clearing an empty secret
+store saves nothing. A history file that was deleted or emptied by an external
+writer also clears the secrets through `clearFromExternal`. Switching the
+sensitive handling to Never save clears retained secrets as well.
+
+## Backup restore
+
+<Mermaid
+	caption="Read from the restore entry point through the two backup paths. The OS backup never carries the clipboard directory; the explicit ConfigBackup path carries only sanitized portable clips."
+	chart={`
+sequenceDiagram
+  autonumber
+  actor User
+  participant Backup as Backup transport
+  participant Agent as WMBackupAgent
+  participant Rules as Backup rule files
+  participant Repo as SettingsRepository
+  participant Sanitizer as ClipboardSyncSanitizer
+  participant Disk as App-private storage
+
+  User->>Backup: restore this app
+  alt Android Auto Backup or device transfer
+    Backup->>Agent: restore payload
+    Agent->>Rules: apply data extraction rules
+    Rules-->>Agent: clipboard directory excluded
+    Agent->>Disk: restore settings and other data
+  else explicit ConfigBackup
+    User->>Repo: import backup file
+    Repo->>Sanitizer: sanitize clipboard section
+    Sanitizer-->>Repo: portable items only
+    Repo->>Disk: write sanitized history atomically
+  end
+`}
+/>
+
+1. Android Auto Backup and Device Transfer both exclude the whole `clipboard`
+   directory in `data_extraction_rules.xml` and `backup_rules.xml`.
+2. `WMBackupAgent` declines the OS backup entirely while the user's
+   "Back up with Android" switch is off.
+3. An explicit ConfigBackup import is a separate user action. Its clipboard
+   section passes through `ClipboardSyncSanitizer` before any write.
+4. The sanitized bundle is written atomically under the shared path lock.
+
+**Cancellation and errors.** The OS backup exclusion is forward-only. A backup
+created before the exclusion landed can still contain clipboard text, including
+sensitive text, and must be replaced or invalidated. A failed sanitize yields an
+empty clipboard section rather than a failed restore of unrelated settings.
+
+## Source anchors
+
+| Claim | Anchor |
+|---|---|
+| Listener and capture gates | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:3866` |
+| Text capture and write-back | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:4000` |
+| Image capture | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:3949` |
+| File capture | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:4379` |
+| Paste entry point | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:49109` |
+| Password purge | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:49276` |
+| Screen-off receiver | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:7545` |
+| Secret clear | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:7571` |
+| Save on destroy | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/WMKeyboardService.kt:9605` |
+| Write gate | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/ClipboardWriteGate.kt:19` |
+| Self-write ledger | `feature/ime/src/main/java/com/wasimaster/wmkeyboard/ime/SelfWriteLedger.kt:13` |
+| Sanitizer | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardSyncSanitizer.kt:50` |
+| Sync apply | `core/settings/src/main/java/com/wasimaster/wmkeyboard/core/settings/SettingsRepository.kt:17857` |
+| External clear | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:415` |
+| Save and path lock | `core/content/src/main/java/com/wasimaster/wmkeyboard/core/clipboard/ClipboardStore.kt:1092` |
+| Backup exclusions | `app/src/main/res/xml/data_extraction_rules.xml:40` |
+| Legacy backup exclusions | `app/src/main/res/xml/backup_rules.xml:18` |
+
+*Drafted by the WM Keyboard documentation agent.*
