@@ -65,6 +65,38 @@ class GlideLanguageProfilesTest {
     }
 
     @Test
+    fun `estonian uses the measured weights and leaves joins off`() {
+        val et = GlideLanguageProfiles.forLanguage("et")
+        assertEquals(0.75, et.freqWeight, 0.0)
+        assertEquals(0.75, et.freqWeightWithContext, 0.0)
+        assertEquals(2.0f, et.gapWeight, 0.0f)
+        assertEquals(Double.POSITIVE_INFINITY, et.joinCost, 0.0)
+        assertEquals(GlideBeam.Tuning.DEFAULT.joinMinPart, et.joinMinPart)
+        assertEquals(GlideBeam.Tuning.DEFAULT.joinPartPenalty, et.joinPartPenalty, 0.0)
+        assertEquals(0.0, et.glideLmBlend, 0.0)
+        assertEquals(0.0, et.glideLmBlendLargeList, 0.0)
+        val without = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "et")
+        val with = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "et", hasContext = true)
+        assertEquals(without, with)
+    }
+
+    @Test
+    fun `hungarian uses the measured weights and leaves joins off`() {
+        val hu = GlideLanguageProfiles.forLanguage("hu")
+        assertEquals(0.75, hu.freqWeight, 0.0)
+        assertEquals(0.75, hu.freqWeightWithContext, 0.0)
+        assertEquals(2.0f, hu.gapWeight, 0.0f)
+        assertEquals(Double.POSITIVE_INFINITY, hu.joinCost, 0.0)
+        assertEquals(GlideBeam.Tuning.DEFAULT.joinMinPart, hu.joinMinPart)
+        assertEquals(GlideBeam.Tuning.DEFAULT.joinPartPenalty, hu.joinPartPenalty, 0.0)
+        assertEquals(0.0, hu.glideLmBlend, 0.0)
+        assertEquals(0.0, hu.glideLmBlendLargeList, 0.0)
+        val without = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "hu")
+        val with = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "hu", hasContext = true)
+        assertEquals(without, with)
+    }
+
+    @Test
     fun `finnish uses the measured weights and leaves joins off`() {
         val fi = GlideLanguageProfiles.forLanguage("fi")
         assertEquals(0.75, fi.freqWeight, 0.0)

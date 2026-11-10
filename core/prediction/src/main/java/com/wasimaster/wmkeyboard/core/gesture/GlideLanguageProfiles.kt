@@ -37,8 +37,8 @@ package com.wasimaster.wmkeyboard.core.gesture
  *     + joinCost 3.0, no guard                 70.63 %
  *     + joinCost 8.0, 4 letters, penalty 0.1   74.61 %
  *
- * German and Finnish have measured rows; Dutch, Swedish and Norwegian are
- * the next candidates, one harness run each
+ * German, Finnish, Estonian and Hungarian have measured rows; Dutch, Swedish
+ * and Norwegian are the next candidates, one harness run each
  * (`native/wm-engine/examples/glide_beam_eval`, `COLS` set to the layout's
  * columns). A language with no row here decodes with the defaults, and the
  * English output is unchanged to the bit.
@@ -187,6 +187,39 @@ object GlideLanguageProfiles {
     )
 
     /**
+     * Estonian: measured on HeliBoard's Estonian strokes, full alphabet rather
+     * than the a-z-only Finnish slice. The eligible set is small: 281
+     * single-finger strokes, seed 20261109, two geometries, over `et_full`
+     * capped to its 300,000 most frequent words. The 0.75/2.0 pair reads
+     * 66.55 / 81.14 against 57.30 / 72.95 at the default (+9.25 / +8.19 pp;
+     * paired 27/1, p = 2.16e-07, cluster CI [+2.00, +10.82] /
+     * [+8.00, +8.23]). Joins stay off and no Estonian model ships.
+     */
+    val ESTONIAN = Profile(
+        freqWeight = 0.75,
+        gapWeight = 2.0f,
+        joinCost = GlideBeam.Tuning.DEFAULT.joinCost,
+        joinMinPart = GlideBeam.Tuning.DEFAULT.joinMinPart,
+        joinPartPenalty = GlideBeam.Tuning.DEFAULT.joinPartPenalty,
+    )
+
+    /**
+     * Hungarian: measured on HeliBoard's Hungarian strokes, full alphabet.
+     * 436 single-finger strokes, seed 20261109, seven geometries, over
+     * `hu_full` capped to its 300,000 most frequent words. The 0.75/2.0 pair
+     * reads 66.97 / 85.09 against 62.39 / 81.42 at the default (+4.59 /
+     * +3.67 pp; paired 26/6, p = 5.35e-4, cluster CI [+3.19, +8.11] /
+     * [+1.37, +8.86]). Joins stay off and no Hungarian model ships.
+     */
+    val HUNGARIAN = Profile(
+        freqWeight = 0.75,
+        gapWeight = 2.0f,
+        joinCost = GlideBeam.Tuning.DEFAULT.joinCost,
+        joinMinPart = GlideBeam.Tuning.DEFAULT.joinMinPart,
+        joinPartPenalty = GlideBeam.Tuning.DEFAULT.joinPartPenalty,
+    )
+
+    /**
      * English: the decoder defaults are its fit. The small bundled list uses
      * 0.7/3.0 with pieces: +4.9 top-1 on the original 2,129/1,824 hard slice,
      * +3.25 on the full 26,523 public set. The large list uses 0.5/5.0 on
@@ -213,7 +246,9 @@ object GlideLanguageProfiles {
     private val BY_LANGUAGE: Map<String, Profile> = mapOf(
         "de" to GERMAN,
         "en" to ENGLISH,
+        "et" to ESTONIAN,
         "fi" to FINNISH,
+        "hu" to HUNGARIAN,
     )
 
     /**

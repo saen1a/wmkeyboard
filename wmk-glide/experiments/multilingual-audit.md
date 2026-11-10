@@ -64,9 +64,30 @@ different downloaded compound lexicon (`fi_full`) this slice did not exercise,
 so the row ships with joins off. No Finnish model ships. Card:
 `wmk-glide/experiments/finnish-profile.md`.
 
-**Decision: GO for Finnish only, row shipped with joins off. The other seven
-remain NO-GO until each has its own 1,000-stroke run with a paired CI lower
-bound above zero.**
+**HeliBoard sweep (2026-11-10):** seven languages, the same two tunings
+(`freq_weight=1.0 gap_weight=1.33` against `0.75 / 2.0`), joins off, seed
+20261109. Finnish is the a-z slice; the rest are full alphabet. Estonian and
+Hungarian clear the paired top-1 CI lower > 0; the other five do not.
+
+| Language | n | geometries | Default top-1 / top-4 | 0.75/2.0 top-1 / top-4 | Delta top-1 / top-4 | CI top-1 | Row |
+|---|---:|---:|---:|---:|---:|---|---|
+| Estonian | 281 | 2 | 57.30 / 72.95 | 66.55 / 81.14 | +9.25 / +8.19 | [+2.00, +10.82] | yes |
+| Hungarian | 436 | 7 | 62.39 / 81.42 | 66.97 / 85.09 | +4.59 / +3.67 | [+3.19, +8.11] | yes |
+| Danish | 1,000 | 4 | 71.60 / 90.50 | 66.50 / 88.90 | -5.10 / -1.60 | [-7.62, 0.00] | no |
+| Norwegian | 402 | 4 | 62.94 / 80.10 | 62.69 / 80.85 | -0.25 / +0.75 | [-3.21, +3.10] | no |
+| Dutch | 1,000 | 37 | 80.30 / 91.10 | 79.80 / 91.30 | -0.50 / +0.20 | [-1.27, +0.14] | no |
+| Swedish | 1,000 | 11 | 78.70 / 92.60 | 77.60 / 93.20 | -1.10 / +0.60 | [-2.15, +0.17] | no |
+| Turkish | 1,000 | 19 | 72.80 / 88.10 | 73.00 / 88.30 | +0.20 / +0.20 | [-1.20, +1.59] | no |
+
+Card: `wmk-glide/experiments/estonian-hungarian-profile.md`. The Turkish first
+pass read +1.30 pp because the runner counted distinct key centres as columns
+(19/31); the corrected row width is 10, and the rerun is the record. Danish is
+a real regression; Dutch moves top-4 only.
+
+**Decision: GO for Finnish, Estonian and Hungarian, rows shipped with joins
+off. Danish, Dutch, Norwegian, Swedish and Turkish stay on `DEFAULT`. Estonian
+is the smallest sample (281 strokes, two geometries) and its row carries that
+caveat; do not copy it.**
 
 ## Banglish
 
@@ -81,21 +102,23 @@ a profile.
 
 ## Safe defaults
 
-Confirmed: `de`, `en` and `fi` have rows; every other id resolves to `DEFAULT`
-(freq 1.0, gap 1.33, joins off, glide blend 0.0/0.0); a zero blend returns the
-decoder order; no German/English number is copied to another language. `fi`
-moves frequency and gap only and keeps joins off. `fr` is pinned to 0.0 in the
-profile test; unknown/English decode with the shipped weights.
+Confirmed: `de`, `en`, `fi`, `et` and `hu` have rows; every other id resolves
+to `DEFAULT` (freq 1.0, gap 1.33, joins off, glide blend 0.0/0.0); a zero blend
+returns the decoder order; no German/English number is copied to another
+language. `fi`, `et` and `hu` move frequency and gap only and keep joins off.
+`fr` is pinned to 0.0 in the profile test; unknown/English decode with the
+shipped weights.
 
 **Decision: GO / confirmed.**
 
 ## Next
 
-1. **HeliBoard compounding protocol** — Finnish done (GO, +4.10 / +3.80 pp,
-   joins off). Dutch, Swedish and Norwegian are next: verify each layout and
-   its single-finger records, run the built-in default vs German-style profile
-   on 1,000 strokes, and add a row only on a paired CI lower > 0. Do not enable
-   joins from an a-z slice; the app's compound-lexicon path needs its own run.
+1. **HeliBoard compounding protocol** — Finnish, Estonian and Hungarian done
+   (GO, rows shipped with joins off). Danish, Dutch, Norwegian, Swedish and
+   Turkish measured and rejected: Danish regresses, the others do not clear the
+   paired top-1 CI lower > 0. Re-run any of them only with more strokes or a
+   different list, not by copying a row. Do not enable joins from a stroke
+   slice; the app's compound-lexicon path needs its own run.
 2. **English BOS/empty-context** — measured and closed: both harness and app
    blend on BOS; keep it, no global guard; an English-large-only row flag is an
    optional later polish.

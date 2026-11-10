@@ -90,6 +90,8 @@ so an English frequency weight outvotes the shape for German.
 | Default | 1.0 | 1.33 | infinity | 3 | 0.0 |
 | German | 0.75 | 2.0 | 8.0 | 4 | 0.1 |
 | Finnish | 0.75 | 2.0 | infinity | 3 | 0.0 |
+| Estonian | 0.75 | 2.0 | infinity | 3 | 0.0 |
+| Hungarian | 0.75 | 2.0 | infinity | 3 | 0.0 |
 | English | 1.0 | 1.33 | infinity | 3 | 0.0 |
 
 The merged profile uses `freqWeight` 0.75, fitted on the AOSP German list
@@ -113,6 +115,19 @@ app reads joins through a separate downloaded compound lexicon this slice did
 not exercise, so the shipped row leaves joins off. Finnish ships no context
 model either, so the weight is 0.75 with and without one. Dutch, Swedish and
 Norwegian are the next compounding candidates and each needs its own run.
+
+Estonian and Hungarian are the next measured long-word rows, on full alphabets
+rather than the a-z Finnish slice. Estonian has only 281 eligible single-finger
+strokes (two geometries), so the estimate is wide: the 0.75/2.0 pair reads
+66.55 % / 81.14 % against 57.30 % / 72.95 % (+9.25 / +8.19 pp; paired 27/1,
+p = 2.16e-07, cluster CI [+2.00, +10.82] / [+8.00, +8.23]) over `et_full`
+capped to 300,000 words. Hungarian has 436 strokes across seven geometries:
+66.97 % / 85.09 % against 62.39 % / 81.42 % (+4.59 / +3.67 pp; paired 26/6,
+p = 5.35e-4, cluster CI [+3.19, +8.11] / [+1.37, +8.86]) over `hu_full` capped
+to 300,000. Joins stay off for both; neither ships a context model. The wider
+sweep found no row for Danish (−5.10 pp), Dutch (−0.50), Norwegian (−0.25),
+Swedish (−1.10) or Turkish (+0.20, CI crossing zero); Dutch's top-4 moved but
+its top-1 did not.
 
 The glide context blend is opt-in per language **and list size**. German keeps
 0.5/5.0 with pieces on both the AOSP and counted lists. English uses 0.7/3.0

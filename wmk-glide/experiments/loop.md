@@ -13,8 +13,10 @@ retry a measured negative until the underlying index/model changes.
 | Sound A live bound | **negative** | instrumented 4.68% would-prune, but live top-1 0.7457→0.7419, top-8 0.8439→0.8400, 10/10 paired losses, 233/2,588 pools changed, CPU +10.8%, pops −0.34%; flag off and code reverted |
 | Bound line | **exhausted** | A, sound A, C negative; B deferred; the measured gain is not in a tighter bound |
 | New model/scoring path | **design done — encoder-only CTC for German** | FUTO `honorable_sturgeon` encoder only; generalize `ctc.rs` from 27 classes to `key_count + 1`; first slice 1,000 HeliBoard a-z strokes; built-in baseline 21.95 %; go signal ≥30 %; FUTO training-data leakage keeps the first slice off FUTO German |
-| Multilingual audit | **done — English kept, Finnish measured, the rest blocked** | `wmk-glide/experiments/multilingual-audit.md`: English small 17k +3.25 full / +4.9 hard slice; large listed-only +0.20 pp non-significant; FUTO swipe5 has zero fi/nl/sv/no/da/et/hu/tr strokes/layouts; bn_rom has model+list but no corpus/layout; safe defaults confirmed |
+| Multilingual audit | **done — English kept, fi/et/hu measured, five rejected** | `wmk-glide/experiments/multilingual-audit.md`: English small 17k +3.25 full / +4.9 hard slice; large listed-only +0.20 pp non-significant; FUTO swipe5 has zero fi/nl/sv/no/da/et/hu/tr strokes/layouts; bn_rom has model+list but no corpus/layout; safe defaults confirmed |
 | Finnish profile | **GO — shipped, joins off** | HeliBoard `fi`, 1,000 single-finger a-z (seed 20261109, 12 geometries), `fi_aosp`: 0.75/2.0 reads 76.90/95.10 vs default 72.80/91.30; paired +4.10/+3.80 pp, CI [+2.70,+5.60]/[+2.70,+5.00]; a join run moved 0/1,000 and the app lexicon path is unmeasured, so joins stay off; card `wmk-glide/experiments/finnish-profile.md` |
+| Estonian and Hungarian | **GO — shipped, joins off** | HeliBoard `et` (281 strokes, 2 geometries) and `hu` (436, 7), full alphabet, seed 20261109: Estonian 66.55/81.14 vs 57.30/72.95 (+9.25/+8.19, CI [+2.00,+10.82]); Hungarian 66.97/85.09 vs 62.39/81.42 (+4.59/+3.67, CI [+3.19,+8.11]); card `wmk-glide/experiments/estonian-hungarian-profile.md` |
+| Danish, Dutch, Norwegian, Swedish, Turkish | **NO-GO — no row** | Same protocol: da -5.10 (CI [-7.62,0.00]); nl -0.50 (top-4 +0.20 only); nb -0.25; sv -1.10; tr +0.20 (CI crosses 0); do not copy a row |
 | Android NDK CI / `.so` parity | **workflow added — unverified** | `.github/workflows/ci.yml` `native-engine`: host parity, NDK r29, three ABIs, APK/`.so` checksums; CI not run here |
 
 ### Model card decision
@@ -45,16 +47,20 @@ retry a measured negative until the underlying index/model changes.
   pieces) — lower ceiling, no new runtime, first slice 118 oracle compound
   misses.
 
-### Finnish profile card
+### Compounding profile cards
 
 - `GlideLanguageProfiles.FINNISH`: 0.75 / 2.0, joins off (DEFAULT), no context
   model (glide blend 0.0, `freqWeightWithContext` inherits 0.75).
-- Measured on HeliBoard's Finnish gesture data (CC BY-SA 4.0), not copied from
-  German; the 1,000-stroke a-z slice is the first compounding-language run.
-- A join run at 8 / 4 / 0.1 moved 0/1,000; the app's join path uses a different
-  downloaded lexicon (`fi_full`), so joins stay off until that path is measured.
-- Dutch, Swedish and Norwegian are the next rows; each needs its own 1,000
-  strokes and a paired CI lower bound above zero. Do not copy the Finnish row.
+- `GlideLanguageProfiles.ESTONIAN` and `HUNGARIAN`: the same weights and join
+  fields, no model; full alphabets, `et_full`/`hu_full` capped to 300,000 words.
+- Measured on HeliBoard's gesture data (CC BY-SA 4.0), not copied from German;
+  Finnish is 1,000 a-z strokes, Estonian 281 and Hungarian 436 full-alphabet
+  strokes.
+- A join run at 8 / 4 / 0.1 moved 0/1,000 on Finnish; the app's join path uses
+  a different downloaded lexicon (`fi_full`), so joins stay off.
+- Danish, Dutch, Norwegian, Swedish and Turkish measured no row: Danish
+  regresses, Dutch moves top-4 only, the rest do not clear the paired top-1 CI.
+  Do not copy a row.
 
 ### Upstream sync card
 
@@ -107,7 +113,8 @@ latency.
 - Glide context blend: German 0.5/5.0 with pieces; English 0.7/3.0 small-list,
   0.5/5.0 listed-only large; Finnish off; default/mixed off.
 - Profile rows: German (0.75/2.0, 0.5 with a model), English (shipped weights),
-  Finnish (0.75/2.0, joins off, no model); every other id uses `DEFAULT`.
+  Finnish, Estonian and Hungarian (0.75/2.0, joins off, no model); every other
+  id uses `DEFAULT`.
 - No research flags in the production tree: no `outlier_clamp`,
   `shape_floor_margin`, or `same_node` instrumentation.
 

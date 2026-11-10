@@ -36,5 +36,9 @@ class CompoundLexiconTest {
         // app's compound-lexicon path is measured.
         assertFalse(CompoundLexiconDownloads.supports("fi"))
         assertFalse(CompoundLexiconDownloads.supports("fi-FI"))
+        assertFalse(CompoundLexiconDownloads.supports("et"))
+        assertFalse(CompoundLexiconDownloads.supports("et-EE"))
+        assertFalse(CompoundLexiconDownloads.supports("hu"))
+        assertFalse(CompoundLexiconDownloads.supports("hu-HU"))
     }
 }

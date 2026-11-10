@@ -32,10 +32,36 @@ class GlideLanguageProfilesTest {
     @Test
     fun `the compound reading is on for german and off elsewhere`() {
         assertEquals(Double.POSITIVE_INFINITY, GlideBeam.Tuning.DEFAULT.joinCost, 0.0)
-        for (id in listOf("en", "fr", "nl", "fi", null)) {
+        for (id in listOf("en", "fr", "nl", "fi", "et", "hu", null)) {
             assertEquals(id, Double.POSITIVE_INFINITY, GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, id).joinCost, 0.0)
         }
         assertEquals(8.0, GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "de").joinCost, 0.0)
+    }
+
+    @Test
+    fun `estonian takes the measured weights and leaves joins off`() {
+        val tuned = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "et")
+        assertEquals(0.75, tuned.freqWeight, 0.0)
+        assertEquals(2.0f, tuned.gapWeight, 0f)
+        assertEquals(Double.POSITIVE_INFINITY, tuned.joinCost, 0.0)
+        assertEquals(GlideBeam.Tuning.DEFAULT.joinMinPart, tuned.joinMinPart)
+        assertEquals(GlideBeam.Tuning.DEFAULT.joinPartPenalty, tuned.joinPartPenalty, 0.0)
+        assertEquals(tuned, GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "et", hasContext = true))
+        assertSame(GlideLanguageProfiles.ESTONIAN, GlideLanguageProfiles.forLanguage("et-EE"))
+        assertSame(GlideBeam.Tuning.DEFAULT, GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "et", mixed = true))
+    }
+
+    @Test
+    fun `hungarian takes the measured weights and leaves joins off`() {
+        val tuned = GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "hu")
+        assertEquals(0.75, tuned.freqWeight, 0.0)
+        assertEquals(2.0f, tuned.gapWeight, 0f)
+        assertEquals(Double.POSITIVE_INFINITY, tuned.joinCost, 0.0)
+        assertEquals(GlideBeam.Tuning.DEFAULT.joinMinPart, tuned.joinMinPart)
+        assertEquals(GlideBeam.Tuning.DEFAULT.joinPartPenalty, tuned.joinPartPenalty, 0.0)
+        assertEquals(tuned, GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "hu", hasContext = true))
+        assertSame(GlideLanguageProfiles.HUNGARIAN, GlideLanguageProfiles.forLanguage("hu-HU"))
+        assertSame(GlideBeam.Tuning.DEFAULT, GlideLanguageProfiles.tune(GlideBeam.Tuning.DEFAULT, "hu", mixed = true))
     }
 
     @Test
