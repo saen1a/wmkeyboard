@@ -12,7 +12,7 @@ retry a measured negative until the underlying index/model changes.
 | Trie index C: length-bucketed subtree max | **negative** | only 49 German / 2 English query-reachable nodes change; the shipped `n >= 48 > 32` makes the remaining-length bucket ask the same set; scalar `u16` 0.84 MiB (u32 1.65 MiB) is exact for the 32 cap; not worth implementing. |
 | Sound A live bound | **negative** | instrumented 4.68% would-prune, but live top-1 0.7457→0.7419, top-8 0.8439→0.8400, 10/10 paired losses, 233/2,588 pools changed, CPU +10.8%, pops −0.34%; flag off and code reverted |
 | Bound line | **exhausted** | A, sound A, C negative; B deferred; the measured gain is not in a tighter bound |
-| New model/scoring path | **design done — encoder-only CTC for German** | FUTO `honorable_sturgeon` encoder only; generalize `ctc.rs` from 27 classes to `key_count + 1`; first slice 1,000 HeliBoard a-z strokes; built-in baseline 21.95 %; go signal ≥30 %; FUTO training-data leakage keeps the first slice off FUTO German |
+| New model/scoring path | **first slice measured — NO-GO as-is** | FUTO encoder/decoder + ExecuTorch 1.6 on 1,000 HeliBoard German a-z strokes; CTC 69.57/81.98 vs GlideBeam German profile 78.78/91.49 on the 999 in-list strokes; the toolchain/assets are unblocked, the gap is the English-trained model; card `wmk-glide/experiments/ctc-first-slice.md` |
 | Multilingual audit | **done — English kept, fi/et/hu measured, five rejected** | `wmk-glide/experiments/multilingual-audit.md`: English small 17k +3.25 full / +4.9 hard slice; large listed-only +0.20 pp non-significant; FUTO swipe5 has zero fi/nl/sv/no/da/et/hu/tr strokes/layouts; bn_rom has model+list but no corpus/layout; safe defaults confirmed |
 | Finnish profile | **GO — shipped, joins off** | HeliBoard `fi`, 1,000 single-finger a-z (seed 20261109, 12 geometries), `fi_aosp`: 0.75/2.0 reads 76.90/95.10 vs default 72.80/91.30; paired +4.10/+3.80 pp, CI [+2.70,+5.60]/[+2.70,+5.00]; a join run moved 0/1,000 and the app lexicon path is unmeasured, so joins stay off; card `wmk-glide/experiments/finnish-profile.md` |
 | Estonian and Hungarian | **GO — shipped, joins off** | HeliBoard `et` (281 strokes, 2 geometries) and `hu` (436, 7), full alphabet, seed 20261109: Estonian 66.55/81.14 vs 57.30/72.95 (+9.25/+8.19, CI [+2.00,+10.82]); Hungarian 66.97/85.09 vs 62.39/81.42 (+4.59/+3.67, CI [+3.19,+8.11]); card `wmk-glide/experiments/estonian-hungarian-profile.md` |
@@ -24,13 +24,14 @@ retry a measured negative until the underlying index/model changes.
 - Chosen path: **encoder-only CTC for German**, not a learned reranker or
   shape scorer. The English CTC is `.957` vs `.801` built-in; the FUTO encoder
   is layout-agnostic and needs no new training.
-- First slice: 1,000 HeliBoard German a-z strokes, generic 26-key CTC beam
-  (`ctc.rs` currently hardcodes 27 classes), `de_150k`; baseline built-in
-  21.95 % on the full HeliBoard set; go at ≥30 % with CI lower > 0.
-- The first slice is **not implemented**; the encoder-only scripts and the
-  generic-class example do not exist yet.
+- First slice: 1,000 HeliBoard German a-z strokes, 76 geometries, seed
+  20261109, `de_aosp`; FUTO encoder/decoder via `native/bench/futo-swipe/emit.py`
+  and `ctc_glide_eval` bare, ExecuTorch 1.6.0+cpu.
+- Result: CTC 69.57/81.98 against the GlideBeam German profile 78.78/91.49 on
+  the 999 in-list strokes; **NO-GO as-is**. The toolchain and assets are
+  unblocked; the next step is German training/fine-tuning, not a decoder swap.
 - Leakage: the FUTO encoder was trained on FUTO's swipe dataset, so FUTO German
-  `swipe-5` is not a clean test until its split is confirmed; HeliBoard is the
+  `swipe-5` is not a clean test until its split is confirmed; HeliBoard was the
   independent first slice.
 - **German `.wmlm` release identity:** canonical in `state.md` §2.7 and the
   upstream `data/de/de_context.md`. The published file is the G6P 90k

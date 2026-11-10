@@ -122,5 +122,8 @@ shipped weights.
 2. **English BOS/empty-context** — measured and closed: both harness and app
    blend on BOS; keep it, no global guard; an English-large-only row flag is an
    optional later polish.
-3. **CTC first slice** — still blocked on ExecuTorch, the encoder/HeliBoard
-   assets, the two scripts, and a pinned baseline.
+3. **CTC first slice** — ran: FUTO encoder/decoder plus ExecuTorch 1.6 on
+   1,000 German HeliBoard a-z strokes. CTC 69.57 / 81.98 against the GlideBeam
+   German profile 78.78 / 91.49 on the 999 in-list strokes: **NO-GO as-is**.
+   The toolchain and assets are unblocked; the next step is a German-trained
+   encoder or fine-tune. Card: `wmk-glide/experiments/ctc-first-slice.md`.

@@ -42,6 +42,10 @@ The counted `fi` list agrees with the a-z slice.
   The app resolves joins through a separate downloaded compound lexicon
   (`fi_full`), which this slice did not exercise, so the shipped row leaves
   joins off and does not trigger that download.
+- Cross-check 2026-11-10 with `heliboard_slice.py` / `heliboard_run.py`: a
+  fresh 1,000-stroke a-z slice (1,766 eligible, 9 geometries) read 76.00 / 94.80
+  with joins off and 76.00 / 94.80 with joins on; 0 wins, 0 losses. The app
+  filter cannot change a top-1 that joins never moved.
 - Context blend: not applicable; no Finnish model. `glideLmBlend = 0.0`,
   `freqWeightWithContext` inherits 0.75.
 - HeliBoard's own recogniser reports 86.5 % top-1 on its corpus (external

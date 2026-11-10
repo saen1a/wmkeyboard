@@ -519,9 +519,11 @@ Deutsch (MIT, `content/2018/de/de_full.txt`). Details und `curl`-Zeilen im Issue
   +9.25/+8.19, CI [+2.00,+10.82]) and Hungarian (436, +4.59/+3.67,
   CI [+3.19,+8.11]), all joins off and no model; Danish (-5.10), Dutch (-0.50),
   Norwegian (-0.25), Swedish (-1.10) and Turkish (+0.20) keep the defaults;
-  (7) the CTC first
-  slice is blocked on ExecuTorch, the encoder/HeliBoard assets, the two scripts
-  and a pinned baseline; (8) upstream `github/main` `7b4f13a87` (151 commits)
+  (7) the CTC first slice ran: FUTO encoder/decoder plus ExecuTorch 1.6 on
+  1,000 German HeliBoard a-z strokes; CTC 69.57/81.98 against the GlideBeam
+  German profile 78.78/91.49 on the 999 in-list strokes, NO-GO as-is; the
+  toolchain/assets are unblocked, the next step is German training/fine-tuning;
+  (8) upstream `github/main` `7b4f13a87` (151 commits)
   is merged in the worktree, including the upstream glide fixes
   (`GlideOutcomes` corrections, apostrophe-over-wrong-glide learning, Khipro
   spellings); the three `.so` were rebuilt from the merged source with
